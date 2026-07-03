@@ -1,0 +1,19 @@
+# deps + generated
+node_modules/
+styled-system/
+
+# build output
+dist/
+.output/
+.nitro/
+.tanstack/
+
+# cloudflare / alchemy (dormant for now)
+.alchemy/
+.wrangler/
+
+# env + os
+.env
+.env.*
+.DS_Store
+*.log
