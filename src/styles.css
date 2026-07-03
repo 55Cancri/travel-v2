@@ -1,0 +1,59 @@
+@layer reset, base, tokens, recipes, utilities;
+
+/* Consistent scrollbars for the outline pane (macOS swaps between overlay and
+   classic bars depending on input device / system setting — this normalizes
+   both, and follows the theme). */
+.outline-pane {
+  scrollbar-width: thin;
+  scrollbar-color: var(--colors-border-muted) transparent;
+}
+.outline-pane::-webkit-scrollbar {
+  width: 8px;
+}
+.outline-pane::-webkit-scrollbar-track {
+  background: transparent;
+}
+.outline-pane::-webkit-scrollbar-thumb {
+  background: var(--colors-border-muted);
+  border-radius: 4px;
+}
+.outline-pane::-webkit-scrollbar-thumb:hover {
+  background: var(--colors-border-strong);
+}
+
+/* Map pins pop on hover — the one under the cursor rises above its neighbors
+   (helps when close-together places overlap). */
+.travel-pin {
+  transition:
+    transform 130ms ease,
+    opacity 130ms ease;
+}
+.travel-pin:hover {
+  transform: scale(1.45);
+}
+.maplibregl-marker:hover {
+  z-index: 10;
+}
+
+/* Map popups follow the theme. Unlayered + higher specificity than
+   maplibre-gl.css (also unlayered), so these win the cascade. */
+.maplibregl-popup .maplibregl-popup-content {
+  background: var(--colors-surface-panel);
+  color: var(--colors-text-primary);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  font-family: inherit;
+}
+.maplibregl-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--colors-surface-panel);
+}
+.maplibregl-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--colors-surface-panel);
+}
+.maplibregl-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--colors-surface-panel);
+}
+.maplibregl-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--colors-surface-panel);
+}
