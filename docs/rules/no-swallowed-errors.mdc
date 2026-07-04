@@ -1,0 +1,46 @@
+---
+description: Errors are surfaced, never swallowed — no empty catch handlers
+globs: "**/*.{ts,tsx,js,jsx}"
+alwaysApply: false
+---
+
+# No swallowed errors
+
+`.catch(() => {})`, empty `catch {}` blocks, and silent catch-and-continue are
+banned. A swallowed error means something broke and nobody finds out — the bug
+ships, the symptom appears somewhere far away, and the catch hides the trail.
+This is the async cousin of `no-legacy-fallback-code`'s "never paper over a
+failure with a safe default."
+
+Every catch handler must do one of these, in order of preference:
+
+1. **Surface through the feature's real error path** — the engine's `onError`
+   callback, an error state the UI renders, a returned error response. The
+   person using the feature learns something went wrong.
+2. **Log with context** — `console.warn("[voice] paste-time prefetch failed:",
+   error)`. Named subsystem in brackets, a verb phrase saying what failed, and
+   the error object itself. Never a bare `console.warn(error)`, never
+   `console.log`.
+3. **Produce a defined alternative VALUE the caller interprets** — e.g. an
+   error-detail extractor returning `res.statusText` when the body isn't JSON.
+   This is converting information, not hiding it; the error still reaches the
+   user through the message it builds.
+
+Filtering an *expected control-flow rejection* is allowed only by testing for
+the SPECIFIC error and documenting why it's normal:
+
+```ts
+audio.play().catch((error: unknown) => {
+  // AbortError = a pause/seek interrupted play() — normal transport control
+  // flow. Anything else is a real failure the listener must see.
+  if (error instanceof DOMException && error.name === "AbortError") return;
+  cbs.onError(`Audio playback failed: ${...}`);
+});
+```
+
+Catch-all filters (`if (isExpected(error)) return;` with a broad predicate) are
+the same swallow with extra steps — match one named error, surface the rest.
+
+A catch may also run cleanup (clear a cache slot, release a claim), but cleanup
+is not surfacing: the error itself still needs (1), (2), or (3) somewhere on
+the same chain.

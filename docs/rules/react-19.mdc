@@ -1,0 +1,34 @@
+---
+description: React 19 / 19.2 hook usage — prefer modern primitives, let the compiler memoize.
+globs: "*.tsx, *.ts"
+alwaysApply: false
+---
+
+# React 19 usage
+
+The React Compiler is enabled (`babel-plugin-react-compiler`). Default to
+plain functions and inline literals. Do NOT hand-write `useMemo` /
+`useCallback` / `React.memo` for performance — the compiler does it. Keep
+a manual memo only for a concrete identity contract (effect dep, ref
+callback, imperatively-attached listener, third-party reference compare)
+and name the consumer in a one-line comment. See `typescript-style.mdc`.
+
+Reach for these primitives only when the specific need below applies:
+
+- **`useSyncExternalStore`** — subscribe to a store that lives outside
+  React (the layout machine, a Tauri `listen(...)` event stream). The
+  correct home for high-frequency external truth; avoids tearing.
+- **`useEffectEvent`** (stable in 19.2) — call the latest props/state from
+  *inside* an Effect without listing them as deps, so the Effect doesn't
+  re-fire when they change. This is the "no-stale-deps" event hook. Only
+  callable inside an Effect — not a DOM handler like `onClick`.
+- **`useTransition` / `startTransition`** — mark a non-urgent UI swap
+  (opening a panel, switching a view) so input stays responsive while the
+  next render prepares.
+- **`useDeferredValue`** — defer a slow subtree (filtered/virtualized
+  list) behind a fast input value.
+- **`useOptimistic`** — instant UI feedback while a Tauri/server mutation
+  is in flight.
+- **`useActionState`** — pending + result + error for an async action
+  (settings forms, etc.).
+- **`use()`** — unwrap a promise/context conditionally in render.

@@ -1,0 +1,48 @@
+---
+description: >-
+  Git and PR workflow: the bleeding-edge integration branch, owner-triggered
+  slicing into small focused PRs, plain git + gh mechanics, commit-message
+  format, and handling the owner's fast out-of-order merges. Use whenever
+  doing git or gh work — branching, committing, opening or updating PRs,
+  or reconciling after merges.
+alwaysApply: false
+---
+
+# Git / PR workflow
+
+## The bleeding-edge cycle
+
+`bleeding-edge` is the standing integration branch (every repo of the
+owner's has `main` plus `bleeding-edge`). It always carries main + every
+open PR branch + work in progress, so the owner's running app always has the
+latest code regardless of merge status.
+
+1. Day-to-day work accumulates **uncommitted** in the working tree on
+   `bleeding-edge`. Do not commit or push it — not after a feature, not
+   after a review round.
+2. The owner tests and iterates through feedback rounds, still uncommitted.
+3. Only when he says to slice: cut the work into PRs targeting `main`
+   (branch from `origin/main`, apply the relevant subset, commit, push,
+   `gh pr create`).
+4. Merge the PR branches back into `bleeding-edge` (merge, never rebase —
+   same for open PR tips and `main` whenever they move), then push
+   `bleeding-edge` (only after the PRs exist, never before).
+
+## Slicing discipline
+
+- Never commit on `main`.
+- One PR = one coherent group of related changes, 150–400 LOC. Meta files
+  (rules, docs) ride a dedicated docs PR, not feature PRs.
+- The commit message IS the PR body: motivation paragraph, `## Changes`,
+  `## Test plan`. No em dashes.
+- Fix review feedback in place on the PR branch (new commit + push), never
+  as a fixup PR stacked on top.
+
+## The owner merges fast and out of order
+
+He reviews and merges PRs on GitHub within minutes, in any order, sometimes
+into other PRs' base branches. Before mutating any branch: `git fetch` and
+check actual PR states with `gh pr view` — the local picture is often
+stale. After his merges, fast-forward `main`, re-merge into
+`bleeding-edge`, and rebuild any still-open slices on the new base rather
+than force-pushing amended history over merged work.

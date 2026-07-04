@@ -1,0 +1,41 @@
+---
+description: Server-only code (DB, secrets, bindings, auth) must never reach the browser bundle. Access cloudflare:workers env only behind server boundaries.
+globs: "*.ts, *.tsx"
+alwaysApply: true
+---
+
+# Server / client boundary (HARD)
+
+Server-only code — Cloudflare bindings (`cloudflare:workers` `env`: D1, R2,
+secrets), password hashing, OAuth token exchange, Turnstile verification, any
+SQL — **must never end up in the browser bundle**. A leak ships our DB schema,
+auth flow, and attack surface to every visitor. This is not negotiable.
+
+## The boundary
+
+- Touch `env` / bindings / secrets **only inside** `createServerFn().handler()`
+  or a route's `server.handlers`. Those are the only places guaranteed to run
+  server-side and be stripped from the client.
+- A module that does `import { env } from "cloudflare:workers"` is **server
+  code**. It may be imported by server functions and server route handlers —
+  never by a client component, the root shell, or rendered JSX.
+- Across the boundary, share **types only**: `import type { SessionUser } from
+  "entities/session"`, never a value import that drags the module in.
+- Keep pure logic (parsing, hashing shape, cookie serialization) separate from
+  the `env` I/O so the pure parts can be tested and the I/O stays at the edge
+  (see `code-organization.mdc` → side-effect boundaries).
+
+## How it stays out of the client
+
+TanStack Start compiles `createServerFn().handler()` bodies and `server.handlers`
+out of the client bundle — the client gets an RPC stub. `cloudflare:workers` is a
+Worker-runtime virtual module, so the client build marks it `external` with
+`treeshake.moduleSideEffects: "no-external"` (`vite.config.ts`). Because `env` is
+read only inside those server-stripped bodies, the now-unused import tree-shakes
+away: no `import "cloudflare:workers"` survives in a browser chunk.
+
+So the safety comes from the boundary above — never read `env` or run
+SQL/secrets/auth outside a server function — not from a bundler guard. Verify
+after any change that touches the line: `bun run build`, then confirm `dist/client`
+has zero `cloudflare:workers` references and no server markers (DB SQL, OAuth
+endpoints, `pbkdf2`).

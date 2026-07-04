@@ -1,0 +1,472 @@
+---
+description: panda CSS style reuse — atom-first, prefer atom prop API over className={css(...)}, stop-and-ask when an atom falls short
+globs: "*.tsx"
+alwaysApply: false
+---
+
+# Panda CSS Style Reuse
+
+Two rules cohabit this file:
+
+1. **Where styles live for atom consumers.** Our wrapped atoms (`Block`,
+   `Text`, `Input`, `Textarea`, `Editor`, `Button`, `Dialog`, `Menu`,
+   `Accordion`, `Panels`, `Slider`, `Progress`, `Video`, `Checkbox`,
+   `Switch`, `Table`, `Tree`, `Kbd`, `RolodexCounter`, `RolodexText`,
+   etc.) expose a typed Panda style-prop API. Consumer code MUST style
+   atoms via that prop API, not by sticking a `className={css(...)}` next
+   to them. See "The cascade contract" below.
+2. **How Panda's static extractor sees literal style objects.** Panda
+   only emits a CSS rule it can read at build time. Hide a literal
+   behind a cross-file import and the rule silently disappears from the
+   bundle with no warning. See "Panda extractor entry points" below.
+
+Both rules pull in the same direction: keep the literal at the call site,
+in the shape Panda's extractor expects.
+
+## Atom-first — and stop-and-ask when an atom falls short
+
+Default to atoms, not raw elements or CSS modules. When you write UI, reach
+for the wrapped atoms first — `Block`, `Text`, `Button`, `Link`, `Input`,
+`Menu`, `Dialog`, and friends — and style them through their Panda style-prop
+API (plus the `css={{…}}` residue prop for the rare selector that has no prop).
+Raw `<div>`/`<ul>`/`<a>` and `*.module.css` are the exception, not the reach.
+
+Why: atoms already carry the motion wiring (they're framer-motion components),
+the theme tokens, the focus/disabled/cascade behavior, and the typed prop API.
+Every raw element or CSS module is a second styling system that drifts from the
+atoms, skips the tokens, and can't be themed or animated the same way.
+
+CSS modules are allowed only when atoms genuinely can't reach — e.g. a truly
+global surface that must not depend on app-scoped atoms. When you keep a module,
+**add a comment above it stating why an atom won't do.** No silent modules.
+
+### Stop-and-ask is a hard rule
+
+While writing UI, the moment you hit any of the following, **stop — do not work
+around it, do not invent a parallel approach, do not quietly drop to a raw
+element or a CSS module — and raise it with the user before going further:**
+
+- An atom can't express what the design needs (a missing prop, variant, slot).
+- You'd otherwise reach for a raw element or a CSS module to get the result.
+- You spot a chance to extend an atom: a new style prop, a new slot, a new
+  `_motion` hook, a new polymorphic `as` target.
+- A new semantic token would express the case cleanly, or a selector you're
+  reaching for will **recur across many components** and earns a shared custom
+  condition in the config. (A selector that's specific to one component's markup
+  is *not* this case — it stays inline in that component's `css`; see below.)
+- The case really wants a whole new atom (a disclosure, a new menu, a link
+  wrapper, …).
+
+Name the concrete gap — which atom, which missing capability — and propose the
+options (extend the atom / add a token or condition / new atom). Wait for the
+decision, then build the agreed shape. The point is to keep pushing capability
+*into* the atoms so the next feature inherits it, not to accumulate bespoke
+styling around them.
+
+Prefer porting or generalizing an existing atom over building a parallel one. If
+an earlier UI already has the atom you need, bring it over (or generalize the
+shared one) rather than re-solving it locally.
+
+### Reach for the precise Panda prop, not `css` and not modules
+
+Panda exposes far more as typed style props than plain CSS properties. Before you
+drop to a `css={{…}}` residue (let alone a CSS module), check whether a prop or
+condition already expresses it. The `css` residue is the *last* resort, reserved
+for a selector that no prop or existing condition covers — typically a one-off
+interaction tied to a single component's own markup. Inline that selector right
+on the element; do **not** promote a one-off into a global config condition.
+
+- **Conditions are props.** `_hover`, `_focusVisible`, `_active`, `_disabled`,
+  `_selected`, `_checked`, `_open`, `_first`/`_last`/`_odd`/`_even`,
+  `_groupHover`/`_peerHover`, and our custom `_dark`, `_notFocusWithin` are all
+  style props. Nest them (`_hover={{ _after: {…} }}`) and combine at the property
+  level (`bg={{ base: "surface-page", _hover: "surface-focus", _dark:
+  "neutral.900" }}`).
+- **Pseudo-elements are props.** `_before` / `_after` take a full style object
+  (`_after={{ content: '""', position: "absolute", … }}`). Never hand-write
+  `"&::after"` in a `css` residue.
+- **Custom conditions in `panda.config` are for *recurring* selectors only.**
+  Add a condition under `conditions.extend` (referenced as `_name`) when the same
+  selector will be used across **many components** — like `_dark` or
+  `_notFocusWithin`. The condition becomes global vocabulary, so it must earn that
+  reach. A selector that's specific to one component's markup — keyed off that
+  component's own data attributes, or a `:has()` relationship between elements it
+  alone renders — is a **one-off**: it does not belong in the global config. Keep
+  it inline in a `css={{…}}` prop on that element, where it lives next to the
+  markup it depends on. `:has()`, `:not()`, and attribute selectors are valid in
+  both places; the test is reuse, not syntax.
+
+  ```tsx
+  // ✅ One-off: this row's whole-body hover, suppressed while its own play
+  // button is hovered. Tied to this component's markup → inline, not a config
+  // condition.
+  <Block
+    as="li"
+    data-selected={selected || undefined}
+    css={{
+      "&:not([data-selected]):hover:not(:has([data-play]:hover))": {
+        backgroundColor: "surface-muted",
+      },
+    }}
+  />
+
+  // ❌ Don't mint a global condition for it.
+  // panda.config: conditions.extend.rowHover = "&:hover:not(:has([data-play]:hover))"
+  ```
+
+  The config is still fair game to extend for genuinely shared vocabulary —
+  recurring conditions, semantic tokens, utilities, breakpoints.
+- **Responsive + container queries are props.** Use the breakpoint object/array
+  syntax (`fontSize={{ base: "md", md: "lg" }}`) and container queries
+  (`containerType` + `@/sm` keys) instead of `@media` strings in a residue.
+- **Semantic tokens, not raw values.** Colors come from the `surface-*` /
+  `text-*` / `border-*` / `accent` vocabulary so everything themes. Add a
+  semantic token when a needed color isn't covered rather than pasting a hex.
+
+### Vertical rhythm is the spacing system — use the tokens
+
+`spacing`, `sizes`, and `radii` are one line-height rhythm scale
+(`xs=0.25lh … sm=0.5lh … md=1lh … lg=1.5lh … xl=2lh … 2xl=2.5lh`), so padding,
+gaps, widths, heights, and radii all land on the baseline. Style with these
+tokens (`p="sm"`, `gap="md"`, `w="xl"`), and use the `flow` utility
+(`& > * + *` margin) for rhythmic stacks. Arbitrary px (`6px`, `2px`, `13px`)
+breaks the baseline grid — reach for a token, and if none fits, that's a signal
+to discuss the scale, not to hardcode a pixel.
+
+## The cascade contract (why prop API wins)
+
+⚠️ **Critical empirical fact**: Panda's `cx()` in this codebase is
+**naive string concatenation** — see
+`packages/desktop/styled-system/css/cx.mjs`. It does NOT deduplicate
+atomic classes by property. Two classes targeting the same property
+both end up in the DOM and the cascade picks the winner by CSS source
+order in the bundle — which is non-deterministic across builds.
+
+It's `css(...args)` (NOT `cx`) that gives us deterministic override
+behaviour. Per
+`packages/desktop/styled-system/css/css.mjs:42`:
+
+```js
+export const css = (...styles) => cssFn(mergeCss(...styles))
+```
+
+`css(a, b, c)` deep-merges its arguments at the object level FIRST and
+emits ONE class string for the merged result — later args win at the
+property level. The atom's render must therefore funnel base styles +
+consumer props through a SINGLE `css()` call so per-property overrides
+win by object merge before any atomic class exists:
+
+```ts
+// atom (input.tsx)
+const fieldRootStyles = {
+  borderWidth: "1px",
+  borderColor: "border-strong",
+  _focusWithin: {
+    borderColor: "blue.500",
+    boxShadow: "0 0 0 3px var(--colors-blue-200)",
+  },
+} as const;
+
+return (
+  <motion.div
+    className={cx(
+      css(fieldRootStyles, styleProps, cssProp), // ← single css() call
+      disabled ? _l.fieldRootDisabledClass : "", // ok: no property overlap
+      className,                                  // ok: caller acknowledges race
+    )}
+  />
+);
+```
+
+The consequence:
+
+- `<Input border="0" outline="none" _focusWithin={{ boxShadow: "none" }}>`
+  — the consumer's properties win the cascade DETERMINISTICALLY because
+  they replaced the base values during object merge. The base
+  `focusWithin:bd-c_blue.500` rule never even gets generated for this
+  Input. No `!important`, no `&&` specificity tricks, no `cva`, no
+  `.raw()`.
+- `<Input className={css({ outline: "none" })}>` — `className` is still
+  appended via `cx()` (it's a separate compiled class string), so it
+  competes against `css(fieldRootStyles, styleProps, cssProp)` on the
+  cascade-race terms above. ANY property the override needs to win for
+  must be expressed as a style prop, not as `className`.
+
+So: style atoms with their prop API. The override-via-className path
+is structurally broken for property conflicts and has no chance of
+winning deterministically.
+
+### Forbidden: `cx(baseClass, css(styleProps))` for base+props composition
+
+The pre-2026-05-22 shape — exporting a pre-computed
+`fieldRootClass = css({...})` from `literals.ts`, then composing in the
+atom with `cx(_l.fieldRootClass, css(styleProps, cssProp), className)`
+— is the original source of the
+Cmd+K-search-input-focus-ring saga. Both class strings end up in the
+className, the cascade races on CSS source order, and `!important` /
+`&&` / chrome variant props become the only "fixes". Don't reintroduce
+it. If you see an atom doing this, refactor to the single-`css()`
+pattern above.
+
+## Default for consumer code: style props on the atom
+
+```tsx
+<Block grid gap="sm" bg="surface-panel" _hover={{ bg: "surface-muted" }}>
+  …
+</Block>
+
+<Text fontSize="sm" color="text-muted">…</Text>
+
+<Input border="0" outline="none" _focusWithin={{ boxShadow: "none" }} />
+```
+
+Mix prop overrides with `_hover`, `_focusWithin`, `_dark`, etc. nested
+literals — all of those go through `splitCssProps` too.
+
+## Allowed: `css={{ … }}` JSX prop for residue
+
+When some keys have no prop equivalent (unscoped descendant selectors,
+weird pseudo-elements, `@supports` blocks, experimental properties like
+`cornerShape`), keep ONLY those keys in a `css={{...}}` prop. Hoist the
+rest into named props.
+
+```tsx
+<Block
+  grid
+  gap="sm"
+  position="relative"
+  isolation="isolate"
+  css={{
+    "&::after": { content: '""', /* … */ },
+    "&[data-pill-owner='pointer'] [data-open-pill]": { opacity: 1 },
+  }}
+/>
+```
+
+`css={{...}}` is NOT the default — if every key is prop-able, use props.
+
+### Litmus before each `css={{}}` key: is it secretly a prop?
+
+The recurring mistake is dumping ordinary properties and standard states into
+`css={{}}` while *also* setting `rounded` / `cursor` / `userSelect` as props on
+the same element — an inconsistency that signals the `css` block wasn't needed.
+A key belongs in `css` ONLY if it has no prop or condition form. These all have
+a prop form and must NOT appear as `css` keys:
+
+- **Plain properties**: `outline`, `boxShadow`, `background`, `opacity`,
+  `cursor`, `userSelect`, `borderRadius` (→ `rounded`). Set them as props.
+- **Standard states**: `&:hover`, `&:focus-visible`, `&:active`, `&:disabled`,
+  `&::before`, `&::after` → `_hover`, `_focusVisible`, `_active`, `_disabled`,
+  `_before`, `_after` (each takes a full style object).
+- **A dynamic value** the element computes (a selected/drop-target boxShadow):
+  make it a conditional *prop* — `boxShadow={isTarget ? "…" : undefined}` — not
+  a `css` key.
+
+```tsx
+// ❌ properties + standard states stuffed into css, next to real props
+<Block
+  rounded="sm"
+  userSelect="none"
+  css={{
+    outline: "none",
+    "&:focus-visible": { boxShadow: "inset 0 0 0 2px var(--colors-blue-300)" },
+    "&:hover": { backgroundColor: "surface-focus" },
+  }}
+/>
+
+// ✅ every one of those is a prop
+<Block
+  rounded="sm"
+  userSelect="none"
+  outline="none"
+  _focusVisible={{ boxShadow: "inset 0 0 0 2px var(--colors-blue-300)" }}
+  _hover={{ bg: "surface-focus" }}
+/>
+```
+
+What genuinely stays in `css={{}}`: a selector with no prop form — a markup-
+specific `:not([data-selected]):hover:not(:has(...))` one-off, an unscoped
+descendant selector, a `@supports` block, an experimental property.
+
+## Allowed: `className={css({...})}` on raw HTML wrappers (atom internals)
+
+Raw HTML elements (`<div>`, `<span>`, `<svg>`, `<button>`) have no
+Panda prop API, so atom internals legitimately reach for
+`className={css({...})}`. This is the pattern in
+`atoms/blocks/fields/input.tsx`, `atoms/icon/section-error/index.tsx`,
+etc.
+
+```tsx
+// inside an atom: wrapping a raw <span>, no prop API exists.
+<span className={css({ display: "grid", placeItems: "center" })}>{start}</span>
+```
+
+This is the ONLY remaining home for `className={css(...)}`. Consumer
+code that imports an atom must not use this shape.
+
+### Trap: a shared raw-DOM class is not a license to `className` an atom
+
+A `css()` class declared for a legitimate raw-DOM use — e.g. a pill built
+with `document.createElement`, which has no prop API — is **not** reusable
+as `className` on an atom that renders the same look. The instant the same
+visual is a `<Block as="span">`, port the literal onto the atom as style
+props. Duplicating the literal at that second call site is expected and
+correct; it is **not** a DRY violation. "One source of truth" / "they
+should look identical" is never a reason to put a `className` on an atom —
+the prop API is the contract, and `className` on an atom loses the cascade
+race besides (see "The cascade contract").
+
+```tsx
+// ❌ borrowing the raw-DOM pill class onto an atom
+<Block as="span" className={pillClassName}>{label}</Block>
+
+// ✅ same look, expressed as props (hue rides in via the --pill-hue var)
+<Block
+  as="span"
+  display="inline-flex"
+  alignItems="center"
+  borderRadius="xs"
+  paddingInline="0.4375rem"
+  paddingBlock="0.125rem"
+  fontSize="0.8125rem"
+  fontWeight={500}
+  whiteSpace="nowrap"
+  bg="color-mix(in srgb, var(--pill-hue) 18%, transparent)"
+  color="color-mix(in srgb, var(--pill-hue) 72%, var(--colors-text-primary))"
+  style={{ ["--pill-hue" as string]: `var(--colors-${color}-500)` }}
+>
+  {label}
+</Block>
+```
+
+Default away from `className` on every atom, hard. If you ever believe an
+atom genuinely cannot express the styling without one, that is the
+stop-and-ask trigger above — raise the concrete gap with the user before
+reaching for `className`. Never default to it silently.
+
+## Allowed: pre-computed class string in `literals.ts` for ADDITIVE chrome
+
+A pre-computed class via `css({...})` in `literals.ts` is fine when the
+class adds properties that DO NOT overlap with the atom's base styles
+or with what consumers are expected to override — e.g.
+`fieldRootDisabledClass` only sets `cursor: not-allowed` and `opacity`.
+Composing via `cx(mergedCssCall, additiveClass)` is safe here because
+there's no property race.
+
+```ts
+// literals.ts — additive only
+export const fieldRootDisabledClass = css({
+  cursor: "not-allowed",
+  opacity: 0.6,
+});
+```
+
+The literal MUST live inline inside the `css({...})` call — exporting
+`as const` then `css(imported)` silently drops nested conditions
+(Panda's static extractor can't follow cross-file references for nested
+selectors like `_focusWithin`).
+
+For the atom's BASE chrome — the styles consumers may override via
+props — the literal goes inline in the atom file as a plain object,
+NOT a pre-computed class. See "The cascade contract" above for why.
+
+## Forbidden shapes
+
+```tsx
+// ❌ className={css(...)} on an atom — fights the atom's base class at
+//    equal specificity and loses the declaration-order race.
+<Block className={css({ display: "grid", _hover: { bg: "surface-muted" } })} />
+
+// ❌ Spreading an imported style object — Panda's static extractor can't
+//    see the keys, so nested conditions disappear from the bundle.
+<Block {...importedStyleObject} />
+className={css(importedStyleObject)}
+
+// ❌ css={{...}} when every key is a Panda style prop — use named props.
+<Text css={{ fontSize: "sm", color: "text-muted" }}>…</Text>
+
+// ❌ Recipes / cva / sva / styled.* — adds a vocabulary we don't
+//    maintain. Two pre-computed classes + cx() covers every variant case.
+import { cva } from "panda/css"; // never
+```
+
+## Dynamic style-prop values: inline the literals, or use raw `style={{}}`
+
+Panda reads your source **as text at build time** and emits a CSS rule for
+every literal value it sees on a style prop. It never runs your code. So a
+style prop fed a **runtime variable** gets **no rule for the actual value** —
+and there is **no error**. The prop silently falls back to the CSS default.
+
+```tsx
+// ❌ Dynamic value — Panda sees a variable, not "1 / 4", so it emits nothing.
+//    At runtime grid-column has no rule → falls back to `auto` → the element
+//    auto-flows into a leftover sliver. (This was a real cinema-stage bug.)
+const span = open ? "1 / 4" : "1 / 2";
+<Block gridColumn={span} />
+```
+
+**The "works by accident" trap.** The value only renders if that *exact*
+literal happens to appear statically somewhere else in the source (Panda
+generated the class for that other site, and your runtime string matches it).
+`"1 / 2"` "worked" only because another component wrote `gridColumn="1 / 2"`
+literally; `"1 / 4"` appeared nowhere, so it died. Never rely on this.
+
+Two correct shapes, by how open-ended the value is:
+
+```tsx
+// ✅ Small known set → inline the literals at the prop. Panda statically reads
+//    BOTH ternary branches and emits a rule for each. Stays in the token system.
+<Block gridColumn={open ? "1 / 4" : "1 / 2"} />
+
+// ✅ Open-ended / continuous value (computed px, interpolated, animated motion
+//    value) → write raw inline style. It bypasses Panda's static extractor
+//    entirely and always applies. This is the right tool when the value can't
+//    be enumerated as literals.
+<Block style={{ gridColumn: computedSpan }} />
+<Block _motion={{ style: { gridTemplateColumns: columnsMotionValue } }} />
+```
+
+Rule of thumb: if you can list every possible value, inline them as literals so
+Panda owns them; if you can't, reach for raw `style={{}}` (or `_motion.style`
+for motion values). Never hand a Panda style prop a bare variable and hope.
+
+Verify with the DevTools grep in "How to verify a rule is actually present" —
+an empty result means Panda never saw your value.
+
+## Cross-file references that ARE safe
+
+These don't trigger the extractor problem:
+
+- Importing **token strings** (`"blue.500"`, `"surface-panel"`, `"xs"`) —
+  the consumer still pastes them into an inline literal.
+- Importing **class strings** produced by a `css({...})` call at the
+  definition site (Panda already extracted the literal there).
+- Importing **numbers, durations, transitions for `framer-motion`**, etc.
+  that never reach Panda.
+
+## Exception: panda recipes / cva are forbidden
+
+This repo does not use `cva`, `sva`, `styled.*`, or `panda.config.ts`
+recipes. Two pre-computed `css({...})` class strings + `cx()` express
+every variant case we need without the extra vocabulary.
+
+## How to verify a rule is actually present
+
+In DevTools (or `cdp Runtime.evaluate` on `document.styleSheets`), grep
+the rules for the literal value:
+
+```js
+[...document.styleSheets].flatMap(s => { try { return [...s.cssRules] } catch { return [] } })
+  .map(r => r.cssText)
+  .filter(t => t.includes("var(--colors-blue-200)") && t.includes("focus-within"))
+```
+
+If the array is empty, Panda didn't see the literal — convert per this
+rule.
+
+## Why this rule lives here, not in code
+
+oxlint can't easily enforce this and we don't want to add ESLint just
+for one rule. This file is the source of truth; PR review + agent
+attention is the enforcement mechanism. When in doubt: prop API on
+atoms, inline literal at the call site for residue.

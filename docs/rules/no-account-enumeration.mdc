@@ -1,0 +1,42 @@
+---
+description: Auth responses never reveal whether an account or email exists
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# No account enumeration
+
+No unauthenticated response — UI text, error code, redirect, status, or timing —
+may reveal whether a given email/username has an account. An attacker who can
+ask "does this email exist here?" gets a free list of your users to target for
+phishing, credential stuffing, or pre-account-takeover.
+
+The rule applies to every public auth surface: register, login, password reset,
+resend-verification, and the OAuth callback.
+
+## What it forbids
+
+- `error=exists` / "that email is already taken" on the register form.
+- "No account with that email" vs. "wrong password" — distinct messages for the
+  two failure halves of login. Use ONE generic failure for both.
+- A redirect, flash, or HTTP status that differs based on account existence.
+- A response-time gap (hash a dummy password on the no-account branch so the
+  timing matches the real one).
+
+## What to do instead
+
+- **Register:** whether the email is new or already taken, return the SAME
+  outcome — "Check your email to finish signing up." If it's taken, send a
+  "you already have an account" email instead of creating a second one; the
+  attacker sees identical behavior either way.
+- **Login:** one message — "Email or password is incorrect" — for unknown email,
+  wrong password, and unverified account alike.
+- **OAuth callback:** the user already proved control of that mailbox to the
+  IdP, so existence isn't being leaked to a stranger. When the verified IdP
+  email matches an existing verified account, link silently and sign them in —
+  no "this email is taken" branch.
+
+The only place an account's existence is allowed to surface is INSIDE an
+authenticated session (e.g. account settings), where the viewer already owns it.
+See [[no-swallowed-errors]] — surfacing the error to *logs* is still required;
+this rule is only about what the unauthenticated *caller* learns.
