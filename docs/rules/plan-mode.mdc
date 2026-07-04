@@ -1,0 +1,6 @@
+---
+description: Plan mode safety
+alwaysApply: true
+---
+
+CRITICAL: In PLAN mode, NEVER edit files or run commands. Only describe the plan. Wait for explicit user approval before any implementation.

@@ -1,0 +1,288 @@
+---
+description: How we organize code. Deep modules, clear boundaries, names that explain the work.
+alwaysApply: true
+---
+
+# Code organization
+
+## Organize by the reader's task
+
+A folder or file exists because it owns something a reader would ask
+about. What journey is this. What stage of that journey. What does this
+file do inside that stage. Name things by that answer, not by the
+language object inside them. Prefer `parse-row.ts` over `fns.ts`, and
+`rank-results.ts` over `helpers.ts`.
+
+## Deep modules
+
+A good module has a small simple public surface and hides the real work
+behind it. The narrowness of the interface is the main quality metric.
+Line count is a hint, not a target.
+
+Prefer one cohesive longer file with one clear public function over
+several tiny files that are always imported together. Splitting cohesive
+code into category files makes shallow modules: lots of surface, little
+hidden, and too much jumping for the reader.
+
+Defaults:
+
+- Split when the public surface grows two unrelated concerns, not when a
+  byte count crosses a line.
+- Keep helpers private while they serve one module.
+- Promote a helper to shared only after a second real caller appears.
+- Delete structure that has stopped paying for itself.
+
+## Module shape
+
+A module is a folder. It has one top-level `index.ts` (or `index.tsx`)
+that is its public door. Everything else in the module is a nested,
+named file, not another `index`. The reader opens `index` to learn what
+the module offers, then follows the names inward.
+
+- `types.ts` exists only when several files in the module share the same
+  types. If one file owns a type, the type lives next to it.
+- No `fns`, `fx`, `literals`, `utils`, `helpers`, or `shared` files.
+  Those are syntax buckets, not modules. Name files for what they do.
+- No barrel files that only re-export their siblings.
+
+These are the default. A specific UI may set its own house rules in a
+scoped rule file, but it starts from here.
+
+## React component files
+
+Default to one React component per file. A component file owns its main
+capitalized component and may keep private render helpers that are not
+components. A second capitalized component is the signal to split — never
+let unrelated components pile up in one file.
+
+The split rule is simple: **the moment one thing needs a second file, it
+becomes a folder.** A lone component is a file (`foo.tsx`). The instant it
+needs a helper component — a second file for the same thing — turn it into
+a module: `foo/index.tsx` (the public door a consumer imports) plus the
+helper as a named sibling *inside* that folder (`foo/helper.tsx`). Never
+scatter the helper as a loose file in the feature root next to the parent;
+group it under the thing it serves. One component per file still holds —
+the folder is just the grouping.
+
+This holds at any count, not just large clusters — two files is already a
+folder. So a chat view that grew a pill, a streamed-text block, a timer,
+and an assistant turn becomes `chat-view/` with `index.tsx` (the view),
+`message-pill.tsx`, `streamed.tsx`, `elapsed-timer.tsx`, and
+`assistant-block.tsx` — never loose files in the feature root, and never
+one 300-line file.
+
+Whether to split at all is still governed by cohesion (see "Deep modules"
+and the escalation list below): don't shatter a cohesive single component
+into pieces just to make files. But once a second file is warranted, it is
+a folder. The collapse rules run the other way — a folder that ends up
+holding one real file folds back to a single file.
+
+### Components in disguise count toward the split
+
+The trigger above is "a second capitalized component", and that wording has
+a loophole that has been exploited: writing the second component as a
+lowercase JSX-returning helper (`const entryRow = (entry) => <Block …>`) or
+as an inner `function sourcesFeedback()` hoisted below the return. Those ARE
+components for this rule — they own a markup block, copy, and behavior. The
+channels create-channel-modal shipped as one 370-line file this way and had
+to be re-split in review into `create-channel-modal/` with `index.tsx`,
+`source-rows.tsx`, and `problem-lines.ts`.
+
+Concrete tripwires — when ANY of these hits, the file becomes a folder with
+`index.tsx` plus named siblings, no matter how the units are spelled:
+
+- a second JSX-returning unit beyond a trivial few-liner (a `metaNote`-sized
+  one-liner is fine; an `entryRow` with its own layout and motion is not),
+- a presentation table + its consumers growing past the component itself
+  (status→look maps, action clusters → `looks.tsx`, `row-actions.tsx`),
+- the file passing ~300 lines with distinct regions a reader scrolls between.
+
+Don't be afraid of folders: siblings keep the module self-contained while
+each file stays one readable unit. The one legitimate stay-inside case is a
+hoisted `function` helper that closes over the component's live state and
+would need a double-digit prop interface to extract — that's cohesion, not
+sprawl. Everything else splits.
+
+Inline SVG components are icons. Put reusable icon components under
+`atoms/icons/<icon-name>/index.tsx` and export them from `atoms/icons`;
+do not bury them inside a feature component.
+
+## Build UI from atoms, not raw HTML + inline CSS
+
+Feature UIs are assembled from the shared atoms (`Block`, `Button`, `Text`,
+and the rest of `atoms/blocks`), never from bare `<div>` / `<button>` /
+`<span>` carrying inline `style={{…}}` objects or a `*.module.css` file. The
+atoms are Panda components: static styling is written as props
+(`<Block position="absolute" pr={18} borderRadius="6px">`), so the value
+lives on the component instead of in a detached style object or stylesheet.
+
+- `Block` for layout and containers, `Text` for runs of text, `Button` for
+  anything clickable. Reach for these even for a one-off box.
+- Keep `style={{…}}` only for values that are genuinely dynamic per render —
+  a computed `left` / `top` / `width`, a transition string built from props.
+  Everything static (position, z-index, transform-origin, radius, colors) is
+  a prop, not a style entry. Hover/focus rules go on `_hover` / `_focus`.
+- No `*.module.css` files for feature UI, and no CSS classes hand-wired with
+  `className={styles.x}`. Panda already owns the styling layer; port the rules
+  onto the atom.
+- The one raw DOM element that's still correct is a node an imperative library
+  demands (e.g. a MapLibre `Marker` element made with `document.createElement`).
+  That isn't UI you render through React — leave it as a DOM node.
+
+## Imports
+
+Inside a module, import the exact sibling file and the exact symbols you
+use, with a relative path: `import { parseRow } from "./parse-row"`.
+
+Across a module boundary, import through the public door using a path
+alias. An alias reads as two parts: a prefix that says what kind of
+module this is, and a leaf that names the module, so `<prefix>/<name>`.
+Cross-module imports are namespace imports so the call site stays
+uniform: `import * as Playback from "platform/playback"`, then
+`Playback.start(...)`. Type-only imports take the same shape with
+`import type * as ...`.
+
+Each UI defines its own prefixes. Never reach across a boundary with a
+deep relative path like `../../other-module/internal`.
+
+**An alias is exactly two segments — `<prefix>/<name>` — never three.** To
+reach something inside a module, import its door and take the member off it:
+destructure (`import { useColumnLayout } from "v2/hooks"`) or namespace-import
+(`import * as Sidebar from "v2/sidebar"`, then `Sidebar.Foo`). Never write a
+third path segment like `v2/hooks/use-column-layout` — that is what the door
+and the destructure are for. The module's `index` re-exports its public
+surface; the only exception is a heavy sub-module that would bloat the door
+(e.g. `atoms/blocks/table-v2`), imported directly.
+
+Current prefixes: `atoms/*` (the design system — its own `blocks`/`icons`/
+`hooks` leaves), `entities/*` (the shared data / service layer), `panda/*`
+(Panda codegen), and `v2/*` → `src/uis/atlas/*` (the Atlas UI's feature modules
+plus its `parts` / `hooks` spine). `cells/*` and `features/*` belong to the
+original UI only — Atlas never imports them.
+
+## Feature shapes
+
+Use the smallest shape that explains the work.
+
+- Simple leaf: one cohesive file. Types, constants, and private helpers
+  live next to the flow they support.
+- Workflow: an ordered flow becomes stage files with a short
+  orchestrator that reads like a story. Each stage owns its own mess.
+- Capability: a long-lived service with no strict order exposes a small
+  public contract and hides its internal files.
+- Named states: when flags must change together, model named states and
+  transitions, not parallel booleans.
+
+## When to grow a file into a folder
+
+Escalate when any of these is true:
+
+- The file owns two genuinely unrelated concerns.
+- The file has a clear internal sequence of three or more named stages.
+- A surface has more than one layout or mode.
+- An update function has many variants that cluster by behavior.
+- A coordinator returns so many fields that callers need named
+  capabilities.
+
+Cohesion beats line count. A long file that does one well-named thing
+can stay.
+
+## When to collapse a folder
+
+De-escalate, and do it aggressively, when:
+
+- Sibling files are almost always edited together.
+- A wrapper only forwards to another function.
+- A folder holds one meaningful file.
+- A helper is used once and adds no domain name.
+- A file exists only because code was sorted by syntax.
+
+Indirection is a cost even when each file is short.
+
+## Side-effect boundaries
+
+Keep pure logic apart from input and output. A pure module takes plain
+values in and returns plain values out. It does not import framework,
+network, filesystem, database, or rendering tools. Side-effect modules
+sit at the edges and translate between the outside world and the pure
+core. You should see the boundary from the imports alone. If a pure
+module needs an I/O type in its signature, the boundary is leaking.
+
+## Data shape discipline
+
+Prefer shapes that encode the rules over loose maps and booleans.
+
+- Give one concept one representation across a flow.
+- When values travel together or change together, put them in one named
+  object.
+- Use enums or tagged unions for lifecycle, so impossible combinations
+  like `loading && success` cannot be built.
+
+## Pipelines
+
+A long async flow has a short orchestrator and named steps. The
+orchestrator tells the story in order. Each step owns its own edge
+cases, retries, parsing, and cleanup. If every exception starts piling
+up in the orchestrator, move that step's mess into the step. Name step
+files for the stage they perform, never `helpers` or `utils`.
+
+## Naming
+
+### `state` is a BANNED word — never put it in an identifier
+
+This is the rule most often missed, so it leads the section and is
+repeated here on top of `typescript-style.mdc`. The word `state` may not
+appear in any name **you** define — variables, parameters, fields,
+methods, type aliases, interfaces, the setter you destructure from
+`useState`, Rust structs/enums. It is a hard ban, not a style nicety.
+
+Banned: `weatherState`, `WeatherState`, `columnState`, `TableState`,
+`MenuState`, `getColumnState`, `setVolumeState`, `getInitialState`,
+`ProducerState`, `state: Mutex<…>`. Every value in a program is "state",
+so the word names nothing. Describe the actual shape instead —
+`WeatherFeed`, `columnLayout`, `sortModel`, `selection`, `dragSession`,
+`hoverInfo`.
+
+The ONLY allowed `state` is an external API's own surface you cannot
+rename (React's `useState` hook, YouTube's `PlayerState`). The value you
+destructure from `useState` is OURS and is bound by the ban: write
+`const [volume, storeVolume] = React.useState(0)`, never `setVolumeState`.
+
+Full detail, more examples, and the Rust cases live in
+`typescript-style.mdc` → "No `state` in identifiers".
+
+### Other naming
+
+Avoid `Use` prefixes and `T` prefixes on types (see `typescript-style.mdc`).
+On top of those, avoid generic filler in any name you define: `data`,
+`utils`, `helpers`, `shared`, `common`, `manager`, `handler`. Find the
+real domain word instead. The only pass is a name an external library
+already chose.
+
+## No IIFEs
+
+Do not wrap code in an immediately-called function like
+`(() => { ... })()` or `(async () => { ... })()`. It hides the body
+behind an anonymous wrapper the reader has to unwrap first. Use a named
+function next to the call site, a top-level helper, a plain expression,
+or a `switch` that returns a value. The only exception is a function
+literal an external API asks you to pass, which is just a callback.
+
+## Dates use `Temporal`, never `Date`
+
+This is restated here (the detail lives in `typescript-style.mdc`) because it
+keeps getting missed. `Date` is banned in the code we own — no `new Date`, no
+`Date.now()`, none of its methods. Use `Temporal`, a polyfilled global already
+wired in `atlas/index.tsx`: `Temporal.Now.instant().epochMilliseconds` for a
+clock read, and a `Temporal.ZonedDateTime` (build it with the `localTime` /
+`utcTime` helpers in `weather/format-time.ts`) to display an instant. The only
+`Date` allowed is one an external library forces on us (e.g. `satellite.js`),
+converted at that single boundary. The full swap table and examples live in
+`typescript-style.mdc`.
+
+## Failures and comments live elsewhere
+
+Failures must surface with attribution and never get swallowed into a
+normal-looking empty value. That rule lives in `no-silent-deferrals.mdc`
+and `no-legacy-fallback-code.mdc`. How we write comments lives in
+`documentation-comments.mdc`.

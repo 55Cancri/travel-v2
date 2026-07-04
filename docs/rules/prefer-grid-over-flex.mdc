@@ -1,0 +1,169 @@
+---
+description: prefer css grid over flex for layout
+alwaysApply: false
+---
+
+# Prefer Grid Over Flex
+
+When laying out components, prefer CSS Grid over Flexbox. Grid provides more predictable behavior and avoids common flex issues like content escaping containers.
+
+## Block Component Usage
+
+Use the `grid` prop (boolean) with `rows` and/or `cols` string props:
+
+```tsx
+// ✅ Preferred: Grid with explicit rows
+<Block grid rows="auto 1fr auto">
+  <Block>Header (auto height)</Block>
+  <Block>Body (fills remaining space)</Block>
+  <Block>Footer (auto height)</Block>
+</Block>
+
+// ✅ Grid with columns
+<Block grid cols="200px 1fr">
+  <Block>Sidebar</Block>
+  <Block>Main content</Block>
+</Block>
+
+// ✅ Grid with both
+<Block grid rows="auto 1fr" cols="1fr 1fr">
+  ...
+</Block>
+```
+
+## Avoid Flex Props
+
+Do NOT use these flex-related props unless absolutely necessary:
+
+- `flex` (the prop, not the display)
+- `flexGrow`
+- `flexShrink`
+- `flexBasis`
+- `flexWrap`
+
+## When Flex IS Acceptable
+
+Flex is rarely needed. Prefer grid even for horizontal layouts:
+
+```tsx
+// ✅ Preferred: Grid for horizontal row
+<Block grid cols="auto 1fr" alignI gap={2}>
+  <Icon />
+  <Block is="txt">Label</Block>
+</Block>
+
+// ❌ Avoid: flex for rows
+<Block flex alignI gap={2}>
+  <Icon />
+  <Block is="txt">Label</Block>
+</Block>
+```
+
+## Common Patterns
+
+### Three-row layout (header/body/footer)
+
+```tsx
+<Block grid h="100%" rows="auto 1fr auto">
+  <Block>Header</Block>
+  <Block minH={0} overflow="auto">
+    Scrollable body
+  </Block>
+  <Block>Footer</Block>
+</Block>
+```
+
+### Inside a Drawer (`is="drawer"`)
+
+**IMPORTANT**: The drawer component has internal top padding of 1.5rem (pt_6).
+You MUST account for this when using a grid inside a drawer:
+
+```tsx
+<Block is="drawer" open={open} onClose={onClose} height="85vh">
+  {/* Drawer has pt_6 (1.5rem) padding - maxHeight must account for it */}
+  <Block
+    grid
+    h
+    overflow="hidden"
+    rows="auto 1fr auto"
+    style={{ maxHeight: "calc(85vh - 1.5rem)" }}
+  >
+    <Block>Header</Block>
+    <Block minH={0} overflow="auto">
+      Scrollable body
+    </Block>
+    <Block>Footer</Block>
+  </Block>
+</Block>
+```
+
+Without the `maxHeight` adjustment, the footer will be pushed below the visible area.
+
+### Two-column layout
+
+```tsx
+<Block grid cols="auto 1fr" gap={3} alignI>
+  <Block>Icon</Block>
+  <Block>Content</Block>
+</Block>
+```
+
+### Centered button content
+
+```tsx
+// ✅ Use justifyI to center button text
+<Block is="btn" justifyI>
+  Button Text
+</Block>
+
+// ❌ Never use flex on buttons - it breaks centering
+<Block is="btn" flex>
+  Button Text
+</Block>
+```
+
+## Overlay with a single grid cell, not `position: absolute`
+
+To stack children on top of one another (a caption over an image, a play button
+centered on a video, a spinner over a panel), reach for grid first: make the
+parent a grid and drop every child into the same cell with `gridArea="1 / 1"`
+(shorthand for row-line 1 / column-line 1). The children overlap, the parent
+keeps its natural height from the tallest child, and you align each one with
+`placeSelf` (or `placeItems` on the parent) instead of the
+`top: 50%; transform: translate(-50%, -50%)` dance.
+
+```tsx
+// ✅ Grid overlay: both children share one cell
+<Block grid placeItems="center">
+  <Block gridArea="1 / 1">{/* base layer, e.g. the video */}</Block>
+  <Block gridArea="1 / 1" placeSelf="center">
+    {/* overlay, centered in the cell */}
+  </Block>
+</Block>
+
+// pin an overlay bottom-right instead of centering it:
+<Block gridArea="1 / 1" placeSelf="end" />
+```
+
+```css
+/* the underlying CSS */
+.parent { display: grid; place-items: center; }
+.parent > * { grid-area: 1 / 1; }
+.overlay { place-self: end; } /* align this one differently */
+```
+
+Why grid over absolute positioning: the children stay in normal flow, so the
+parent sizes to its content (no fixed/min height, no JS measuring), and you align
+with `align-self` / `justify-self` keywords rather than transform math. Use
+`zIndex` only when the default paint order (later child wins) isn't what you want.
+
+Reach for `position: absolute` only when the overlay must leave the flow on
+purpose — a tooltip/popover that should not add to the parent's size, or pinning
+to an ancestor further up the tree.
+
+## Why Grid?
+
+1. **Predictable sizing**: Grid rows/cols have explicit sizes
+2. **No escape issues**: Children can't escape grid cells like they can with flex
+3. **Simpler mental model**: Define the structure, children fill cells
+4. **Better for layouts**: Flex is for 1D, Grid handles 2D naturally

@@ -1,0 +1,77 @@
+---
+description: Test suite design — where tests live, what earns a test, Playwright discipline
+globs: "**/*.{test,spec}.{ts,tsx}"
+alwaysApply: false
+---
+
+# Testing
+
+## Where tests live
+
+- **Unit tests sit next to the code they test** (`foo.test.ts` beside
+  `foo.ts`), run by `bun test` per package.
+- **Each app owns its e2e suite** in an `e2e/` directory inside the app
+  package (its own playwright.config.ts). There is no cross-app e2e package:
+  the v1-v3 split proved that a shared test package for different apps has
+  to be torn apart the moment the apps separate.
+- **Shared test machinery lives in `qstd/testing`**: fixture builders,
+  page-object bases, and generators (random images, deliberate duplicates,
+  gibberish/corrupt/truncated files). Test helpers are deep modules held to
+  the same house standards as production code — no copy-paste walls, house
+  naming, one clear door per helper.
+
+## What earns a test
+
+- Test **behaviors and contracts**, never implementation details. A test
+  that breaks on a refactor that preserved behavior is a defect in the test.
+- Every test must earn its place: a suite is not better for being large.
+  Before adding one, name the failure it would catch; if an existing test
+  already catches it, don't add it.
+- **Push tests down the pyramid.** If a unit test on pure logic (parsers,
+  planners, reducers, date math) can prove the behavior, don't write an
+  integration test for it; integration tests cover module seams and
+  configuration; e2e covers only critical user flows end to end.
+- **Combinatorics live at the integration layer**: enumerate failure modes
+  (bad input, gibberish file, duplicate upload, canceled mid-flight,
+  offline, quota) as a parameterized matrix over ONE well-built harness,
+  not as hand-copied test bodies.
+- Generated fixtures over checked-in blobs: build random/duplicate images
+  and malformed files in code so cases are legible and infinite.
+- A small number of **live tests** (real network, real backend) are allowed
+  but tagged and excluded from the default run; they exist to catch what
+  mocks cannot, not to re-run the whole suite against prod.
+
+## The site map is test infrastructure
+
+Each app maintains a committed site map (e.g. `e2e/site-map.ts`): every UI
+surface, the route/interaction path that reaches it, and the stable handles
+on it (roles, labels, test ids). Tests compose from the map instead of
+rediscovering selectors, so writing a new test never starts with spelunking.
+Build it as the UI is built, not after: when a feature lands, its surfaces
+and handles land in the map in the same change, and implementations lead
+with accessible names/test ids so there is always something stable to grab.
+An exploratory pass that walks every page through the map doubles as the
+smoke suite.
+
+## Playwright discipline
+
+- **Semantic locators only**: `getByRole`, `getByLabel`, `getByText`,
+  `getByTestId` as the escape hatch. No CSS/XPath selectors that encode DOM
+  structure.
+- **Web-first assertions**: `await expect(locator).toBeVisible()` retries;
+  `isVisible()`/`textContent()` in an assertion is a bug. Never
+  `waitForTimeout` — if a wait is needed, something observable must be
+  asserted instead.
+- Tests are **isolated and parallel-safe**: fresh context per test, no
+  ordering dependencies, each test creates (and owns) its data.
+- Use aria snapshots (`toMatchAriaSnapshot`) for structure-level checks
+  instead of piles of individual assertions.
+- Keep traces/screenshots on failure on; investigate flakes, never mute or
+  retry-loop them away.
+
+## Accessibility and performance audits
+
+Every UI-owning root has `bun run a11y` (axe-core against the dev server) and
+`bun run lighthouse` (report written next to the root, gitignored). Run the
+axe check as part of verifying any substantial UI change, with the dev server
+already up; treat new violations like lint errors, not suggestions.

@@ -1,0 +1,73 @@
+---
+description: redesign for the ideal; never preserve existing code; rule zero
+alwaysApply: true
+---
+
+# Redesign for the Ideal (the Phoenix rule)
+
+This is rule zero. It outranks every other rule and every line of code already
+written. When any other guidance seems to protect the status quo, this rule
+wins: the status quo has no standing.
+
+## The premise
+
+Applies with full force to greenfield code (v4 and anything after): no table,
+column, module, or abstraction that exists today is sacred, and with a
+single-owner system the cost of redesigning is near zero while the value of a
+coherent ideal design is enormous. So we spend that cheapness constantly.
+Where real stored data exists, migrations rewrite it to the new shape; the
+principle stands, only the migration step is added.
+
+## The rule
+
+**Always build the most ideal version of a thing given everything we know right
+now. Never layer a patch on top of what exists in order to keep the existing
+thing working.**
+
+When a new feature or requirement teaches us something, the correct response is
+to fold that knowledge back through the whole system, including the parts already
+built, so the result is one coherent design rather than geological strata of
+"how we thought about it at the time."
+
+## What this demands
+
+- **Let changes ripple.** A new requirement that forces edits across many files,
+  tables, or columns is a success, not a tax. It means we get to incorporate what
+  we now know into what we built before. If doing it right the first time would
+  have produced this shape, produce it now. Welcome the cascade.
+- **Embrace deletion, merging, splitting.** Drop columns, rename columns, add
+  columns, collapse two tables into one, split one into two, delete entire
+  modules. Migrations rewrite old rows; production code never branches on a
+  pre-migration shape (see `no-legacy-fallback-code`). "We already wrote it this
+  way" is never an argument.
+- **Always simplify and unify.** If two structures do similar work, merge them.
+  If one structure does too much, split it. Hunt continuously for the chance to
+  make one well-chosen thing do more work and then delete everything it replaced.
+  Fewer, sharper tables and modules beat more.
+- **Existing code may never inhibit a better design.** It is not an input to the
+  design. Design the ideal first, then reconcile.
+
+## When the ideal conflicts with what exists
+
+Do not quietly design around the old thing to avoid disturbing it. That is the
+one failure mode this rule exists to prevent. Instead:
+
+1. Name the conflict explicitly.
+2. Propose the redesign (including what gets deleted or migrated).
+3. Raise it to the owner and let him decide.
+
+the owner has said repeatedly: he wants to know when a feature forces wider change,
+and he is glad to hear it, because it is an opportunity to make the system
+better. So surfacing the ripple is the desired behavior, not an interruption.
+
+## The only exception
+
+Build on top of what exists untouched ONLY when the existing shape is already the
+ideal shape for the new requirement. That is rare. Default assumption: once we
+know something new, there is a better way to do even the things already built.
+Treat "keep it as is" as the claim that must be proven, not the default.
+
+## Mantra
+
+Embrace change. Embrace destruction. From the ashes the better version rises.
+Optimize for the best possible system, never for keeping the current one running.

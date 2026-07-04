@@ -1,0 +1,109 @@
+---
+description: surface deferred work loudly; never silently leave gaps
+alwaysApply: true
+---
+
+# No Silent Deferrals
+
+When the user asks for a feature, you implement the **whole** feature, or
+you **stop and ask** before deferring any piece of it. You may never
+implement part of a request and pretend it's done.
+
+## The Rule
+
+If, while implementing a user request, you discover that:
+
+1. A subsystem needed to make the feature actually work end-to-end is
+   missing, AND
+2. You are tempted to leave it out, defer it, or write a comment like
+   `// TODO: ...` / `// will pick this up via ...` / `// the desktop
+   bridge picks it up via ...` / `// in a follow-up PR` / "we'll
+   handle this later" —
+
+you **must STOP** all in-flight implementation work and **raise an
+alarm to the user** in your next message. The alarm names:
+
+- The exact gap (what's missing in concrete terms — file, function,
+  endpoint, queue, worker, IPC event, etc.).
+- The observable symptom the user will hit if it ships without it
+  (e.g. "click Save with NAS checked → server returns 200 but the
+  file never lands on NAS and the X icon stays").
+- Your proposed fix scope (what you'd build, where).
+- An explicit ask: "implement this now, or defer with the gap
+  documented?" — and if the user says defer, the gap **must** be
+  documented as a tracked issue (`_tracking/*.md` or GH issue), not
+  buried in a code comment.
+
+## What "complete" means
+
+Before you mark a task done, walk the data end-to-end:
+
+- For a write: server commits → durable side-effects fire → UI
+  reflects truth.
+- For a copy/replicate: source is read → bytes land at destination →
+  acknowledgement flows back → indexer/projection updates → UI shows
+  the new state.
+- For a delete: intent recorded → cleanup runs → projection clears →
+  UI shows absence.
+
+If any of these steps is "the desktop will pick this up later" or
+"a future worker handles this" and that worker **does not actually
+exist in the codebase you can grep for**, the feature is not
+complete. Period.
+
+## Forbidden phrasings in your own output
+
+- "the desktop will poll for this"
+- "the bridge picks it up"
+- "this will be handled by [worker that doesn't exist]"
+- "we can add the actual copy later"
+- "for now we just mark the intent"
+- "the client-side polling loop will drain this"
+
+Each of these is a signal that you are about to ship a gap. If you
+catch yourself writing one of these, delete it and either:
+
+1. Implement the piece you were about to wave off, OR
+2. Stop and ask the user with the alarm structure above.
+
+## Forbidden in code
+
+- `// TODO: implement [foo]` on the critical path of a user-requested
+  feature without an alarm raised in the same message.
+- Comments documenting an *expectation* of behavior that doesn't
+  exist anywhere in the codebase (e.g. "the desktop polls
+  `/registry/nas-work`" when no such poller exists).
+- Server endpoints that mint intent without confirming a client
+  consumer exists for that intent.
+
+## Discovery responsibility
+
+When implementing a flow, before claiming it works:
+
+1. Trace the request from UI → server → durable state → side effect
+   → ack → projection update → UI read.
+2. For each "side effect" (queue write, registry mark, file write),
+   grep the codebase for the consumer. If no consumer exists, the
+   feature is not done.
+3. For each piece of UX (status widget, progress bar, error
+   surface), confirm a real producer writes the data it reads.
+
+## How to consult adversarial review
+
+When implementing a critical/correctness-sensitive flow, especially
+multi-system replication / deletion / migration:
+
+1. Implement.
+2. Hand the diff + the user-stated requirement to a `review-from-gpt`
+   subagent with the instruction: "find the gap between what was
+   asked and what was implemented; specifically look for orphaned
+   intent that has no consumer."
+3. Surface the review verbatim. Do not paraphrase a finding as
+   "minor" if the review says it is a correctness issue.
+
+## When in doubt
+
+Default to stopping and asking. The user has been explicit:
+"if you're going to delay something, you need to panic, you need to
+fail loudly, ask me a question." A delay decision is the user's to
+make, never yours.

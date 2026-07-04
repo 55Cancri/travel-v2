@@ -1,0 +1,11 @@
+# npm-style flat node_modules. Node-based tools (wrangler, vite plugins,
+# alchemy's spawned processes) resolve transitive dependencies at the top
+# level; Bun's default isolated linker hides them under node_modules/.bun
+# where Node cannot see them.
+[install]
+linker = "hoisted"
+
+# Supply-chain gate: never resolve package versions younger than 72 hours,
+# so freshly published (possibly hijacked) releases cannot enter a lockfile.
+# Applies to new resolutions only; versions already in bun.lock are kept.
+minimumReleaseAge = 259200
