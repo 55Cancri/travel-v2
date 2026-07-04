@@ -1,0 +1,81 @@
+---
+description: Framer Motion ("motion") usage — transform-based, value-driven, deep modules.
+globs: "*.tsx"
+alwaysApply: false
+---
+
+# Motion usage
+
+Import from `motion/react`.
+
+**Animate transforms, never raw `width` / `height` / `top` / `left`.**
+Those trigger layout every frame and thrash. For real layout changes
+(a panel entering/leaving, the player morphing to fill columns) use
+Motion's `layout` / `layoutId` — its FLIP runs on `transform`, so the
+size change is GPU-composited, not re-laid-out per frame.
+
+- **Motion values over React state** for anything continuous or
+  high-frequency (drag, scroll, pointer, playback time): `useMotionValue`,
+  `useTransform`, `useSpring`, `useMotionValueEvent`. These update the DOM
+  outside React's render — no re-render per tick.
+- **`useAnimate` / `animate()`** for imperative, multi-step sequences that
+  are awkward to express as declarative `animate` props.
+- **Shared-element morph** = `layoutId` inside `<LayoutGroup id="...">`.
+  Exactly ONE element with a given `layoutId` may be mounted at a time.
+- **`layout="position"`** when only position changes — it skips the scale
+  entirely (cheaper, no distortion). When size changes too, see the
+  scale-distortion section below.
+- **`<AnimatePresence mode="popLayout">`** when siblings must reclaim an
+  exiting element's space mid-exit.
+- **Reduced motion** — wrap a UI root in `<MotionConfig reducedMotion="user">`
+  so every declarative motion component under it (layout morphs, `animate`
+  props) honors the OS setting automatically, instead of branching in each
+  component. Imperative `animate()` calls can't read that context, so those
+  keep an explicit `useReducedMotion` branch. Always provide a reduced
+  fallback either way.
+
+## Layout scale distortion (squash / stretch)
+
+`layout` / `layoutId` change size by tweening `transform: scale()`, not
+`width` / `height`. That scale magnifies anything measured in the element's
+own box, so three things distort mid-morph unless corrected (this is the
+"squash/stretch" that bit the cinema tile):
+
+- **`borderRadius` / `boxShadow`** — Motion auto-corrects these, but ONLY
+  when set as an inline numeric `style` (e.g. `style={{ borderRadius: 6 }}`),
+  never via a class or relative unit (`lh`, `%`, a token). A class-set radius
+  balloons with the scale.
+- **Child elements** — a child inherits the parent's scale and stretches.
+  Give the child its own `layout` and Motion counter-scales it back to true
+  size each frame (this is how a fixed-size button stays fixed while its
+  container morphs). Wrap a non-motion child in a `motion` element to get it.
+- **Aspect-ratio changes** (images, differently-shaped text) — counter-scaling
+  assumes a uniform scale, so content that changes aspect ratio still skews.
+  Use `layout="position"` so only position tweens and the size snaps. Text
+  whose box is wider than its glyphs also skews — give it `inline-block` /
+  `float` so the box hugs the text.
+
+These are the canonical fixes from motion.dev's layout docs, not workarounds.
+
+## Clipping & measurement during layout animations
+
+- A morphing `layout` / `layoutId` element is clipped by any ancestor with
+  `overflow: hidden`. Render it outside the clipping ancestor (the cinema tile
+  lives at the grid level, not inside the play bar it covers), or prefer
+  `overflow: clip` — it clips without creating a scroll container or its side
+  effects. If it must stay inside, raise its `z-index` for the duration via
+  `onLayoutAnimationStart` / `onLayoutAnimationComplete`.
+- Layout animations measure against the viewport, so a scroll offset or a
+  `position: fixed` ancestor throws off the start position. Tag the scrollable
+  ancestor with `layoutScroll` and a fixed ancestor with `layoutRoot` so Motion
+  measures past the offset.
+
+Animations are exempt from the no-overlay disclosure rule: any
+positioning / `z-index` / fixed layer is fine *during* a transition as
+long as the resting layout is correct.
+
+Easing: enter ~300ms (no-bounce spring or expo-out), exit faster ~200ms
+(ease-in). Keep one motion-token set per UI.
+
+Wrap reusable motion behind a tiny hook/component with a small prop
+interface — keep choreography out of business components (deep module).

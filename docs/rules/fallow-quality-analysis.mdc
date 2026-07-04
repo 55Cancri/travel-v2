@@ -1,0 +1,39 @@
+---
+description: Run Fallow and code-review for JS/TS code health, on a cadence (not just at the end)
+globs: "**/*.{js,jsx,ts,tsx}"
+alwaysApply: false
+---
+
+# Code health: Fallow + code-review
+
+Take the initiative on code health. Do NOT wait until a feature is "done" or to be
+asked. Run the two complementary passes ALTERNATELY, every so often as work
+proceeds, and ALWAYS after slicing a stack of PRs:
+
+- **Fallow** (`bun run fallow:audit -- --changed-since main`) — static metrics: dead
+  code, complexity / CRAP, duplication. Mechanical, cheap, catches what humans skim
+  past.
+- **`/code-review`** — semantic review: real bugs (wrong conditions, missing await,
+  byte/offset math, races, swallowed errors) plus reuse / simplification / efficiency
+  and CLAUDE.md convention violations. Catches what static metrics cannot reason about.
+
+They find DIFFERENT classes of defect, so alternate them; neither substitutes for the
+other. Run both over a PR stack.
+
+## Fallow commands
+
+- Changed-code audit: `bun run fallow:audit -- --changed-since main`
+- Broad health pass: `bun run fallow:summary`
+- Refactor targeting: `bun run fallow:health -- --format json --explain`
+- Duplication: `bun run fallow:dupes -- --format json`
+- Cleanup: `bun run fallow:dead-code -- --format json --explain`
+
+Use Fallow findings to guide refactors, not to create generic helper files. Fix
+introduced CRAP, high cyclomatic / cognitive complexity, dead code, and meaningful
+duplication. Re-run Fallow after fixes and report before / after counts.
+
+## code-review
+
+Run the `/code-review` skill on the working diff (high effort for a PR stack). Treat
+its confirmed findings like Fallow's: fix correctness bugs and convention violations
+immediately, surface the rest for the reviewer.

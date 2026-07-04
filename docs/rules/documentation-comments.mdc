@@ -1,0 +1,239 @@
+---
+description: How we comment. Default to silence, keep it plain, explain only what the code cannot.
+alwaysApply: true
+---
+
+# Documentation & Comments
+
+**Default to silence.** Most code does not need a comment. A comment earns
+its place only when it tells the reader something the code itself cannot
+— a constraint they'd miss, a coordination across files, a failure mode,
+a deliberate non-obvious choice. Everything else is noise that the reader
+has to filter past on their way to the actual logic.
+
+The litmus test: if a competent reader looking at this file in six months
+would build the same mental model from the code alone, no comment is
+needed. If they'd be confused about *why* — and only then — write the
+smallest possible comment that resolves the confusion.
+
+## Plain language
+
+When a comment does earn its place, write it so a beginner can read it.
+Picture a high-school student or a brand-new hire who knows the language
+but not this codebase. They should get it on the first pass.
+
+- Keep prose short and plain. Prefer two simple sentences over one dense
+  one. No semicolons in prose. No clever clauses, no jargon the code does
+  not already force on the reader.
+- A comment may run a little longer when the idea is genuinely hard, but
+  never write a paragraph where a sentence does the job. No novels.
+- Explain the hard thing simply. The comment is where you make a complex
+  line easy. Walk through it like a small story, and drop in a tiny
+  example when the example is clearer than words.
+- Comment throughout the code, not only above functions. A short note
+  next to the tricky line beats a wall of text at the top that the reader
+  has already forgotten by the time they reach the line.
+
+## When NOT to write a comment
+
+Skip the comment whenever any of these apply. These are the patterns that
+get added reflexively and add nothing.
+
+- **One-off value tweaks.** Changing a constant from one number to
+  another (`defaultSize="18rem"` → `"12.5rem"`, `staggerChildren: 0.5`
+  → `0.4`, `timeoutMs: 30000` → `15000`) does not need a paragraph
+  explaining the new value. The literal speaks for itself; the commit
+  message captures the rationale. A three-line comment above a
+  one-token edit screams over-engineering at every future reader.
+- **Field declarations that the name and type already explain.**
+  `playCount: number | null` on a `Row` type does not need a paragraph
+  explaining that the UI surfaces it somewhere. `coverImageId: string |
+  null` does not need a sentence about cover images. If the name + type
+  + nearby siblings already give the field meaning, leave it bare.
+- **Standard wiring at a call site.** When a call site is doing the
+  same cloud-vs-NAS / present-vs-absent / loading-vs-ready branching
+  the file already does elsewhere, the comment is just narrating
+  what the surrounding code already establishes. Skip it.
+- **Restating the code in prose.** `// increment counter` above
+  `counter += 1`, `// destructure the props`, `// loop over items`.
+  If the comment is a translation of the next line, delete the comment.
+- **Anything the IDE already shows on hover.** TypeScript types,
+  function signatures, JSDoc on the imported symbol — readers can
+  read those. Don't repeat them at the call site.
+- **Change annotations.** `// Added for video support`, `// Updated
+  from 18rem`, `// Refactored from the old hook`. Changes belong in
+  commit messages and git history, never in source.
+- **Speculative reader-protection.** If the reason a comment exists is
+  "*someone* might wonder…" — they won't. Delete it. Write comments
+  for actual confusion the code creates, not imagined confusion.
+- **Section banners and decorative dividers.** Long `// ─── Section
+  ───` headers on a single-purpose region just add visual noise.
+
+## When to write a comment
+
+A comment earns its place when it surfaces something a careful reader
+genuinely could not infer from the code:
+
+- **Non-obvious coordination across files.** "This field is read by
+  Rust's `cleanup.rs` to decide whether to delete the source file."
+- **Why a deliberate-looking choice is correct.** "First three steps
+  run in parallel; dedupe waits because it needs the fingerprint."
+- **What would break if the line changed.** "Row 1 must mount before
+  row 2 reads its layout, so the order here matters."
+- **Failure handling that looks wrong without context.** "Errors here
+  are swallowed because the upload already succeeded; surface a
+  warning instead so the user knows to retry the NAS mirror."
+- **Working around a specific bug or platform quirk.** Name the bug,
+  the browser, the version, the upstream issue. "WebKit
+  `position-anchor` mis-measures inside virtualized lists — see
+  bugs.webkit.org/279xxx — so we measure with `getBoundingClientRect`
+  ourselves."
+- **Intent that the implementation deliberately under-expresses for
+  performance, brevity, or API constraints.** Spell out the gap.
+
+## Headers (module & function JSDoc)
+
+Most functions need no JSDoc. Don't add one just because a function is
+exported. Add one only when the function participates in a flow the
+reader needs to understand *before* reading the body.
+
+When a header is warranted, keep it to **1–3 sentences**: what the thing
+does in one line, plus the single most non-obvious thing about it (a
+constraint, a coordination, a failure mode). Push the deep narrative
+into inline comments at the lines that motivate it — so the reader
+builds the picture as they scroll, not as a prelude.
+
+```typescript
+/**
+ * 4-step candidate pipeline: parse → fingerprint → video meta → dedupe.
+ * First three run in parallel; dedupe waits because it needs the fingerprint.
+ */
+```
+
+A module-level header may grow past 3 sentences only when it documents a
+multi-step data flow that benefits from an ASCII diagram, or a
+coordination contract between files that readers need before reading the
+code. Even then, keep prose to 5–8 lines and push everything else inline.
+
+## Shape: short header + progressive inline narrative
+
+When you do comment a function with internal complexity, favor a **short
+header + targeted inline comments** over one massive paragraph at the
+top. Walls of text get skipped; small comments read alongside the code
+they describe.
+
+```
+┌──────────────────────────────────────┐
+│ /** 1–3 line header: what + why */   │  ← reader sees this AND the
+│ function foo() {                     │     code at the same time
+│   // inline step 1: why this order   │
+│   const x = …                        │
+│                                      │
+│   // inline step 2: what breaks if   │
+│   //   the previous line moves       │
+│   doThing(x)                         │
+│ }                                    │
+└──────────────────────────────────────┘
+```
+
+If the header is tempted to grow into a wall of text, move each chunk
+down to the line it actually describes.
+
+```typescript
+// ❌ Wall of text at the top, code below has no context
+/**
+ * Encrypts the file, uploads each chunk in parallel, writes a NAS vault
+ * copy on success, surfaces NAS write failures as warnings (the upload
+ * still counts as successful because the cloud copy is the source of
+ * truth, and the user just needs to know to retry the NAS write later)
+ * [10 more lines]
+ */
+function uploadAndArchive(file) { /* 60 lines of dense code */ }
+
+// ✅ Short header, narrative unfolds inline next to the code it explains
+/** Encrypt + parallel-upload a file; mirror to NAS on success. */
+function uploadAndArchive(file) {
+  // Wrap in a temp file so a mid-upload crash can't leave a half-encrypted
+  // payload in the user's source directory.
+  const encrypted = encryptToTemp(file);
+
+  await uploadChunks(encrypted);
+
+  // NAS write failure is non-fatal — cloud copy already landed. Surface
+  // a warning so the user knows to retry the mirror later.
+  try { await writeNasVault(encrypted); }
+  catch (err) { reportNasMirrorWarning(err); }
+}
+```
+
+Notice the middle step (`await uploadChunks(encrypted)`) has no comment.
+The function name says what it does and there's nothing non-obvious to
+add — that's the right call. Don't manufacture commentary to fill gaps.
+
+## Anti-patterns to delete on sight
+
+These are common over-commenting shapes that pile up and earn no keep:
+
+```typescript
+// ❌ Field comment that restates the type
+interface Row {
+  /**
+   * Cloud-only field — NAS entries have no play history, so leave it
+   * null and let the header skip the dot+count chip for that case.
+   */
+  playCount: number | null;
+}
+// ✅
+interface Row { playCount: number | null }
+
+// ❌ Paragraph above a value tweak
+// 12.5rem ≈ 70% of the original 18rem — the catalog tree fits its
+// labels in the narrower default and the user can still drag the
+// handle anywhere in the [minSize, maxSize] range.
+defaultSize="12.5rem"
+// ✅
+defaultSize="12.5rem"
+
+// ❌ Narrating standard branching
+// Cloud-only field — NAS entries have no play history, so leave it
+// null and let the header skip the count chip for that case.
+playCount: entry.source === "cloud" ? entry.playCount : null,
+// ✅ (the ternary already says exactly this)
+playCount: entry.source === "cloud" ? entry.playCount : null,
+
+// ❌ Explaining a change
+// All cascade timings trimmed ~20% from the original tune to feel
+// snappier without losing the staged reveal — the row still reads as
+// label → values, but the wait between rows is short enough that the
+// whole hero block lands before the user has time to scroll.
+const heroesContainerVariants = { … };
+// ✅ (the new values are the truth; the trim story belongs in the commit)
+const heroesContainerVariants = { … };
+```
+
+## Rust doc comments
+
+Same rule. `///` on a public struct, field, or function only when it
+participates in a contract the reader can't see locally — a serde
+boundary with a typed sibling, a function whose ordering matters across
+modules, a field whose `None` case triggers cleanup elsewhere. Most
+fields need no doc comment.
+
+```rust
+/// Per-item override for cleanup. A locally-picked subtitle paired
+/// with a NAS video should stay `None` so the subtitle isn't deleted
+/// by the cleanup pass in `cleanup.rs`.
+#[serde(default)]
+pub source_kind: Option<String>,
+```
+
+## Key principle
+
+The bar is **reader benefit**, not coverage. A file with no comments and
+clean code is better than a file with a comment on every line. The
+reader's mental model should come from the code; comments fill the
+specific gaps the code can't.
+
+If you are about to write a comment, ask: "what would the reader miss
+without this?" If the answer is "nothing concrete", delete the comment
+and move on.

@@ -1,0 +1,182 @@
+---
+description: no legacy / fallback / backwards-compat code in production paths
+alwaysApply: false
+---
+
+# No Legacy / Fallback / Backwards-Compat Code
+
+This codebase is drain-filled. There is exactly ONE shape for every piece
+of data at any given time. If the shape needs to change, you migrate the
+data. You do NOT add a second code path that accepts the old shape.
+
+## The Rule
+
+**Production code (entities, endpoints, schemas, domain logic, hooks,
+components) must never contain fallback branches for old data shapes.**
+
+If a schema changes, you migrate the data. Production code only ever
+sees the current shape, because it is the migration script's job to
+guarantee that.
+
+## Forbidden Patterns
+
+None of these may exist under `packages/*/src/` outside of
+`scripts/` or `storage/db/` (per-version IDB migration steps).
+Literal "legacy" inside those two paths is fine — that's where the
+one-shot rewrite code and per-device IDB upgrade steps live.
+
+- **Coercion helpers named after the shape mismatch they paper over.**
+  Functions / types like `Legacy*`, `*Legacy*`, `deprecated*`, `old*`,
+  `v1*` used as a fallback type, or `effective*` / `lift*` / `project*`
+  helpers whose only job is to reconcile "the stored shape doesn't
+  match the contract". Judgement call: a function named `oldest*` or
+  `v1Parser` is fine if it's describing content (oldest by timestamp;
+  a parser for a v1 file-format with no authoritative version); it's
+  forbidden when the name exists specifically to discriminate
+  pre-migration data. Grep for the pattern, then ask: "does this
+  function exist because a migration hasn't run?"
+- **Comments that advertise a fallback branch.** `// legacy row`,
+  `// backwards compat`, `// predates X`, `// old shape`,
+  `// fallback for rows that haven't migrated`, and similar. A comment
+  explaining an IDB migration step in `storage/db/` or the purpose of
+  a one-shot script in `scripts/` is fine; a comment like that in
+  `entities/`, `endpoints/`, `hooks/`, `cells/`, or `contracts/` is the
+  rule's core target.
+- **Explicitly naming pre-migration columns.** Production code must
+  never mention the names of the fields it's trying to forget. Arrays
+  like `const PRE_REDESIGN_COLUMNS = ["meta", "videoMeta", ...]`, `if
+  ("pdfMetadata" in row) ...`, `row.exif ?? row.metadata`, and
+  similar runtime guards all violate the rule. Once the migration has
+  rewritten those rows, their field names don't exist anywhere on the
+  stored shape, so they must not exist anywhere in production code
+  either — no constants, no conditions, no comments.
+- **`decide*Migration` / `apply*Migration` helpers invoked from a
+  PATCH / write path.** Decision logic for a data-shape rewrite lives
+  inside the migration script, not in entity or endpoint code.
+- **Runtime key-presence sniffing.** `"pdfMetadata" in record`,
+  `row.meta !== undefined`, `if (row.v1Field)` to decide which schema
+  branch applies. If you need to branch on shape, the data is
+  pre-migration and the migration should run before new code ships.
+- **Discriminated-union branches whose sole purpose is to accept
+  pre-migration payloads.**
+- **Schemas with `onDeepUndeclaredKey("ignore")` used to tolerate
+  stray legacy columns.** Reads may use `ignore` when the tolerance is
+  architectural (client schemas that read server wire shapes in
+  progress of backfill); writes MUST use `reject`.
+- **`null` used as a sentinel for "processed but empty" extractor
+  output.** Fields like `metadata`, `fingerprint`, `pageCount`,
+  `exif`, and friends must be either *absent* (`field?: T`) or a real
+  value. `field: T | null` to encode "extraction ran and came back
+  empty" is forbidden — that's a pre-policy convention that silently
+  swallows extractor errors. If extraction fails, the extractor
+  throws; the upload aborts; the row is never written. The only
+  distinguishable runtime states are "attribute missing" (not
+  extracted yet / not applicable) and "attribute present with a
+  validated payload". Any `| null` in a contract's extractor-output
+  fields is almost certainly this anti-pattern.
+
+  Contract TypeScript types MUST match their Arktype schema
+  nullability. If the schema says `"fingerprint?": "string"`, the
+  type must be `fingerprint?: string`, never `fingerprint?: string |
+  null`. A type that's wider than the schema advertises a runtime
+  state the validator already rejects, and it re-introduces the
+  three-state JSDoc convention that got us here:
+
+  ```ts
+  // ❌ Forbidden — schema rejects null, type lies.
+  /**
+   * - undefined: not yet processed
+   * - null: processed but extraction failed
+   * - string: fingerprint hash
+   */
+  fingerprint?: string | null;
+
+  // ✅ Two-state: absent vs present.
+  /** Absent = not extracted. Extraction failure throws. */
+  fingerprint?: string;
+  ```
+
+  If an "empty result" is architecturally meaningful (e.g. `faces: []`
+  after OCR ran and found none), encode it with the natural zero of
+  the shape — an empty array, an empty string, a struct with zero
+  fields — never with `null`.
+- **Silent catch-and-default in extractor / normalizer paths.**
+  `try { ... } catch { return null }`, `try { ... } catch { return
+  {} }`, or any pattern that swallows a parser/extractor/schema
+  failure and returns a "safe" default. Extractors and normalizers
+  must propagate errors so the caller can fail the upload / commit
+  loudly. The only legitimate catch in these paths is one that
+  re-throws with added context.
+
+## What You Do Instead
+
+### If data must change shape
+
+1. Update the contract / schema to the new shape only. Delete the old
+   shape completely from the contract.
+2. Write a **one-shot** migration script in
+   `packages/server/src/scripts/packages/<name>/`. The script contains
+   every piece of "legacy-aware" code needed to read old bytes and
+   rewrite them — all private to that script, not re-exported to
+   `entities/` or anywhere else.
+3. Run the migration against every environment (dev / staging / prod)
+   **before** the new code ships. The script itself is authoritative:
+   when it reports zero rewrites, new code is safe to deploy because
+   every stored row matches the current contract.
+4. After the migration verifies clean on every environment, the
+   script's purpose is done. Either:
+   - Delete the script in a follow-up PR, or
+   - Leave it in `scripts/` for audit history but mark it `DEPRECATED
+     — already run against all environments` and never import from it.
+
+### If a test fixture is in the old shape
+
+Rewrite the fixture. Don't add a test-only adapter that converts the
+old shape at read time — that's the same sin in smaller clothes.
+
+### If a dependency sends you an old shape
+
+The mapping to the new shape happens at the **single** boundary
+adapter (usually the client API client or the server request handler's
+first line of validation). It is not a production-wide branching
+policy.
+
+## Legitimate "Fallback"
+
+These are NOT what this rule targets:
+
+- User-facing error fallbacks (`ErrorBoundary`, `ErrorFallback`).
+- Offline / cache fallbacks (OPFS cache vs. network CDN).
+- Auth fallbacks (PIN when biometrics unavailable).
+- Per-file schema defaults (`.to.undefined("")` in Arktype — default
+  applies to every row, not only pre-migration ones).
+- Parser fallbacks in filename-parsing heuristics that have no
+  "authoritative" version (user-supplied titles, album-cover name
+  conventions, etc.).
+
+The distinction: a legitimate fallback handles a condition that will
+always exist (network offline, device capability absent, multiple
+valid inputs). A forbidden fallback handles a condition that was true
+*before a migration* and won't be true *after* the migration runs.
+
+## If You Catch Yourself Writing Legacy Code
+
+Stop. Ask:
+
+1. Will every environment have this shape after the migration runs?
+2. If yes → migrate and delete the fallback. Trust the migration
+   script — production code does not defend against "what if the
+   migration didn't run". If a migration is missed, the system breaks
+   loudly on its own via schema rejection on read/write; it does not
+   silently coerce, because there is no coercion code to run.
+3. If no (the migration is physically impossible — original bytes are
+   gone, content is E2EE, etc.) → the data is actually lost. Document
+   the loss explicitly and either drop the row or surface the error.
+   Do not silently coerce.
+
+## Enforcement
+
+Reviewers should reject PRs that introduce any of the forbidden
+patterns above. When unsure, search the diff for the word "legacy" —
+if it appears outside `scripts/` or `storage/db/`, the PR needs
+rework.

@@ -1,0 +1,756 @@
+---
+description: identifier naming + typescript style guide
+globs: "*.ts, *.tsx, *.rs"
+alwaysApply: false
+---
+
+# TypeScript Style
+
+> The **## Naming** section below is about *naming*, not TypeScript syntax, so
+> it applies to **every language in this repo, Rust included** — that's why this
+> rule is also globbed to `*.rs`. A Rust struct named `ProducerState`, a field
+> `state: Mutex<…>`, a field `command_type`, or a local `let data = …` are all
+> violations of the bans below. The rest of the guide (return types, React
+> imports, hooks) is TypeScript-only; ignore it when editing `.rs`.
+
+## Naming
+
+### No `state` in identifiers — HARD BAN (the most-missed rule)
+
+This ban is also restated in `code-organization.mdc` (which is always
+applied) precisely because it keeps getting missed. Read it twice.
+
+The word `state` is banned in all identifier names — variables, parameters,
+fields, methods, type aliases, interfaces, Rust structs/enums. This covers
+compounds like `columnState`, `tableState`, `getColumnState`, `ColumnState`,
+`TableState`, `MenuState`, `setState`, `getInitialState`, `getPlayerState`, and
+in Rust `ProducerState` / `state: Mutex<…>`.
+
+Why: every value in the program is some kind of state. The name carries no
+information about *what kind*. Describe the actual shape instead —
+`columnLayout`, `sortModel`, `selection`, `dragSession`, `hoverInfo`,
+`columnFlags`. Precedent already in the codebase: `SortModel` (formerly
+`SortState`), `dragSession` (not `dragState`), `Layout` (not `LayoutState`),
+`ProducerSession` (not `ProducerState`).
+
+```ts
+// ❌ "state" is noise
+const columnState = getColumnState(column);
+interface TableState {}
+function setState(updater) {}
+
+// ✅ Describe the shape
+const flags = getColumnFlags(column);
+interface TableModel {}
+function applyChange(updater) {}
+```
+
+```rust
+// ❌ "state" names nothing
+struct ProducerState { /* events, queue, models, … */ }
+struct Producer { state: Mutex<ProducerState> }
+
+// ✅ name the live data the producer keeps for its run
+struct ProducerSession { /* events, queue, models, … */ }
+struct Producer { session: Mutex<ProducerSession> }
+```
+
+Narrow exception: when interfacing with an external API that literally
+exports an identifier named with `state` (e.g. React's `useState`, YouTube's
+`onStateChange` event key and `PlayerState` enum), keep *their* surface — you
+cannot rename the key a library reads or the global it exposes. But the
+exception covers the boundary only. Don't thread the word into the identifiers
+we own (variables, refs, helper functions), and don't re-declare an external
+method like `getPlayerState()` in our own interface when we can read the same
+value another way — track a `livePlaying` ref off the events we already receive
+and read that. Keep the word at the single unavoidable call, never in our logic.
+
+The most common trap: the `useState` **hook** is the allowed external name, but
+the **setter you destructure from its tuple is ours** and is fully bound by the
+ban. Reaching for `setVolumeState` / `setLoopState` because the clean
+`setVolume` / `setLoop` name is already taken by a public wrapper is **not** an
+escape hatch — it is exactly the violation. Give the internal writer a real verb
+(`storeVolume`, `applyLoop`, `putSelection`) and keep the clean name for the
+surface.
+
+```ts
+// ❌ "State" smuggled onto the setter to dodge a name clash with the public fn
+const [volume, setVolumeState] = React.useState(12);
+const [loop, setLoopState] = React.useState(false);
+const setVolume = (n: number) => { player.setVolume(n); setVolumeState(n); };
+const setLoop = (on: boolean) => setLoopState(on);
+
+// ✅ the internal writer takes a real verb; the public name stays clean
+const [volume, storeVolume] = React.useState(12);
+const [loop, storeLoop] = React.useState(false);
+const setVolume = (n: number) => { player.setVolume(n); storeVolume(n); };
+const setLoop = (on: boolean) => storeLoop(on);
+```
+
+### No `shared` in identifiers
+
+The word `shared` is banned in all names — files, **folders**, variables,
+parameters, fields, type aliases, interfaces. This covers a `shared/` folder, a
+`shared.ts` file, `sharedConfig`, `getShared`, `SharedProps`. (This is the
+identifier counterpart to the file/folder ban already in
+`code-organization.mdc`.)
+
+Why: `shared` names a *relationship* — "stuff more than one caller happens to
+use" — not what the thing is. Everything in a module is shared by its callers,
+so the word adds nothing. Name the actual bundle: a folder of reusable scrubber
+pieces is `parts/`, common pure math is `scrub-math.ts`, a reused config is the
+`baseConfig`. Promote a helper into a named module only once a second real
+caller appears (per `code-organization.mdc`).
+
+```ts
+// ❌ "shared" names the relationship, not the thing
+import { Transport } from "../shared/transport";
+interface SharedProps {}
+
+// ✅ Name what the folder / bundle actually holds
+import { Transport } from "../parts/transport";
+interface TransportProps {}
+```
+
+### No `type` in identifiers
+
+The word `type` is banned in identifier names — variables, parameters, fields,
+type aliases, interfaces, Rust structs/enums. This covers `eventType`,
+`commandType`, `command_type`, `MessageType`, `getType`, `nodeType`,
+`fileType`.
+
+Why: `type` is the emptiest possible discriminator — *everything* has a type.
+The name says "this distinguishes between kinds" without saying *which* kinds.
+Name the discriminator after the domain it splits: a command has a `kind`, an
+event has a `name`, a node has a `role`, a file has a `format`. (This is about
+identifiers; the `type` *keyword* — `type Foo = …` in TS, `type X = …` in Rust
+— is the language, not a name, and is fine.)
+
+```ts
+// ❌ "type" names the relationship, not the kind
+const eventType = event.type;
+interface MessageType {}
+
+// ✅ name the actual axis it splits on
+const eventName = event.name;
+type Command = { kind: "subscribe" | "cancel" | "message" };
+```
+
+```rust
+// ❌ a field literally called *_type
+pub command_type: String,
+match command.command_type.as_str() { … }
+
+// ✅ the domain word; keep the wire name via serde rename
+#[serde(rename = "type")]
+pub kind: String,
+match command.kind.as_str() { … }
+```
+
+Narrow exception: an external wire/JSON field literally named `type` keeps its
+*serialized* name through a rename attribute (`#[serde(rename = "type")]`, a
+third-party union member `{ type: "…" }`), but the identifier we own takes the
+domain word. Don't introduce `type` into our identifiers.
+
+### No `data` in identifiers
+
+The word `data` is banned in identifier names — variables, parameters, fields,
+type aliases, interfaces, Rust structs/enums. This covers `userData`,
+`responseData`, `data`, `getData`, `DataModel`, `metaData`.
+
+Why: `data` is the emptiest noun in the language — every value is data. Name
+what the bundle actually holds: raw bytes headed to a socket are a `frame`,
+`payload`, or `blob`; a parsed body is a `record` or `response`; a list of rows
+is `rows`.
+
+```ts
+// ❌ "data" says nothing
+const data = await res.json();
+function getData() {}
+
+// ✅ name what it is
+const record = await res.json();
+function loadRows() {}
+```
+
+```rust
+// ❌ a local called data
+let data = Blob::new(line.as_bytes().to_vec());
+self.ws.post_to_connection().data(data).send().await
+
+// ✅ name the bytes; the external builder method keeps its name
+let frame = Blob::new(line.as_bytes().to_vec());
+self.ws.post_to_connection().data(frame).send().await
+```
+
+Narrow exception: an external API surface that literally uses `data` keeps its
+name — the DOM `event.data`, `FormData`, the SSE `data:` field, the AWS
+`.data(…)` builder method. Don't introduce `data` into the identifiers we own.
+
+### No `helpers` in identifiers
+
+The word `helpers` is banned in all identifier names — variables, parameters,
+fields, type aliases, interfaces. This covers `rowHelpers`, `getHelpers`,
+`RowHelpers`, `ghostHelpers`. (This is the identifier counterpart to the
+filename ban in `code-organization.mdc`, which already forbids `helpers.ts`.)
+
+Why: `helpers` says "a grab-bag of stuff some other code needs" — it names the
+*relationship* ("things that help X") instead of *what the thing is*. Name the
+actual bundle. A set of per-row flags plus `toggle` / `select` callbacks is the
+row's *affordances*; a few pure functions are the *math* or the *parse* step.
+Precedent already in the codebase: `RowAffordances` (formerly `RowHelpers`),
+`ColumnAffordances`, `tree-math.ts` (not `tree-helpers.ts`).
+
+```ts
+// ❌ "helpers" names the relationship, not the thing
+interface RowHelpers {}
+const ghostHelpers = (row: TreeRow): RowHelpers => ({ … });
+function getHelpers() {}
+
+// ✅ Name what the bundle actually is
+interface RowAffordances {}
+const ghostAffordances = (row: TreeRow): RowAffordances => ({ … });
+```
+
+### No `default` / `defaults` in identifiers
+
+The words `default` and `defaults` are banned in all identifier names —
+variables, parameters, fields, type aliases, interfaces, functions. This covers
+`functionDefaults`, `getDefaults`, `Defaults`, `defaultConfig`, `withDefaults`.
+
+Why: `defaults` names a grab-bag — "the fallback values for X" — instead of
+*what the bundle actually is*. A const holding the shared Lambda args every
+route reuses is the `functionArgs`; a config object carrying starting values is
+the `baseConfig` or the specific shape it holds. Name the thing, not its
+relationship to whatever overrides it.
+
+```ts
+// ❌ "defaults" names the relationship, not the thing
+const functionDefaults = { environment, link, permissions };
+function getDefaults() {}
+
+// ✅ Name what the bundle actually is
+const functionArgs = { environment, link, permissions };
+```
+
+Narrow exception: an external surface that literally uses the word keeps its
+name — a `default` export, React's `defaultValue` prop, the API Gateway
+`$default` route key. Don't introduce the word into ours.
+
+### Never spell out `index` — use `i` or `idx`
+
+The word `index` is banned in identifiers. Use `i` for the loop/iteration
+counter (the throwaway integer in a `for` / `map` / `forEach`), and `idx`
+everywhere else the value is kept and read later (a field, a stored position,
+an argument). This covers `siblingIndex`, `rawIndex`, `insertIndex`,
+`draggedIndex`, `getIndex`, `IndexProps`.
+
+Why: `index` is the long form of a name the whole industry already abbreviates.
+`i` reads as "the counter right here"; `idx` reads as "a position I'm keeping".
+Spelling it out adds letters without adding meaning, and the two short forms
+already encode *which kind* it is.
+
+```ts
+// ❌ spelled out
+siblings.forEach((item, index) => { … });
+const insertIndex = clamp(gapIndex, 0, len);
+interface TreeRow { siblingIndex: number }
+
+// ✅ i for the live counter, idx for a kept position
+siblings.forEach((item, i) => { … });
+const insertIdx = clamp(gapIdx, 0, len);
+interface TreeRow { siblingIdx: number }
+```
+
+Narrow exception: an external API that hands you `index` (a library callback
+param, `Array.prototype.findIndex` is fine as a method name) keeps its surface.
+
+### One export per module file — default *or* named, never `import { default as }`
+
+A module file exposes exactly one public thing through its `index`, and the
+shape of that export is chosen by how consumers read it. If every consumer
+writes `import Foo from "..."`, use `export default`. If consumers want
+`import { Foo } from "..."`, use a named `export` — and then there is no
+default export at all. The smell that proves you picked wrong is
+`import { default as Foo }`: that is a consumer asking for a *named* import
+from something you exported as default, so it should have been a named export
+from the start.
+
+```ts
+// ❌ both, or a default that consumers rename to a name
+export function Tree() {}
+export default Tree;                       // two exports
+import { default as Tree } from "...";     // consumer wants it named — so name it
+
+// ✅ pick one based on the call site
+export default function Tree() {}           // consumers: import Tree from "..."
+// — or —
+export function Tree() {}                   // consumers: import { Tree } from "..."
+```
+
+Components and hooks still prefer `export default function Name` (per
+`module-structure`) when consumed as a default; the rule here is just: never
+ship both, and never force a `default as` rename.
+
+### Prefer `Array.from` / `.concat` over spread for arrays
+
+Default to `Array.from(x)` to materialize an iterable and `a.concat(b)` to join
+arrays, instead of `[...x]` / `[...a, ...b]`. There is no meaningful runtime
+difference (`concat` is typically equal-or-faster than a two-spread literal;
+`Array.from` and `[...x]` are equivalent), so this is a readability default, not
+a perf claim.
+
+```ts
+// ❌ spread
+const copy = [...set];
+const all = [...a, ...b];
+const ids = [...new Set([...current, id])];
+
+// ✅ from / concat
+const copy = Array.from(set);
+const all = a.concat(b);
+const ids = Array.from(new Set(current).add(id));
+```
+
+The one allowed exception is *typing friction*: if `.concat` forces a manual
+type annotation or a cast to compile (mixed-element tuples, union narrowing),
+prefer the spread that compiles cleanly over a hand-typed `concat`. Spread to
+avoid a cast, never to save a character.
+
+### Reach for modern Baseline APIs
+
+Prefer the built-in modern method over the hand-rolled equivalent. The ones
+that come up most here:
+
+- `map.getOrInsert(key, [])` instead of `const v = map.get(key) ?? []; map.set(key, v)`.
+- `array.toSorted(cmp)` / `toReversed()` / `with(i, v)` instead of copy-then-mutate.
+- `Set` ops — `a.union(b)`, `a.intersection(b)`, `a.difference(b)` — instead of
+  manual filter loops.
+- `Object.groupBy` / `Map.groupBy` instead of a reduce-into-buckets.
+- `array.at(-1)` instead of `array[array.length - 1]`.
+
+The full catalog lives in the **`baseline-js`** skill — read it when writing or
+auditing JS/TS/React. The CSS counterpart is the **`baseline-css`** skill. The
+test is simple: if a feature is **Baseline**, use it (this app ships on
+WKWebView/JavaScriptCore, so "works in Safari" == "works for us"); if it isn't
+Baseline, don't reach for it. `Map.prototype.getOrInsert` is Baseline and is
+confirmed working in our engine, so use it freely.
+
+### Use `Temporal`, not `Date` — HARD BAN on `Date` in app code
+
+All date/time work uses `Temporal`. **`Date` is banned in the code we own** — no
+`new Date(...)`, no `Date.now()`, no `Date.UTC(...)`, and none of the `Date`
+instance methods (`.getHours()`, `.getTime()`, `.toLocaleString()`, …). Temporal
+is immutable, explicit about the time zone, and typechecks here
+(`lib.esnext.temporal` ships in our TS lib).
+
+The polyfill is **already wired**: `import "temporal-polyfill/global"` is the
+first line of `atlas/index.tsx`, so `Temporal` is a real, typed global at
+runtime. Use it directly — no import, exactly like `day-timeline.tsx` and
+`format-time.ts` already do. (`Temporal` is not Baseline yet, hence the
+polyfill; if you ever stand up a new entry point, install the polyfill there
+before the first `Temporal` use or it compiles green and throws.)
+
+The exact swaps — these are the ones that keep getting reached for out of habit:
+
+```ts
+// ❌ Date                          →  ✅ Temporal
+Date.now()                          →  Temporal.Now.instant().epochMilliseconds
+new Date(ms)                        →  Temporal.Instant.fromEpochMilliseconds(ms)
+new Date(isoString)                 →  Temporal.Instant.from(isoString)   // needs an offset / Z
+d.getHours() / d.getMinutes()       →  zdt.hour / zdt.minute
+d.getFullYear() / d.getDate()       →  zdt.year / zdt.day                 // Temporal months are 1-based
+```
+
+To read or display an instant you almost always want a `ZonedDateTime`, because
+the zone has to be explicit. Convert epoch-ms to the user's local zone (the
+common case), or build from parts in a fixed zone:
+
+```ts
+// epoch ms → the user's local wall clock
+Temporal.Instant.fromEpochMilliseconds(ms).toZonedDateTimeISO(Temporal.Now.timeZoneId());
+// broken-down parts in a known zone — months are 1-based, so NO `- 1`
+Temporal.ZonedDateTime.from({ timeZone: "UTC", year, month, day, hour, minute });
+```
+
+Precedent: `weather/format-time.ts` exports `localTime(ms)` and `utcTime(ms)`
+that do exactly this, and every weather tooltip/overlay reads `Temporal.Now`.
+Reach for those helpers (or copy their shape) instead of building a `Date`.
+
+The **only** allowed `Date` is one an external library forces on us — e.g.
+`satellite.js`'s `propagate(satrec, date)` / `gstime(date)` take a legacy JS
+`Date`. Convert at that single boundary and keep `Date` out of everything else:
+
+```ts
+// ✅ Date confined to the satellite.js call; Temporal everywhere around it
+const groundPositions = (sats: Satellite[], at: Temporal.Instant) => {
+  const atDate = new Date(at.epochMilliseconds); // satellite.js needs a JS Date
+  const gmst = gstime(atDate);
+  // …propagate(satrec, atDate)…
+};
+```
+
+If you catch yourself typing `new Date` or `Date.now()` for anything other than
+that kind of forced external boundary, stop and use `Temporal`.
+
+### No `Use` prefix on hook return / option types
+
+Hook function names start with `use` per React's calling-convention. The
+*types* associated with the hook must not carry that prefix. Drop it.
+
+```ts
+// ❌ Verb form leaking into a noun
+export type UseColumnAffordancesResult<T> = ReturnType<typeof useColumnAffordances<T>>;
+export interface UseTableProps {}
+export interface UseFooOptions {}
+
+// ✅ Plain nouns
+export type ColumnAffordances<T> = ReturnType<typeof useColumnAffordances<T>>;
+export interface TableProps {}
+export interface FooOptions {}
+```
+
+Why: `use` is a calling-convention marker for the React hook lint rule, not
+a semantic part of what the *value* is. `UseFooResult` reads as a verb
+phrase used where a noun belongs. Precedent: `Controller` (returned by
+`usePanels`), `Layout`, `PanelSize`.
+
+### Exported type names
+
+Exported TypeScript type aliases and interfaces use descriptive domain
+names. No leading `T` prefix. Prefer names that explain the role of the
+shape, such as `TableModel`, `SortModel`, `ColumnSizing`, or `UploadDraft`.
+
+```ts
+// ✅ Domain names
+export interface TableModel {
+  activeRowId: RowId | null;
+  columnSizing: ColumnSizing;
+}
+
+export interface SortModel {
+  columnId: ColumnId;
+  direction: SortDirection;
+}
+
+// ❌ Prefixes
+export interface TColumn {}
+```
+
+## No Explicit Return Types
+
+Let TypeScript infer return types. Don't annotate them unless necessary for documentation or type narrowing.
+
+```ts
+// ✅ Let TS infer
+const getUser = (id: string) => users.get(id);
+const formatTime = (seconds: number) => `${seconds}s`;
+const findItem = (id: string) => items.find((i) => i.id === id);
+
+// ❌ Redundant explicit return types
+const getUser = (id: string): User | undefined => users.get(id);
+const formatTime = (seconds: number): string => `${seconds}s`;
+```
+
+## When Explicit Return Types ARE Needed
+
+Only use explicit return types when:
+
+1. **Public API contracts** - Exported functions in shared packages where the return type is part of the API contract
+2. **Recursion** - a function that calls itself genuinely can't have its return type inferred; annotate those
+3. **Complex inference** - When TS can't infer correctly (rare)
+4. **Intentional narrowing** - When you want to return a narrower type than inferred
+
+When a call site needs a different or narrower type than the body infers, prefer a
+cast at the `return` (`return rows as Foo[]`) over annotating the whole signature —
+the cast keeps the type assertion on the one line that needs it instead of pinning
+the function's surface. Reserve the signature annotation for the cases above.
+
+```ts
+// ✅ OK: Intentional narrowing for API contract
+export const createId = (): string => nanoid();
+
+// ✅ OK: Complex generic that needs help
+const merge = <T>(a: T, b: Partial<T>): T => ({ ...a, ...b });
+```
+
+## Prefer `const` arrow functions over `function` declarations
+
+Default to `const name = (...) => ...` for every function you write. The
+`function` keyword is reserved for React components and hooks
+(`export function RadarMap()`, `export default function useThing()`), which read
+best as declarations (see `code-organization.mdc`). Everything else — exported or
+private, sync or async, a data fetcher, an overlay installer, a pure helper — is a
+`const` arrow.
+
+```ts
+// ✅ const arrows
+export const fetchRadarFrames = async () => { … };
+const installNwsAlerts = async (ctx: OverlayContext) => { … };
+const offsetLabel = (time: number, now: number) => { … };
+
+// ❌ bare function declarations for non-components
+export async function fetchRadarFrames() { … }
+async function installNwsAlerts(ctx) { … }
+function offsetLabel(time, now) { … }
+```
+
+A `const` helper may sit **below** the main export that calls it. `const` is not
+hoisted, but that does not matter here: the main export is only *called* at runtime
+(React renders the component, or a consumer imports and invokes the function), long
+after the module finished evaluating top-to-bottom. By call time every
+module-level `const` below has already initialized, so the closure resolves. So
+"main thing first, helpers under it" reads top-down and still works with `const`.
+
+```ts
+// ✅ component on top, const helpers underneath — fine, they only run on render
+export function Scrubber(props: Props) {
+  return <Block>{offsetLabel(props.t, props.now)}</Block>;
+}
+const offsetLabel = (t: number, now: number) => { … };
+```
+
+The **only** time the `function` keyword is required for a non-component helper is
+when it must be reachable somewhere a `const` can't be — almost always a helper
+written *after* a component's `return`. Code after `return` never runs during
+render, so a `const` there is never initialized; a hoisted `function` declaration
+is. If you don't need that hoist, put the helper above the return as a `const`.
+
+```ts
+// ✅ acceptable: helper after the return needs the hoist, so it's a `function`
+export function Strip(props: Props) {
+  return <Block>{hourLabel(props.t)}</Block>;
+  function hourLabel(t: number) { … } // a `const` here would be undefined at render
+}
+```
+
+## Parameter Types
+
+Always type function parameters - these cannot be inferred:
+
+```ts
+// ✅ Parameters must be typed
+const greet = (name: string, age: number) => `${name} is ${age}`;
+
+// ❌ Missing parameter types
+const greet = (name, age) => `${name} is ${age}`;
+```
+
+## Arguments: assign the object, destructure in the body
+
+Never destructure an object argument in the parameter position. Take the whole
+object as one named parameter, then destructure on the first line of the body.
+The signature stays a single typed parameter, the destructure sits right next to
+the fields it pulls, and you can read `props.x` directly when that is clearer.
+
+```ts
+// ❌ Destructured in the argument position
+export const List = ({ rows, activeId, onPlay }: Props) => (
+  // ...
+);
+
+// ✅ Assign the object, then destructure in the body
+export const List = (props: Props) => {
+  const { rows, activeId, onPlay } = props;
+  // ...
+};
+```
+
+For one or two fields where a body destructure is noise, just read them off the
+object (`props.size`). The only hard rule is no destructuring in the parameter
+list itself. This is about the argument *object*: destructuring a known tuple
+inside a callback (`useTransform([a, b], ([x, y]) => …)`) is fine.
+
+## Import React as a namespace
+
+Import React as a namespace and reach for hooks and React types through it.
+Don't destructure named hooks from `"react"`.
+
+```ts
+// ❌ Named imports
+import { useState, useRef } from "react";
+const [open, setOpen] = useState(false);
+
+// ✅ Namespace
+import * as React from "react";
+const [open, setOpen] = React.useState(false);
+```
+
+One namespace import covers every hook and React type a file touches, so adding
+`React.useEffect` or `React.PointerEvent` never means editing the import line,
+and the `React.` prefix reads unambiguously at the call site. For a file that
+only needs React *types*, `import type * as React from "react"` keeps it out of
+the runtime bundle. Library hooks (framer-motion, tanstack) keep their own named
+imports — this is about React's surface only.
+
+## Consolidate related state
+
+Look for chances to collapse several pieces of related state into one. Booleans
+that always move together, or an id plus the object it points at, are usually
+one model wearing three hats. Prefer, in order:
+
+- A **string union** when the thing is really one of N modes
+  (`type Phase = "idle" | "open" | "closing"`), not three booleans.
+- A **`useReducer`** when a few related fields change together through a small
+  set of named transitions — the reducer names the transitions and keeps invalid
+  combinations unrepresentable.
+- **immer** (`produce`, already a dependency) inside a reducer when the shape is
+  deeply nested and spreading every level (`{ ...a, b: { ...a.b, c } }`) is the
+  only thing making the update hard to read.
+
+```ts
+// ❌ Three useStates that always move together
+const [activeId, setActiveId] = React.useState<string | null>(null);
+const [detailRow, setDetailRow] = React.useState<Row | null>(null);
+const [playingId, setPlayingId] = React.useState<string | null>(null);
+
+// ✅ One reducer that names the transitions
+const [view, dispatch] = React.useReducer(reduce, initialView);
+dispatch({ type: "openDetail", row });
+```
+
+Don't over-rotate: two unrelated booleans are fine as two booleans. The trigger
+is *related* state — fields set, cleared, or read together.
+
+## Never the `void` operator (HARD BAN)
+
+`void somePromiseFn()` is banned. Fire-and-forget is spelled as a plain call:
+`somePromiseFn()`. The operator adds a keyword that says nothing the call
+doesn't already say — we don't use a floating-promises lint rule, so there is
+nothing to appease. Oxlint's `no-void` (already `error` in every package)
+enforces this; never weaken that rule to readmit it.
+
+```ts
+// Bad — ceremonial keyword.
+void runScan(follow.id);
+
+// Good — just call it.
+runScan(follow.id);
+```
+
+(The `void` *type* in annotations like `() => void` is TypeScript and fine —
+this ban is about the expression operator.)
+
+## Event listeners: one `AbortController` signal
+
+When you attach DOM listeners imperatively, pass an `AbortController` signal and
+call `controller.abort()` to remove them — don't name each handler just so you
+can hand the same reference back to `removeEventListener`. One `abort()` tears
+down every listener wired to the signal, so there is no handler to keep around
+(the self-referencing `const stop = () => removeEventListener("pointerup", stop)`
+shape is the smell this replaces).
+
+```ts
+// ❌ Named handlers kept only so they can be removed
+const move = (e: PointerEvent) => onMove(e);
+const stop = () => {
+  window.removeEventListener("pointermove", move);
+  window.removeEventListener("pointerup", stop);
+};
+window.addEventListener("pointermove", move);
+window.addEventListener("pointerup", stop);
+
+// ✅ One signal removes them all
+const controller = new AbortController();
+const { signal } = controller;
+window.addEventListener("pointermove", (e) => onMove(e), { signal });
+window.addEventListener("pointerup", () => controller.abort(), { signal });
+```
+
+In a `useEffect`, create the controller in the effect body and return
+`() => controller.abort()` as the cleanup — one line removes whatever it attached.
+
+## Memoization (`useCallback` / `useMemo`)
+
+**HARD DEFAULT: write plain functions and inline object/array literals. Do
+NOT reach for `useCallback` or `useMemo`.** This codebase runs React 19
+with the React Compiler enabled — the compiler memoizes everything it can
+see automatically. Wrapping for "perf", "stable reference", "to avoid
+re-renders", or "to keep the context value stable" is dead weight and
+noise; the compiler already did it. Delete the wrapper.
+
+If you are about to type `React.useCallback` or `React.useMemo`, STOP.
+Re-read the exception list below. If your case is not on it (and you
+cannot add a comment naming a specific concrete consumer that needs the
+stable identity), write a plain function or inline literal instead.
+
+Common bad reflexes that this rule forbids:
+
+- "I'll memoize this context value so consumers don't re-render." — No.
+  The compiler memoizes the value object. Write `const value = { … };`.
+- "This handler is passed to a child, I'll `useCallback` it." — No.
+  The compiler memoizes it. Pass the arrow function directly.
+- "I want a stable reference for cleanliness." — Not a reason.
+
+`useCallback` / `useMemo` are permitted only when there is a **concrete
+identity-stability requirement the compiler cannot satisfy**. Typical cases:
+
+- Dependency of a `useEffect` / `useLayoutEffect` deps array, where a
+  fresh identity each render would re-fire the effect.
+- Passed as a React `ref` callback (`<div ref={fn} />` or returned from
+  a hook that is consumed as a ref). React fires `(oldRef, null)` then
+  `(newRef, element)` on every render where the function reference
+  changes — identity churn re-runs the ref body every render and
+  infinite-loops any `setState` it triggers.
+- Identity that is read by an imperatively attached listener
+  (`addEventListener`, `ResizeObserver`, `IntersectionObserver`, etc.)
+  whose attach/detach is keyed off the function reference.
+- Passed into a memoized child or library API that compares by reference
+  (e.g. `virtualizer.measureElement`, a `React.memo` boundary the compiler
+  cannot inline through, a third-party hook).
+- Referenced by a `useImperativeHandle` whose identity propagates to a
+  parent `ref`.
+- Object/array passed as a context value where consumers re-render on
+  reference change (the compiler bails out on most provider bodies that
+  touch refs / nested closures / observers — when in doubt, wrap the
+  context value in `useMemo` with explicit deps).
+
+**Every retained `useCallback` / `useMemo` must have a one-line comment
+immediately above it that names the specific consumer requiring the
+stable identity** — per `documentation-comments.mdc`, the comment names
+the concrete consumer, not a generic justification.
+
+```ts
+// ❌ Throat-clearing — banned
+// useCallback needed on React 19 with compiler because the compiler cannot see across this boundary
+// memoize for performance
+// stable reference
+const handleClick = React.useCallback(() => {
+  doThing();
+}, []);
+
+// ❌ No comment at all
+const handleClick = React.useCallback(() => {
+  doThing();
+}, []);
+
+// ❌ Wrapper exists but nothing actually needs the stable identity
+const handleClick = React.useCallback(() => {
+  doThing(value);
+}, [value]);
+
+return <button onClick={handleClick}>Go</button>;
+
+// ✅ Names the concrete consumer and what would break without it
+// dep of the resize-observer effect; identity must outlive re-renders
+const measure = React.useCallback(() => {
+  setWidth(ref.current?.clientWidth ?? 0);
+}, []);
+
+React.useEffect(() => {
+  const observer = new ResizeObserver(measure);
+  observer.observe(ref.current!);
+  return () => observer.disconnect();
+}, [measure]);
+
+// ✅ Names the consumer and the comparison contract
+// passed into virtualizer.measureElement which compares by reference
+const measureElement = React.useCallback(
+  (el: Element | null) => virtualizer.measureElement(el),
+  [virtualizer]
+);
+```
+
+When in doubt, drop the wrapper. If something downstream actually needs
+the stable identity, it will become obvious — and you can add the
+wrapper back with the comment that explains why.

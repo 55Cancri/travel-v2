@@ -1,0 +1,57 @@
+---
+description: minimize D1 rows-read and Workers requests on every query; free-plan budget
+alwaysApply: true
+---
+
+# Minimize Read/Write Cost (the free-plan budget)
+
+We run on Cloudflare's free plan and want to stay there as the app grows. Cost
+control is not a late-stage optimization pass; it is a design input on every
+feature and every edit, the same way correctness is.
+
+## The ceilings (know them cold)
+
+- **D1:** ~5,000,000 rows READ/day, ~100,000 rows written/day, 5GB storage.
+  Limits reset daily; exceeding them makes D1 reject queries until reset.
+- **Workers:** ~100,000 requests/day. This often bites BEFORE the D1 read cap.
+- **D1 bills rows SCANNED, not rows returned.** An unindexed scan over a 5,000
+  row table costs 5,000 rows read even if it returns a single row. Indexes cut
+  rows scanned; they add write and storage cost, so index the hot paths, not
+  every column.
+- **D1 per-query caps:** 100 bound parameters, 50 queries per Worker invocation.
+
+## The rule
+
+**Every query on a hot path must be designed to scan the fewest rows possible,
+and every feature must lower total daily reads, not just add to them.**
+
+## How (automatic on every feature)
+
+- **Schema follows the query.** Enumerate the access patterns first, then shape
+  tables and indexes so the hot reads are index seeks, not scans. Reach for
+  covering indexes, partial indexes (`WHERE deleted_at IS NULL`), and explicit
+  range bounds (`col >= ?lo AND col < ?hi`) instead of `LIKE '%x%'`.
+- **Estimate before you commit.** For each hot query, state rows-scanned per call
+  and rows/day at 100 / 1k / 10k users. If it scans the table, redesign it before
+  it ships: add an index, denormalize a counter, precompute, or move the work
+  off the hot path.
+- **One round trip.** Batch reads; annotate a result set with a single bounded
+  `IN (...)` lookup rather than N+1; keep it under the 100-parameter cap. Fewer
+  Worker requests matters as much as fewer D1 rows. A persistent websocket beats
+  polling; route-load refresh beats a dedicated poll endpoint.
+- **Improve old queries as you pass through.** A new requirement is also a chance
+  to make an existing query read fewer rows. That improvement is part of the new
+  feature's work, not a separate chore (see `redesign-for-the-ideal`).
+- **Never trade away a feature to save reads if a redesign saves them instead.**
+  The target is the same capability at lower cost, found by rethinking the shape,
+  not by dropping the capability.
+
+## Escape hatch (the red button)
+
+If read volume ever genuinely threatens the budget, the planned move is to push
+read-heavy surfaces (catalogs, search, feeds) onto a per-device SQLite manifest
+the client queries offline, refreshed periodically. Reads then collapse to
+manifest generation rather than per-interaction queries, and full-text search
+runs client-side. Realtime rides one websocket opened at login for all message
+kinds, not a socket per feature. Full plan in `docs/realtime-and-scaling.md`.
+Reach for this when measured reads approach the ceiling, not preemptively.
