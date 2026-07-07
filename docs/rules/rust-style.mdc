@@ -1,0 +1,129 @@
+---
+description: Rust style, error handling, lints, and module shape
+globs: "*.rs, Cargo.toml"
+alwaysApply: false
+---
+
+# Rust Style
+
+Applies to every Rust file in this repo from the moment one lands (a future
+native shell or crate). The naming bans in `typescript-style.mdc` apply to
+Rust in full (no `state`/`data`/`type`/`manager`/`handler`/`utils`/`fns` in
+names we own; "Protocol" as a suffix is a manager-word: name the owned
+thing). The comment rules in `documentation-comments.mdc` apply unchanged,
+including the copy-paste litmus.
+
+## Errors: typed at the core, serialized at the boundary (HARD RULE)
+
+`Result<T, String>` is banned in code we own. A predecessor app accumulated
+162 stringly-typed Results and 192 `map_err(|e| format!(...))` translations,
+and the UI could never tell retryable from fatal. The shape that replaces
+it:
+
+- **Internal errors are `thiserror` enums** owned by the domain module that
+  produces them (`#[derive(Debug, thiserror::Error)]`, `#[from]` for
+  source-error conversion). One enum per domain, not one giant app enum.
+- **Errors crossing IPC are wire shapes**: a serializable struct/enum with
+  a `kind` discriminator the TS side can branch on, plus a human message.
+  Commands return `Result<T, WireXError>`, converted from the internal enum
+  via `From`. Tauri requires `Serialize` on command errors anyway; use that
+  to ship structure, never `.to_string()`.
+- **Bag-of-context errors** (`anyhow`-style) are allowed only in flows
+  where no caller will ever branch on the failure, and never cross IPC, a
+  crate boundary, or a thread boundary that the UI observes. When in
+  doubt, type it. (Community consensus is intent-based, not
+  library-vs-application: type the errors callers react to.)
+- The map_err ladder is a smell: if a function body translates more than
+  one error with `map_err`, give the module its own error enum with
+  `#[from]` conversions and let `?` do the work.
+
+## No swallowed failures (`no-swallowed-errors.mdc`, Rust face)
+
+- `let _ = fallible()` is the Rust spelling of an empty catch. Either
+  handle the `Result`, propagate it, or surface it through the logging
+  path. The one legal discard is an expected, named condition with a
+  comment naming why it is normal.
+- Event emits, cleanup, and shutdown paths surface their failures through
+  `tracing` (`warn!`/`error!` with the subsystem field), not `eprintln!`
+  and not silence. `print_stdout`/`print_stderr` are deny lints; logging
+  goes through the tracing pipeline once it exists.
+- Panics are not error handling. `unwrap_used` and `expect_used` are deny
+  lints. The one sanctioned `expect` is the outermost process entry
+  (`run()`), carrying `#[expect(clippy::expect_used, reason = ...)]`.
+
+## Lints are law
+
+The workspace lint table in the root `Cargo.toml` is the single source:
+clippy `all` + `pedantic` as warn, with the panic/print/wildcard families
+at deny. Rules of engagement:
+
+- Never weaken the workspace table to silence a finding. Escape hatches are
+  per-site `#[expect(lint, reason = "...")]` (which errors when it stops
+  firing), never `#[allow]` and never file-wide.
+- New warnings are fixed in the change that introduces them. `cargo clippy
+  --all-targets` runs clean before any Rust change ships.
+- A pedantic member that proves to be pure churn across several real hits
+  may be moved to `allow` in the workspace table with a one-line comment
+  (`missing_errors_doc`/`missing_panics_doc`/`module_name_repetitions` are
+  the usual candidates). That is a deliberate table edit, not a local
+  override.
+
+## Module shape
+
+- `lib.rs` stays a thin registry: module declarations, command
+  registration, service construction in `setup`. Command functions are
+  one-to-three-line delegations into domain modules. A predecessor's
+  961-line lib.rs and 2,292-line catch-all module are the anti-pattern.
+- A domain module owns its commands, its wire shapes, and its internal
+  error enum. Orchestrators read as numbered stages; source quirks and
+  retries live in named step files (`code-organization.mdc` applies to
+  Rust modules the same as TS).
+- Wire shapes carry the `Wire` prefix on both sides of the boundary and
+  are updated with their TS mirror in the same change (until tauri-specta
+  or equivalent generates the TS side).
+- Long-lived services are constructed once in `setup` and reached through
+  `tauri::State`. Name the thing itself (`Nas`, `CloudApi`, `UploadQueue`),
+  never `*Manager`/`*Protocol`/`*Handler`/`*Service`.
+
+## Async and blocking
+
+- Commands that do I/O are `async fn` and run on the async runtime.
+- CPU-heavy or blocking-disk work goes through `spawn_blocking` (or a
+  bounded worker), never inline in an async command and never on the main
+  thread. Bound parallelism explicitly (semaphore/const), never unbounded
+  spawns.
+- Main-thread-pinned platform APIs (Core Location and friends) get their
+  pinning documented at the construction site, naming the constraint.
+
+## Dependencies and workspace hygiene
+
+- One Cargo workspace at the repo root: shared `[workspace.package]`
+  (edition, rust-version), `[workspace.dependencies]` as the single
+  version source, members opting in via `workspace = true`.
+- Every dependency earns its place: no dep lands before the code that uses
+  it, `default-features = false` plus named features where the crate is
+  heavy (the reqwest treatment), and the supply-chain gate applies to
+  crates.io exactly as it does to npm: prefer versions that have soaked.
+- `rust-version` is a contract: bump it deliberately, in its own change,
+  never as a side effect.
+
+## Idiom floor (edition 2024, rustc 1.96)
+
+- `let Some(x) = ... else { return ... }` over nested `if let` pyramids.
+- `?` everywhere errors propagate; no manual match-and-return ladders.
+- Derive over hand-written impls; `#[serde(rename_all = "camelCase")]` on
+  every wire shape so the TS side never sees snake_case.
+- Iterators over index loops when the loop body reads better; index loops
+  when they don't. Slices (`&[T]`) over `&Vec<T>` in signatures.
+- Borrow first: `&str` over `String` parameters unless ownership is the
+  point. Clones are deliberate and rare, not reflexive.
+- Tagged enums over parallel booleans, exactly like the TS rule.
+
+## Tests
+
+- Unit tests live beside the code in `#[cfg(test)] mod` blocks; the
+  testing discipline in `testing.mdc` (what earns a test, failure-mode
+  matrices) applies unchanged.
+- Keep commands thin so domain logic tests never need a runtime shell.
+- Snapshot tests earn their place for parser/extractor code with real
+  fixture files.
