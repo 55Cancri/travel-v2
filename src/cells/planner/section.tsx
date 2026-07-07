@@ -18,8 +18,8 @@ import { useDragReorder } from "./use-drag-reorder";
 
 // One section = one container (a day's schedule or a segment's idea pool).
 // Day headers are sticky (iOS-contacts style: each day's header holds the top
-// of the viewport while its items scroll, then the next day pushes it out —
-// stickiness is naturally bounded by the <section>). Keyboard engine: Enter
+// of the viewport while its items scroll, then the next day pushes it out.
+// Stickiness is naturally bounded by the <section>). Keyboard engine: Enter
 // inserts below + autofocuses, Backspace on empty deletes + focuses previous,
 // blur trims/removes empties. Multiline paste fans out into one row per line.
 export function Section(props: {
@@ -31,7 +31,7 @@ export function Section(props: {
   // Offset from the scrollport top while stuck (the city bar's height, so day
   // headers stack directly beneath the always-stuck city name).
   stickyTop?: string;
-  highlightItemId: string | null;
+  highlightItemIds: string[];
   onSelect: () => void;
   onFly: (item: Item) => void;
   onEdit: (item: Item, containerRef: ContainerRef) => void;
@@ -170,7 +170,7 @@ export function Section(props: {
             key={entry.id}
             item={entry}
             draggable={entry.text.trim() !== "" && textRowCount >= 2}
-            highlighted={props.highlightItemId === entry.id}
+            highlighted={props.highlightItemIds.includes(entry.id)}
             motion={reorder.motionFor(entry.id)}
             inputRef={(el) => {
               if (el) inputs.current.set(entry.id, el);
