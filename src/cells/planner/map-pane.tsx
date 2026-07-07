@@ -183,6 +183,9 @@ export function MapPane(props: {
       mapRef.current = map;
       if (import.meta.env.DEV) (window as { __map?: unknown }).__map = map;
       map.on("error", (event) => console.error("[map]", event.error?.message ?? event));
+      // Tap-away (and click-away) dismisses the tooltip; pin clicks stop
+      // propagation so they never count as away.
+      map.on("click", () => closePopup());
       map.on("load", () => {
         if (!disposed) storeReady(true);
       });
@@ -308,7 +311,51 @@ export function MapPane(props: {
       // skips the recenter to avoid two competing camera moves).
       el.addEventListener("mouseenter", () => openPopupFor(pin.item.id));
       el.addEventListener("mouseleave", () => closePopup());
+      // Touch has no hover: a still ~450ms press opens the tooltip instead,
+      // and swallows the click that follows so it doesn't also jump the
+      // row. Drifting more than a few pixels reads as a pan and cancels.
+      let pressTimer: ReturnType<typeof setTimeout> | null = null;
+      let longPressed = false;
+      el.addEventListener("pointerdown", (event) => {
+        if (event.pointerType !== "touch") return;
+        const startX = event.clientX;
+        const startY = event.clientY;
+        longPressed = false;
+        pressTimer = setTimeout(() => {
+          pressTimer = null;
+          longPressed = true;
+          openPopupFor(pin.item.id);
+        }, 450);
+        const press = new AbortController();
+        const settle = () => {
+          if (pressTimer) {
+            clearTimeout(pressTimer);
+            pressTimer = null;
+          }
+          press.abort();
+        };
+        window.addEventListener(
+          "pointermove",
+          (move) => {
+            if (Math.abs(move.clientX - startX) > 8 || Math.abs(move.clientY - startY) > 8) {
+              settle();
+            }
+          },
+          { signal: press.signal },
+        );
+        window.addEventListener("pointerup", settle, { signal: press.signal });
+        window.addEventListener("pointercancel", settle, { signal: press.signal });
+      });
+      // iOS would otherwise pop its own callout over a held pin.
+      el.addEventListener("contextmenu", (event) => event.preventDefault());
       el.addEventListener("click", (event) => {
+        // Marker clicks bubble into the map's own click (which closes the
+        // tooltip for tap-away); a pin press is not a tap-away.
+        event.stopPropagation();
+        if (longPressed) {
+          longPressed = false;
+          return;
+        }
         const zoom = event.metaKey || event.ctrlKey;
         if (!zoom) {
           const at = markersRef.current.get(pin.item.id)?.marker.getLngLat();
