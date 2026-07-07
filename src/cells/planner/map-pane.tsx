@@ -80,6 +80,36 @@ export type MapApi = {
   focusItem: (itemId: string, place: { lng: number; lat: number }, zoom?: number) => void;
 };
 
+// Road-following geometry for the selected day comes from the public
+// FOSSGIS OSRM instance, walking profile (these are city itineraries; the
+// instance ignores the profile segment of the path, one instance = one
+// profile). One request covers the whole day: OSRM takes every stop as a
+// waypoint and returns a single GeoJSON line. Results are cached per
+// coordinate signature for the session.
+const FOOT_ROUTER = "https://routing.openstreetmap.de/routed-foot/route/v1/foot";
+const roadRouteCache = new Map<string, number[][]>();
+
+const fetchRoadRoute = async (coords: number[][], signal: AbortSignal) => {
+  const key = coords.map((pair) => pair.join(",")).join(";");
+  const cached = roadRouteCache.get(key);
+  if (cached) return cached;
+  const res = await fetch(
+    `${FOOT_ROUTER}/${key}?overview=full&geometries=geojson&steps=false`,
+    { signal },
+  );
+  if (!res.ok) throw new Error(`router responded ${res.status}`);
+  const body = (await res.json()) as {
+    code?: string;
+    routes?: Array<{ geometry?: { coordinates?: number[][] } }>;
+  };
+  const line = body.routes?.[0]?.geometry?.coordinates;
+  if (body.code !== "Ok" || !line || line.length < 2) {
+    throw new Error(`router returned no route (${body.code ?? "no code"})`);
+  }
+  roadRouteCache.set(key, line);
+  return line;
+};
+
 type Pin = { item: Item; lng: number; lat: number };
 type MarkerEntry = {
   marker: import("maplibre-gl").Marker;
@@ -323,7 +353,9 @@ export function MapPane(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, pinSig]);
 
-  // Route line for the selected day, in plan order.
+  // Route line for the selected day, in plan order: the straight dashed
+  // line draws immediately so scope changes feel instant, then swaps to
+  // the road-following walking route once the router answers.
   React.useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
@@ -332,28 +364,45 @@ export function MapPane(props: {
       .map((id) => currentPins.find((pin) => pin.item.id === id))
       .filter((pin): pin is Pin => pin !== undefined)
       .map((pin) => [pin.lng, pin.lat]);
-    const routeData = {
-      type: "Feature" as const,
-      properties: {},
-      geometry: { type: "LineString" as const, coordinates: routeCoords },
+    const draw = (coordinates: number[][]) => {
+      const routeData = {
+        type: "Feature" as const,
+        properties: {},
+        geometry: { type: "LineString" as const, coordinates },
+      };
+      const source = map.getSource("day-route") as
+        | import("maplibre-gl").GeoJSONSource
+        | undefined;
+      if (source) {
+        source.setData(routeData);
+      } else {
+        map.addSource("day-route", { type: "geojson", data: routeData });
+        map.addLayer({
+          id: "day-route-line",
+          type: "line",
+          source: "day-route",
+          paint: {
+            "line-color": "#C05B3F",
+            "line-width": 2.5,
+            "line-dasharray": [2, 1.6],
+            "line-opacity": 0.85,
+          },
+        });
+      }
     };
-    const source = map.getSource("day-route") as import("maplibre-gl").GeoJSONSource | undefined;
-    if (source) {
-      source.setData(routeData);
-    } else {
-      map.addSource("day-route", { type: "geojson", data: routeData });
-      map.addLayer({
-        id: "day-route-line",
-        type: "line",
-        source: "day-route",
-        paint: {
-          "line-color": "#C05B3F",
-          "line-width": 2.5,
-          "line-dasharray": [2, 1.6],
-          "line-opacity": 0.85,
-        },
+    draw(routeCoords);
+    if (routeCoords.length < 2) return;
+    const controller = new AbortController();
+    fetchRoadRoute(routeCoords, controller.signal)
+      .then((line) => draw(line))
+      .catch((error: unknown) => {
+        // A scope change aborts the stale request: flow control, not a
+        // failure. Anything else keeps the straight line (offline and
+        // router hiccups always exist) and says so.
+        if (controller.signal.aborted) return;
+        console.warn("[map] road route failed, keeping straight line:", error);
       });
-    }
+    return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, routeSig]);
 
