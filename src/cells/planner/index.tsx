@@ -20,7 +20,7 @@ import { useDragReorder } from "./use-drag-reorder";
 
 // The planner: outline on the left, map on the right. Desktop shows both;
 // mobile shows the outline with a floating Map toggle that swaps to a
-// full-screen map (same MapPane instance — CSS repositions it, the map just
+// full-screen map (same MapPane instance, CSS repositions it, the map just
 // resizes). Selecting a section header scopes the map; a selected day also
 // draws its route.
 
@@ -204,13 +204,37 @@ export function Planner(props: { tripId: string }) {
     highlightTimer.current = setTimeout(() => storeHighlightItemId(null), 1200);
   };
 
-  // Pin click: highlight + scroll the row. ⌘-click additionally zooms to
-  // street level; a plain click never moves the camera.
+  // Pin click: scroll the row into view, then blink it. The blink waits for
+  // the smooth scroll to settle (its duration varies with distance, and a
+  // blink that starts mid-scroll is half over before the row appears).
+  // scrollend never shipped on WebKit, so settling is detected by watching
+  // the row hold still for a few frames, with a cap for safety. An
+  // already-visible row settles in ~3 frames, so it still blinks promptly.
+  // ⌘-click additionally zooms to street level; a plain click never moves
+  // the camera.
+  const scrollWatch = React.useRef(0);
   const onPinClick = (itemId: string, zoom: boolean) => {
-    highlight(itemId);
-    document
-      .getElementById(`ti-${itemId}`)
-      ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const row = document.getElementById(`ti-${itemId}`);
+    if (row) {
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      cancelAnimationFrame(scrollWatch.current);
+      let restingTop = Infinity;
+      let stillFrames = 0;
+      const started = performance.now();
+      const watch = () => {
+        const top = row.getBoundingClientRect().top;
+        stillFrames = top === restingTop ? stillFrames + 1 : 0;
+        restingTop = top;
+        if (stillFrames >= 3 || performance.now() - started > 1500) {
+          highlight(itemId);
+          return;
+        }
+        scrollWatch.current = requestAnimationFrame(watch);
+      };
+      scrollWatch.current = requestAnimationFrame(watch);
+    } else {
+      highlight(itemId);
+    }
     if (zoom) {
       const place = db.items[itemId]?.place;
       if (place) mapApi.current?.focusItem(itemId, place, 16.5);
@@ -321,7 +345,7 @@ export function Planner(props: { tripId: string }) {
           ) : null}
         </Block>
 
-        {/* segment chips — tap to select, hold + drag to reorder */}
+        {/* segment chips: tap to select, hold + drag to reorder */}
         <Block data-chip-row="" flex gap="xs" flexWrap="wrap" alignItems="center">
           {trip.segmentIds.map((id, index) => {
             const entry = db.segments[id];
@@ -412,7 +436,7 @@ export function Planner(props: { tripId: string }) {
           <Block>
             {/* City bar: ALWAYS stuck at the top of the outline (its containing
                 block spans the whole segment), with the city's date range on
-                the right — like the trip header. */}
+                the right, like the trip header. */}
             <Block
               position="sticky"
               top="0"
