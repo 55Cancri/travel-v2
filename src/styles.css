@@ -70,6 +70,27 @@
     opacity: 1;
   }
 }
+/* Leaving plays the shuffle back the other way: the card slides off with a
+   small opposite rotation while the next one settles in. The .popup-leave
+   class is added by MapPane, which removes the popup when the animation
+   ends. */
+@keyframes popup-shuffle-out {
+  to {
+    opacity: 0;
+    transform: rotate(4deg) scale(0.9);
+  }
+}
+@keyframes popup-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+.maplibregl-popup.popup-leave .maplibregl-popup-content {
+  animation: popup-shuffle-out 200ms ease-in forwards;
+}
+.maplibregl-popup.popup-leave .maplibregl-popup-tip {
+  animation: popup-fade-out 200ms ease-in forwards;
+}
 .maplibregl-popup .maplibregl-popup-content {
   background: var(--colors-surface-strong);
   color: var(--colors-text-on-strong);
