@@ -888,31 +888,54 @@ export function MapPane(props: {
         pinnedPlacePopup = popup;
         // The Google rating fills in when the server answers; a place
         // Google doesn't know (or a spent monthly budget) just shows no
-        // rating line.
+        // rating line. Food cards also hunt the reviews for a vegan
+        // mention: firsthand crowd evidence, quoted with its date.
         const query = new URLSearchParams({
           lat: String(at[1]),
           lng: String(at[0]),
           name: String(place.name),
         });
+        if (place.kind === "vegan") query.set("mention", "vegan");
         fetch(`/api/places?${query}`, { signal: ratingAbort.signal })
           .then((res) =>
             res.ok ? res.json() : Promise.reject(new Error(`places responded ${res.status}`)),
           )
-          .then((answer: { rating: number | null; count?: number; mapsUri?: string }) => {
-            if (answer.rating === null || !card.isConnected) return;
-            const line = document.createElement(answer.mapsUri ? "a" : "div");
-            line.textContent = `★ ${answer.rating.toFixed(1)}${
-              answer.count ? ` (${answer.count.toLocaleString("en-US")})` : ""
-            } · Google`;
-            line.style.cssText = "font-size:0.85em;color:var(--tooltip-subtext)";
-            if (line instanceof HTMLAnchorElement && answer.mapsUri) {
-              line.href = answer.mapsUri;
-              line.target = "_blank";
-              line.rel = "noreferrer";
-              line.style.textDecoration = "underline";
-            }
-            card.insertBefore(line, card.querySelector("button"));
-          })
+          .then(
+            (answer: {
+              rating: number | null;
+              count?: number;
+              mapsUri?: string;
+              mention?: { snippet: string; dateIso?: string };
+            }) => {
+              if (answer.rating === null || !card.isConnected) return;
+              const anchorButton = card.querySelector("button");
+              const line = document.createElement(answer.mapsUri ? "a" : "div");
+              line.textContent = `★ ${answer.rating.toFixed(1)}${
+                answer.count ? ` (${answer.count.toLocaleString("en-US")})` : ""
+              } · Google`;
+              line.style.cssText = "font-size:0.85em;color:var(--tooltip-subtext)";
+              if (line instanceof HTMLAnchorElement && answer.mapsUri) {
+                line.href = answer.mapsUri;
+                line.target = "_blank";
+                line.rel = "noreferrer";
+                line.style.textDecoration = "underline";
+              }
+              card.insertBefore(line, anchorButton);
+              if (answer.mention) {
+                const quote = document.createElement("div");
+                const when = answer.mention.dateIso
+                  ? ` · ${Temporal.Instant.from(answer.mention.dateIso)
+                      .toZonedDateTimeISO("UTC")
+                      .toPlainDate()
+                      .toLocaleString("en-US", { month: "short", year: "numeric" })}`
+                  : "";
+                quote.textContent = `“${answer.mention.snippet}”${when}`;
+                quote.style.cssText =
+                  "font-size:0.8em;color:var(--tooltip-subtext);font-style:italic;margin-top:2px";
+                card.insertBefore(quote, anchorButton);
+              }
+            },
+          )
           .catch((error) => {
             if (ratingAbort.signal.aborted) return;
             console.warn("[overlays] rating lookup failed:", error);
