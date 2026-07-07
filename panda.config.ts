@@ -36,6 +36,12 @@ export default defineConfig({
     extend: {
       dark: "html[data-theme=dark] &",
       notFocusWithin: "&:not(:focus-within)",
+      // Button sets data-pressed from react-aria's press tracking, which
+      // also covers keyboard Space/Enter and cancels on drag-off, so styles
+      // ride this instead of :active.
+      pressed: "&[data-pressed]",
+      // Hover styling never applies to a disabled control.
+      hover: "&:hover:not(:disabled)",
     },
   },
 
@@ -232,8 +238,10 @@ export default defineConfig({
         },
       },
       size: {
-        values: { type: "number" },
-        transform(value: number) {
+        // Numbers and lengths both: size={24} for icon boxes, size="1.5rlh"
+        // for rhythm-pinned hit targets.
+        values: { type: "number | string" },
+        transform(value: number | string) {
           return { width: value, height: value };
         },
       },

@@ -27,7 +27,8 @@
 
     "types": ["vite/client", "node"],
     "paths": {
-      "atoms/*": ["./src/atoms/*"],
+      "atoms": ["./src/atoms/index.ts"],
+      "alloys": ["./src/alloys/index.ts"],
       "cells/*": ["./src/cells/*"],
       "entities/*": ["./src/entities/*"],
       "panda/*": ["./styled-system/*"]

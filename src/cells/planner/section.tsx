@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Block, Button, Text } from "atoms/blocks";
-import { Plus } from "atoms/icons";
+import { Block, Button, Plus, Text } from "atoms";
+import { Center, Numeric, Subtext } from "alloys";
 import {
   containerItemIds,
   insertItemAfter,
@@ -122,7 +122,7 @@ export function Section(props: {
     <Block as="section" flow="0">
       <Button
         type="button"
-        onClick={props.onSelect}
+        onPress={props.onSelect}
         grid
         cols="auto 1fr auto"
         gap="sm"
@@ -141,7 +141,7 @@ export function Section(props: {
         <Text
           as="span"
           fontSize="lg"
-          fontWeight={700}
+          fontWeight={650}
           letterSpacing="-0.01em"
           color="inherit"
           style={{
@@ -153,17 +153,13 @@ export function Section(props: {
         >
           {props.title}
         </Text>
-        <Text as="span" fontSize="sm" fontWeight={500} color="text-muted">
-          {props.subtitle ?? ""}
-        </Text>
+        <Subtext fontSize="sm">{props.subtitle ?? ""}</Subtext>
         {active.length ? (
-          <Text as="span" fontSize="sm" fontWeight={600} color="text-muted">
+          <Numeric fontSize="sm" fontWeight={550} color="text-muted">
             {done}/{active.length}
-          </Text>
+          </Numeric>
         ) : (
-          <Text as="span" fontSize="sm" color="text-muted">
-            empty
-          </Text>
+          <Subtext fontSize="sm">empty</Subtext>
         )}
       </Button>
 
@@ -205,7 +201,7 @@ export function Section(props: {
           so the plus sits exactly in the checkbox column, stroke-matched. */}
       <Button
         type="button"
-        onClick={() => addAfter(items.length - 1)}
+        onPress={() => addAfter(items.length - 1)}
         grid
         cols="auto auto 1fr"
         gap="sm"
@@ -219,9 +215,9 @@ export function Section(props: {
         _hover={{ color: "text-primary" }}
       >
         <Block as="span" w="1.5rem" h="1.5rem" aria-hidden="true" />
-        <Block as="span" grid placeItems="center" w="1.3rem" h="1.3rem">
+        <Center as="span" w="1.3rem" h="1.3rem">
           <Plus size={17} />
-        </Block>
+        </Center>
         <Text as="span" fontSize="md" fontWeight={500} color="inherit">
           Add
         </Text>
