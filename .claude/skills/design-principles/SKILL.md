@@ -161,3 +161,24 @@ seen.
 
 **Repair.** Hold roughly half a second after the final effect before
 moving on.
+
+## 10. Center the ink, not the box
+
+**Principle.** A glyph centered in a small fixed-size badge (a numbered
+dot, a count bubble, a single-letter avatar) must be centered by its ink,
+not its text box. Two forces push it off: an inherited line-height taller
+than the badge skews where the baseline lands, and digits or capitals use
+none of the font's descent, so a geometrically centered line box still
+reads visibly low. At badge sizes, half a pixel is visible.
+
+**Look for.**
+- Text inside a fixed-height badge without an explicit tight line-height
+  (the container's inherited line-height is a hidden input).
+- Vertical centering trusted to the layout engine (flex/grid center) with
+  no ink-level check for descenderless content.
+- The offset judged only by eye at design size instead of measured (range
+  rect vs container rect, canvas font metrics for the ink bounds).
+
+**Repair.** Pin the badge's line-height (1, or the badge height), then
+measure the ink center against the badge center and nudge with a pixel of
+padding until they match.
