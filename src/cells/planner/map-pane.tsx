@@ -336,6 +336,24 @@ export function MapPane(props: {
         trackResize: false,
       });
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+      // Maplibre's compact attribution expands itself the moment the tile
+      // source's credit arrives (a sourcedata event, not mount), and the
+      // expanded bar crowds the bottom edge where the step pill lives.
+      // Collapse it once with the same class/attribute flip its own toggle
+      // performs; it stays collapsed after that, and the circle still opens
+      // on click, which keeps the OSM credit reachable as the tile policy
+      // requires. Listening AFTER the control registers its handlers means
+      // this runs after the expansion on the same event.
+      const collapseAttribution = () => {
+        const attrib = containerRef.current?.querySelector(".maplibregl-ctrl-attrib");
+        if (!attrib?.classList.contains("maplibregl-compact-show")) return;
+        attrib.classList.remove("maplibregl-compact-show");
+        attrib.setAttribute("open", "");
+        map.off("sourcedata", collapseAttribution);
+        map.off("styledata", collapseAttribution);
+      };
+      map.on("sourcedata", collapseAttribution);
+      map.on("styledata", collapseAttribution);
       mapRef.current = map;
       if (import.meta.env.DEV) (window as { __map?: unknown }).__map = map;
       map.on("error", (event) => console.error("[map]", event.error?.message ?? event));
@@ -1226,7 +1244,7 @@ export function MapPane(props: {
         </Text>
       ) : null}
       {props.routeDayId && stepStops.length >= 2 ? (
-        <Block gridArea="1 / 1" placeSelf="end center" zIndex={5} mb="sm">
+        <Block gridArea="1 / 1" placeSelf="end center" zIndex={5} mb="md">
           {props.stepLeg === null ? (
             <Button
               type="button"
