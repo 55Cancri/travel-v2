@@ -187,7 +187,8 @@ export function Planner(props: { tripId: string }) {
   const scopedItems = scopedItemIds
     .map((id) => db.items[id])
     .filter((entry): entry is Item => entry !== undefined);
-  const routeItemIds = scope.type === "day" ? (db.days[scope.id]?.itemIds ?? null) : null;
+  const routeDay = scope.type === "day" ? (db.days[scope.id] ?? null) : null;
+  const routeItemIds = routeDay?.itemIds ?? null;
   const scopeKey = `${segmentId ?? "-"}:${scope.type}:${scope.type === "day" ? scope.id : ""}#${scopeNonce}`;
 
   const highlight = (itemId: string) => {
@@ -545,6 +546,8 @@ export function Planner(props: { tripId: string }) {
         <MapPane
           items={scopedItems}
           routeItemIds={routeItemIds}
+          routeDayId={routeDay?.id ?? null}
+          routeVias={routeDay?.vias ?? null}
           scopeKey={scopeKey}
           onPinClick={onPinClick}
           apiRef={mapApi}
