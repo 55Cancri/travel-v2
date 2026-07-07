@@ -70,9 +70,15 @@ const sightCategory = (tags: Record<string, string>) => {
 
 const placeNotes = (kind: OverlayKind, tags: Record<string, string>) => {
   const notes: string[] = [];
-  if (kind === "vegan" && tags["diet:vegan"] === "only") notes.push("Fully vegan");
-  if (kind === "vegetarian" && tags["diet:vegetarian"] === "only") {
-    notes.push("Fully vegetarian");
+  // OSM distinguishes diet:*=only (the whole menu) from =yes (options on
+  // a mixed menu); every food-overlay place names which it is.
+  if (kind === "vegan") {
+    notes.push(tags["diet:vegan"] === "only" ? "Fully vegan" : "Vegan options");
+  }
+  if (kind === "vegetarian") {
+    notes.push(
+      tags["diet:vegetarian"] === "only" ? "Fully vegetarian" : "Vegetarian options",
+    );
   }
   if (tags.cuisine) notes.push(titleCase(tags.cuisine.split(";")[0]));
   if (kind === "sights") {

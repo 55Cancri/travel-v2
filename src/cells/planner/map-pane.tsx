@@ -499,7 +499,9 @@ const ensureOverlayLayers = (map: import("maplibre-gl").Map) => {
 // inverted dark surface in both themes.
 const placeCard = (place: Record<string, unknown>, onAdd: (() => void) | null) => {
   const root = document.createElement("div");
-  root.style.cssText = "display:grid;gap:3px;min-width:190px;max-width:260px";
+  // The popup lives outside Panda, so the app's lh rhythm tokens don't
+  // reach it; spacing rides a 4px sub-grid instead, consistently.
+  root.style.cssText = "display:grid;gap:4px;min-width:190px;max-width:260px";
   const line = (text: string, style: string) => {
     const el = document.createElement("div");
     el.textContent = text;
@@ -540,14 +542,15 @@ const placeCard = (place: Record<string, unknown>, onAdd: (() => void) | null) =
     button.type = "button";
     button.textContent = "Add to plan";
     button.style.cssText =
-      "margin-top:6px;justify-self:start;padding:3px 10px;border-radius:9999px;" +
-      "border:1px solid rgba(255,255,255,0.35);background:transparent;color:inherit;" +
+      "margin-top:8px;width:100%;padding:5px 10px;border-radius:9999px;border:none;" +
+      "background:var(--colors-accent);color:#FFFFFF;" +
       "font-size:0.85em;font-weight:550;cursor:pointer";
     button.addEventListener("click", () => {
       onAdd();
       button.textContent = "Added ✓";
       button.disabled = true;
-      button.style.opacity = "0.6";
+      button.style.opacity = "0.7";
+      button.style.cursor = "default";
     });
     root.appendChild(button);
   }
