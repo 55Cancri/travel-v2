@@ -38,11 +38,24 @@ export type Item = {
   details?: ItemDetails;
 };
 
+// A locked waypoint the day's walking route must pass through, placed by
+// dragging the route line on the map. Anchored to the stop it follows
+// (afterItemId) so reorders and deletions shed stale vias instead of
+// bending the wrong leg; vias sharing an anchor keep array order along
+// that leg.
+export type RouteVia = {
+  id: string;
+  afterItemId: string;
+  lng: number;
+  lat: number;
+};
+
 export type Day = {
   id: string;
   date: string; // ISO yyyy-mm-dd
   title?: string;
   itemIds: string[];
+  vias?: RouteVia[];
 };
 
 export type Segment = {

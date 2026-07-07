@@ -38,6 +38,21 @@
   z-index: 10;
 }
 
+/* Locked route waypoints (vias): accent diamonds. clip-path (not a rotated
+   transform) draws the diamond because maplibre owns the marker element's
+   transform. */
+.travel-via {
+  width: 14px;
+  height: 14px;
+  background: var(--colors-accent);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  cursor: grab;
+}
+.travel-via-ghost {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
 /* Map popups are inverted tooltips (dark-on-light page gets a dark tip,
    dark mode gets a light one) via the surface-strong pair. The shadow rides
    a drop-shadow filter on the popup ROOT, not a box-shadow on the content
