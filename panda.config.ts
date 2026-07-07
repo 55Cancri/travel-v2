@@ -67,11 +67,10 @@ export default defineConfig({
       WebkitFontSmoothing: "antialiased",
       MozOsxFontSmoothing: "grayscale",
       background: "surface-page",
-      // Pin colors — themed via CSS vars so map markers (plain DOM elements)
-      // retheme without a JS pass. Light mode keeps a warm ring + soft drop
-      // shadow (grounds dots on the pale map); dark mode gets bare color.
-      "--pin-dot-shadow":
-        "0 0 0 1.5px rgba(62, 48, 40, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3)",
+      // Pin colors, themed via CSS vars so map markers (plain DOM elements)
+      // retheme without a JS pass. Light mode gets only a soft drop shadow
+      // to ground dots on the pale map (no ring); dark mode gets bare color.
+      "--pin-dot-shadow": "0 1px 3px rgba(0, 0, 0, 0.3)",
       "--pin-activity": "#C05B3F",
       "--pin-food": "#B4436C",
       "--pin-lodging": "#0F766E",
@@ -141,6 +140,15 @@ export default defineConfig({
         },
         "accent-soft": {
           value: { base: "#F6E7E0", _dark: "#4A2E24" },
+        },
+        // The locate flash (pin click highlights its row): find-in-page
+        // amber, warm enough for the stone palette and clearly not the
+        // terracotta accent.
+        "surface-highlight": {
+          value: {
+            base: "color-mix(in srgb, {colors.amber.400} 30%, white)",
+            _dark: "color-mix(in srgb, {colors.amber.400} 22%, {colors.stone.900})",
+          },
         },
         "text-on-accent": {
           value: { base: "{colors.white}", _dark: "{colors.stone.900}" },
