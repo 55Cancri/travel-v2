@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 import type { MotionProps } from "framer-motion";
 import {
   Block,
@@ -8,10 +8,13 @@ import {
   DotsSixVertical,
   MapPin,
   Pencil,
+  Text,
   Ticket,
 } from "atoms";
 import { Center, Checkbox, IconButton, Subtext } from "alloys";
 import { KIND_META, type Item } from "entities/trips/types";
+import { AddressMenu } from "./address-menu";
+import { fetchAddressHits, type AddressHit } from "./geocode";
 
 // One plan row. The grip COLUMN is always reserved so checkboxes and text
 // never shift as handles appear (the handle itself only renders when the row
@@ -25,6 +28,8 @@ export function ItemRow(props: {
   draggable: boolean;
   highlighted: boolean;
   motion: MotionProps;
+  // Where address suggestions should gravitate (the segment's city).
+  bias: { lng: number; lat: number } | null;
   inputRef: (el: HTMLTextAreaElement | null) => void;
   onChange: (text: string) => void;
   onPaste: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void;
@@ -34,8 +39,112 @@ export function ItemRow(props: {
   onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onGrip: (event: React.PointerEvent) => void;
   onFly: () => void;
+  onPick: (hit: AddressHit) => void;
 }) {
   const { item } = props;
+
+  // Address autocomplete: after three typed characters a debounced geocode
+  // runs, and hits that plausibly match the typed text open the menu.
+  // Arrows move the highlight, Tab (or Enter after arrowing) accepts,
+  // Escape mutes suggestions until the text changes. The highlighted hit
+  // also ghosts inline as a prediction when it extends what was typed.
+  const [hits, storeHits] = React.useState<AddressHit[]>([]);
+  const [highlightIdx, storeHighlightIdx] = React.useState(0);
+  const [focused, storeFocused] = React.useState(false);
+  const [mutedText, storeMutedText] = React.useState<string | null>(null);
+  const [drop, storeDrop] = React.useState<"down" | "up">("down");
+  const cellRef = React.useRef<HTMLDivElement | null>(null);
+  const arrowedRef = React.useRef(false);
+
+  const typed = item.text.trim();
+  const pickedAlready = item.place?.name === item.text;
+  const biasLng = props.bias?.lng;
+  const biasLat = props.bias?.lat;
+
+  React.useEffect(() => {
+    if (!focused || typed.length < 3 || mutedText === item.text || pickedAlready) {
+      storeHits([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      const bias =
+        biasLng !== undefined && biasLat !== undefined
+          ? { lng: biasLng, lat: biasLat }
+          : null;
+      fetchAddressHits(typed, bias, controller.signal)
+        .then((all) => {
+          // Only hits that contain the typed text open the menu; ordinary
+          // notes ("buy sunscreen") never match a full label and stay
+          // undisturbed. Punctuation drops out of the comparison so typing
+          // straight across a label/address boundary ("anne frank m" into
+          // "Anne Frank, Merwedeplein") keeps matching.
+          const squash = (value: string) => value.toLowerCase().replace(/[,.]/g, "");
+          const query = squash(typed);
+          const matching = all.filter((hit) =>
+            squash(`${hit.label} ${hit.address ?? ""}`).includes(query),
+          );
+          storeHits(matching);
+          storeHighlightIdx(0);
+          arrowedRef.current = false;
+          const rect = cellRef.current?.getBoundingClientRect();
+          if (rect) {
+            const below = window.innerHeight - rect.bottom;
+            storeDrop(below < 260 && rect.top > below ? "up" : "down");
+          }
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return;
+          console.warn("[rows] address lookup failed:", error);
+          storeHits([]);
+        });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [focused, typed, item.text, mutedText, pickedAlready, biasLng, biasLat]);
+
+  const menuOpen = focused && hits.length > 0;
+  const topHit = menuOpen ? hits[highlightIdx] : undefined;
+  const ghostSuffix =
+    topHit && topHit.label.toLowerCase().startsWith(item.text.toLowerCase())
+      ? topHit.label.slice(item.text.length)
+      : "";
+
+  const acceptHit = (hit: AddressHit) => {
+    storeMutedText(hit.label);
+    storeHits([]);
+    props.onPick(hit);
+  };
+
+  // True when the key belonged to the menu; the row's own key handling
+  // (Enter spawns a row, arrows hop rows) must not also see it.
+  const suggestKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!menuOpen) return false;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      arrowedRef.current = true;
+      storeHighlightIdx((idx) =>
+        event.key === "ArrowDown"
+          ? (idx + 1) % hits.length
+          : (idx - 1 + hits.length) % hits.length,
+      );
+      return true;
+    }
+    if (event.key === "Tab" || (event.key === "Enter" && arrowedRef.current)) {
+      event.preventDefault();
+      acceptHit(hits[highlightIdx]);
+      return true;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      storeMutedText(item.text);
+      storeHits([]);
+      return true;
+    }
+    return false;
+  };
   const empty = item.text.trim() === "";
   const cancelled = item.status === "cancelled";
   const done = item.status === "done";
@@ -115,38 +224,82 @@ export function ItemRow(props: {
         {/* Auto-growing row text: long items WRAP onto extra lines (the row
             grows) instead of truncating. field-sizing:content sizes the
             textarea to its value; Enter never inserts a newline (the
-            section's key handler spawns a row). */}
-        <Block
-          as="textarea"
-          data-plan-input=""
-          id={inputId}
-          ref={props.inputRef}
-          value={item.text}
-          placeholder="Add a plan…"
-          rows={1}
-          onChange={(event) => props.onChange(event.currentTarget.value)}
-          onPaste={props.onPaste}
-          onBlur={props.onBlur}
-          onKeyDown={props.onKeyDown}
-          width="100%"
-          border="0"
-          outline="none"
-          background="transparent"
-          padding="0"
-          paddingBlock="xs"
-          margin="0"
-          fontFamily="inherit"
-          fontSize="md"
-          fontWeight={500}
-          lineHeight="1.5"
-          resize="none"
-          overflow="hidden"
-          transition="color 200ms ease"
-          _placeholder={{ color: "text-muted" }}
-          color={done || cancelled ? "text-muted" : "text-primary"}
-          textDecoration={done || cancelled ? "line-through" : "none"}
-          style={{ fieldSizing: "content" } as React.CSSProperties}
-        />
+            section's key handler spawns a row). The ghost prediction and
+            the suggestion menu share this cell (overlay via grid, popover
+            via the relative wrapper). */}
+        <Block ref={cellRef} grid position="relative">
+          <Block
+            as="textarea"
+            data-plan-input=""
+            id={inputId}
+            ref={props.inputRef}
+            value={item.text}
+            placeholder="Add a plan…"
+            rows={1}
+            onChange={(event) => props.onChange(event.currentTarget.value)}
+            onPaste={props.onPaste}
+            onFocus={() => storeFocused(true)}
+            onBlur={() => {
+              storeFocused(false);
+              props.onBlur();
+            }}
+            onKeyDown={(event) => {
+              if (suggestKeyDown(event)) return;
+              props.onKeyDown(event);
+            }}
+            gridArea="1 / 1"
+            width="100%"
+            border="0"
+            outline="none"
+            background="transparent"
+            padding="0"
+            paddingBlock="xs"
+            margin="0"
+            fontFamily="inherit"
+            fontSize="md"
+            fontWeight={500}
+            lineHeight="1.5"
+            resize="none"
+            overflow="hidden"
+            transition="color 200ms ease"
+            _placeholder={{ color: "text-muted" }}
+            color={done || cancelled ? "text-muted" : "text-primary"}
+            textDecoration={done || cancelled ? "line-through" : "none"}
+            style={{ fieldSizing: "content" } as React.CSSProperties}
+          />
+          {ghostSuffix ? (
+            // The prediction rides a mirror of the typed text (transparent,
+            // so the metrics line up under the caret) with the completion
+            // visible after it.
+            <Text
+              as="span"
+              aria-hidden="true"
+              gridArea="1 / 1"
+              paddingBlock="xs"
+              fontSize="md"
+              fontWeight={500}
+              lineHeight="1.5"
+              whiteSpace="pre-wrap"
+              pointerEvents="none"
+              color="transparent"
+              style={{ overflowWrap: "break-word" }}
+            >
+              {item.text}
+              <Text as="span" color="text-muted">
+                {ghostSuffix}
+              </Text>
+            </Text>
+          ) : null}
+          {menuOpen ? (
+            <AddressMenu
+              hits={hits}
+              highlightIdx={highlightIdx}
+              drop={drop}
+              onPick={acceptHit}
+              onHighlight={storeHighlightIdx}
+            />
+          ) : null}
+        </Block>
         {/* Actions: pencil reveals on hover ahead of the kind dot, which
             anchors the row edge. */}
         <Block flex gap="xs" alignItems="center" mt="0.45rem">
