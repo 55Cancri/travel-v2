@@ -3,6 +3,10 @@
 // itinerary: walks to and from stations plus the rides between them, each
 // with its own polyline, line name, and brand color.
 
+// A stop the ride calls at (boarding and alighting included), with its
+// scheduled time where the feed provides one.
+export type RideStop = { name: string; lng: number; lat: number; timeIso?: string };
+
 export type TransitLeg = {
   mode: "walk" | "ride";
   line: number[][];
@@ -12,6 +16,13 @@ export type TransitLeg = {
   // hover tooltip on the drawn line.
   vehicle?: string;
   headsign?: string;
+  // Scheduled leg times as instants plus the stop's IANA zone (display
+  // formats at the UI boundary), and whether the feed marked them live.
+  departIso?: string;
+  arriveIso?: string;
+  tz?: string;
+  live?: boolean;
+  stops?: RideStop[];
 };
 
 const VEHICLE_LABELS: Record<string, string> = {
@@ -65,14 +76,39 @@ const decodePolyline = (points: string, precision: number) => {
   return line;
 };
 
+type WireStop = {
+  name?: string;
+  lat?: number;
+  lon?: number;
+  tz?: string;
+  arrival?: string;
+  departure?: string;
+};
+
 type WirePlanLeg = {
   mode?: string;
   routeShortName?: string;
   routeLongName?: string;
   routeColor?: string;
   headsign?: string;
+  from?: WireStop;
+  to?: WireStop;
+  intermediateStops?: WireStop[];
+  startTime?: string;
+  endTime?: string;
+  realTime?: boolean;
   legGeometry?: { points?: string; precision?: number };
 };
+
+const rideStop = (stop: WireStop | undefined): RideStop | null =>
+  stop && stop.lat !== undefined && stop.lon !== undefined
+    ? {
+        name: stop.name ?? "",
+        lng: stop.lon,
+        lat: stop.lat,
+        timeIso: stop.departure ?? stop.arrival,
+      }
+    : null;
 
 export const fetchRide = async (
   from: { lng: number; lat: number },
@@ -128,6 +164,13 @@ export const fetchRide = async (
         color: leg.routeColor ? `#${leg.routeColor}` : undefined,
         vehicle: VEHICLE_LABELS[leg.mode ?? ""] ?? "Transit",
         headsign: leg.headsign,
+        departIso: leg.startTime,
+        arriveIso: leg.endTime,
+        tz: leg.from?.tz,
+        live: leg.realTime === true,
+        stops: [leg.from, ...(leg.intermediateStops ?? []), leg.to]
+          .map(rideStop)
+          .filter((stop): stop is RideStop => stop !== null),
       });
     }
   }

@@ -158,12 +158,48 @@ const lineFeature = (
     name?: string;
     vehicle?: string;
     headsign?: string;
+    times?: string;
+    live?: boolean;
   },
 ): Feature => ({
   type: "Feature",
   properties,
   geometry: { type: "LineString", coordinates },
 });
+
+const pointFeature = (
+  coordinates: number[],
+  properties: { kind: string; chain: number; color: string; name: string; time?: string },
+): Feature => ({
+  type: "Feature",
+  properties,
+  geometry: { type: "Point", coordinates },
+});
+
+// Wire instants render as the stop's own wall clock.
+const clockTime = (iso: string, tz: string) =>
+  Temporal.Instant.from(iso)
+    .toZonedDateTimeISO(tz)
+    .toPlainTime()
+    .toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+
+// A solid arrow reads at tooltip size where the → glyph looks spindly.
+const ARROW_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:4px"><path d="M4 11h12.17l-5.58-5.59L12 4l8 8-8 8-1.41-1.41L16.17 13H4z"/></svg>`;
+
+// Route widths scale with zoom: streets grow 4x per two zoom levels while
+// a fixed-width line stays hairline-thin, so a route that reads fine at
+// city scale visually vanishes zoomed to a doorstep. The dash pattern is
+// in line-width units, so the ants scale along automatically.
+const zoomWidth = (base: number, high: number) =>
+  [
+    "interpolate",
+    ["exponential", 1.6],
+    ["zoom"],
+    15,
+    base,
+    20,
+    high,
+  ] as unknown as number;
 
 // The editable walking chains in draw order; a rendered feature's `chain`
 // property indexes into this list.
@@ -291,34 +327,74 @@ export function MapPane(props: {
         },
         { signal: pageListeners.signal },
       );
-      // Ride hover: name what the colored line IS ("Bus 80 → Zandvoort"),
-      // in the same inverted tooltip the pins use. The tooltip follows the
-      // cursor along the leg; content only re-renders when the leg under
-      // the cursor changes.
+      // Ride hover: name what the colored line IS ("Bus 80 → Zandvoort",
+      // scheduled times, a live badge when the feed is real-time), in the
+      // same inverted tooltip the pins use. Stop dots get their own
+      // name-and-time tooltip and win over the line underneath them. The
+      // shared popup follows the cursor; content only re-renders when the
+      // feature under it changes.
       const ridePopup = new maplibregl.Popup({
         closeButton: false,
         closeOnClick: false,
         offset: 10,
       });
       let rideShownHtml = "";
-      map.on("mousemove", "day-route-ride-hit", (event) => {
-        const ride = event.features?.[0]?.properties ?? {};
-        const title =
-          [ride.vehicle, ride.name].filter(Boolean).join(" ") || "Transit ride";
-        const headsign = ride.headsign ? `→ ${ride.headsign}` : "";
-        const html = `<div style="font-weight:600">${escapeHtml(title)}</div>${
-          headsign
-            ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(headsign)}</div>`
-            : ""
-        }`;
+      const followCursor = (html: string, lngLat: import("maplibre-gl").LngLat) => {
         if (html !== rideShownHtml) {
           ridePopup.setHTML(html);
           rideShownHtml = html;
         }
-        ridePopup.setLngLat(event.lngLat);
+        ridePopup.setLngLat(lngLat);
         if (!ridePopup.isOpen()) ridePopup.addTo(map);
+      };
+      map.on("mousemove", "day-route-ride-hit", (event) => {
+        // The stop handler owns the popup while a dot is under the cursor.
+        if (map.queryRenderedFeatures(event.point, { layers: ["day-route-stops-hit"] }).length) {
+          return;
+        }
+        const ride = event.features?.[0]?.properties ?? {};
+        const title = [ride.vehicle, ride.name].filter(Boolean).join(" ") || "Transit ride";
+        const liveBadge =
+          ride.live === true
+            ? `<span style="color:#4ADE80;font-size:0.8em;margin-left:6px">● live</span>`
+            : "";
+        const headsign = ride.headsign
+          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${ARROW_SVG}${escapeHtml(ride.headsign)}</div>`
+          : "";
+        const times = ride.times
+          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(ride.times)}</div>`
+          : "";
+        followCursor(
+          `<div style="font-weight:600">${escapeHtml(title)}${liveBadge}</div>${headsign}${times}`,
+          event.lngLat,
+        );
       });
-      map.on("mouseleave", "day-route-ride-hit", () => {
+      map.on("mouseleave", "day-route-ride-hit", (event) => {
+        // Leaving the line onto one of its stops hands the popup over
+        // instead of blinking it away (the leave fires after the sibling
+        // layer's move on the same pointer event).
+        if (map.queryRenderedFeatures(event.point, { layers: ["day-route-stops-hit"] }).length) {
+          return;
+        }
+        ridePopup.remove();
+        rideShownHtml = "";
+      });
+      map.on("mousemove", "day-route-stops-hit", (event) => {
+        const stop = event.features?.[0]?.properties ?? {};
+        if (!stop.name) return;
+        const time = stop.time
+          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(stop.time)}</div>`
+          : "";
+        followCursor(
+          `<div style="font-weight:600">${escapeHtml(stop.name)}</div>${time}`,
+          event.lngLat,
+        );
+      });
+      map.on("mouseleave", "day-route-stops-hit", (event) => {
+        if (map.queryRenderedFeatures(event.point, { layers: ["day-route-ride-hit"] }).length) {
+          rideShownHtml = "";
+          return;
+        }
         ridePopup.remove();
         rideShownHtml = "";
       });
@@ -421,11 +497,19 @@ export function MapPane(props: {
             routeHighlightedRef.current = !routeHighlightedRef.current;
             const emphatic = routeHighlightedRef.current;
             if (map.getLayer("day-route-line")) {
-              map.setPaintProperty("day-route-line", "line-width", emphatic ? 4 : 2.5);
+              map.setPaintProperty(
+                "day-route-line",
+                "line-width",
+                emphatic ? zoomWidth(4, 16) : zoomWidth(2.5, 10),
+              );
               map.setPaintProperty("day-route-line", "line-opacity", emphatic ? 1 : 0.85);
             }
             if (map.getLayer("day-route-ride")) {
-              map.setPaintProperty("day-route-ride", "line-width", emphatic ? 4.5 : 3);
+              map.setPaintProperty(
+                "day-route-ride",
+                "line-width",
+                emphatic ? zoomWidth(4.5, 18) : zoomWidth(3, 12),
+              );
               map.setPaintProperty("day-route-ride", "line-opacity", emphatic ? 1 : 0.8);
             }
             return;
@@ -648,18 +732,42 @@ export function MapPane(props: {
         features.push(lineFeature(part.road.line, { kind: "walk", chain: chainIdx++ }));
       } else {
         for (const leg of part.legs) {
+          if (leg.mode === "walk") {
+            features.push(lineFeature(leg.line, { kind: "walk", chain: -1 }));
+            continue;
+          }
+          const tz = leg.tz ?? "UTC";
+          const times =
+            leg.departIso && leg.arriveIso
+              ? `${clockTime(leg.departIso, tz)} – ${clockTime(leg.arriveIso, tz)} · ${Math.round(
+                  (Temporal.Instant.from(leg.arriveIso).epochMilliseconds -
+                    Temporal.Instant.from(leg.departIso).epochMilliseconds) /
+                    60000,
+                )} min`
+              : undefined;
           features.push(
-            leg.mode === "walk"
-              ? lineFeature(leg.line, { kind: "walk", chain: -1 })
-              : lineFeature(leg.line, {
-                  kind: "ride",
-                  chain: -1,
-                  color: leg.color ?? rideFallback,
-                  name: leg.name,
-                  vehicle: leg.vehicle,
-                  headsign: leg.headsign,
-                }),
+            lineFeature(leg.line, {
+              kind: "ride",
+              chain: -1,
+              color: leg.color ?? rideFallback,
+              name: leg.name,
+              vehicle: leg.vehicle,
+              headsign: leg.headsign,
+              times,
+              live: leg.live,
+            }),
           );
+          for (const stop of leg.stops ?? []) {
+            features.push(
+              pointFeature([stop.lng, stop.lat], {
+                kind: "stop",
+                chain: -1,
+                color: leg.color ?? rideFallback,
+                name: stop.name,
+                time: stop.timeIso ? clockTime(stop.timeIso, tz) : undefined,
+              }),
+            );
+          }
         }
       }
     }
@@ -671,7 +779,9 @@ export function MapPane(props: {
       source.setData(collection);
       return;
     }
-    map.addSource("day-route", { type: "geojson", data: collection });
+    // maxzoom 24: geojson sources tile internally and default to 18, past
+    // which overzoomed lines clip away and the whole route vanishes.
+    map.addSource("day-route", { type: "geojson", data: collection, maxzoom: 24 });
     // Rides render under the walking ants, solid in the line's own color.
     map.addLayer({
       id: "day-route-ride",
@@ -681,7 +791,7 @@ export function MapPane(props: {
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": ["get", "color"],
-        "line-width": 3,
+        "line-width": zoomWidth(3, 12),
         "line-opacity": 0.8,
       },
     });
@@ -693,10 +803,32 @@ export function MapPane(props: {
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": "#C05B3F",
-        "line-width": 2.5,
+        "line-width": zoomWidth(2.5, 10),
         "line-dasharray": [0.5, 2.7],
         "line-opacity": 0.85,
       },
+    });
+    // Every stop the rides call at, page-colored dots ringed in the leg's
+    // line color, sitting on the ride lines.
+    map.addLayer({
+      id: "day-route-stops",
+      type: "circle",
+      source: "day-route",
+      filter: ["==", ["get", "kind"], "stop"],
+      paint: {
+        "circle-radius": zoomWidth(3.5, 9),
+        "circle-color":
+          document.documentElement.dataset.theme === "dark" ? "#171512" : "#FFFFFF",
+        "circle-stroke-color": ["get", "color"],
+        "circle-stroke-width": zoomWidth(1.75, 4),
+      },
+    });
+    map.addLayer({
+      id: "day-route-stops-hit",
+      type: "circle",
+      source: "day-route",
+      filter: ["==", ["get", "kind"], "stop"],
+      paint: { "circle-radius": zoomWidth(10, 20), "circle-opacity": 0.001 },
     });
     // Wide invisible twins make the thin lines hoverable without fat
     // rendering. Editable chains (chain >= 0) get the drag surface; rides
@@ -707,14 +839,14 @@ export function MapPane(props: {
       type: "line",
       source: "day-route",
       filter: ["==", ["get", "kind"], "ride"],
-      paint: { "line-width": 18, "line-opacity": 0.001 },
+      paint: { "line-width": zoomWidth(18, 36), "line-opacity": 0.001 },
     });
     map.addLayer({
       id: "day-route-hit",
       type: "line",
       source: "day-route",
       filter: [">=", ["get", "chain"], 0],
-      paint: { "line-width": 18, "line-opacity": 0.001 },
+      paint: { "line-width": zoomWidth(18, 36), "line-opacity": 0.001 },
     });
   };
 
@@ -833,19 +965,24 @@ export function MapPane(props: {
     const map = mapRef.current;
     if (!ready || !map) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    // Small dashes and fine 0.1-unit phase steps: the coarse classic table
-    // reads as a strobe, this reads as a crawl. Dash units multiply by the
-    // line width, so DASH 1.4 is a ~3.5px dot at the 2.5px line.
+    // Small dashes walking in 0.25-unit phase steps. The step size is a
+    // renderer budget, not just taste: every distinct round-cap dasharray
+    // occupies a tall SDF strip in maplibre's fixed-size LineAtlas forever
+    // (no eviction), and a finer 0.1 step's 32 patterns overflow it
+    // ("LineAtlas out of space"), after which dashed lines stop rendering
+    // at all. 13 patterns fit alongside the basemap's dashes; the slower
+    // tick keeps the same crawl speed. Dash units multiply by the line
+    // width, so the dots scale with the zoom-interpolated width.
     const DASH = 0.5;
     const GAP = 2.7;
-    const PHASE_STEP = 0.1;
+    const PHASE_STEP = 0.25;
     const dashSeq: number[][] = [];
     for (let x = 0; x < DASH; x += PHASE_STEP) dashSeq.push([x, GAP, DASH - x]);
     for (let y = 0; y < GAP; y += PHASE_STEP) dashSeq.push([0, y, DASH, GAP - y]);
     let step = -1;
     let frame = 0;
     const tick = (timestamp: number) => {
-      const next = Math.floor(timestamp / 35) % dashSeq.length;
+      const next = Math.floor(timestamp / 88) % dashSeq.length;
       if (next !== step && map.getLayer("day-route-line")) {
         step = next;
         map.setPaintProperty("day-route-line", "line-dasharray", dashSeq[next]);
