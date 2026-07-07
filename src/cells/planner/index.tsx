@@ -66,9 +66,13 @@ export function Planner(props: { tripId: string }) {
     return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : 460;
   });
   const resizeFrom = React.useRef({ x: 0, width: 460 });
+  // True while the divider is being dragged: the map pane holds its canvas
+  // size until release so the map doesn't repaint-flash on every frame.
+  const [paneResizing, storePaneResizing] = React.useState(false);
 
   const startResize = (event: React.PointerEvent) => {
     event.preventDefault();
+    storePaneResizing(true);
     resizeFrom.current = { x: event.clientX, width: leftWidth };
     const controller = new AbortController();
     const { signal } = controller;
@@ -82,6 +86,7 @@ export function Planner(props: { tripId: string }) {
     );
     const end = () => {
       controller.abort();
+      storePaneResizing(false);
       storeLeftWidth((width) => {
         try {
           localStorage.setItem(LEFT_WIDTH_KEY, String(width));
@@ -548,6 +553,7 @@ export function Planner(props: { tripId: string }) {
           routeItemIds={routeItemIds}
           routeDayId={routeDay?.id ?? null}
           routeVias={routeDay?.vias ?? null}
+          paneResizing={paneResizing}
           scopeKey={scopeKey}
           onPinClick={onPinClick}
           apiRef={mapApi}

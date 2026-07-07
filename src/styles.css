@@ -52,6 +52,12 @@
   opacity: 0.75;
   pointer-events: none;
 }
+/* Selected via: focus-blue fill and a glow that follows the diamond
+   (filter drop-shadow respects clip-path where box-shadow would not). */
+.travel-via-selected {
+  background: var(--colors-focus-ring);
+  filter: drop-shadow(0 0 4px var(--colors-focus-ring));
+}
 /* The grab handle that rides the route under the cursor: the "you can drag
    this line" affordance. pointer-events none keeps it from stealing the
    hit layer's events mid-hover. */

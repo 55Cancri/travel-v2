@@ -149,6 +149,7 @@ export function MapPane(props: {
   routeItemIds: string[] | null;
   routeDayId: string | null;
   routeVias: RouteVia[] | null;
+  paneResizing: boolean;
   scopeKey: string;
   onPinClick: (itemId: string, zoom: boolean) => void;
   apiRef: React.RefObject<MapApi | null>;
@@ -167,6 +168,15 @@ export function MapPane(props: {
   const [styleTick, storeStyleTick] = React.useState(0);
   const onPinClickRef = React.useRef(props.onPinClick);
   onPinClickRef.current = props.onPinClick;
+  const paneResizingRef = React.useRef(props.paneResizing);
+  paneResizingRef.current = props.paneResizing;
+
+  // One clean canvas resize when the divider settles; the observer skips
+  // frames while the drag is live (the canvas stretches with the pane,
+  // stable, instead of repaint-flashing every frame).
+  React.useEffect(() => {
+    if (!props.paneResizing) mapRef.current?.resize();
+  }, [props.paneResizing]);
 
   const pins: Pin[] = props.items
     .filter((entry) => entry.place && entry.status !== "cancelled")
@@ -184,6 +194,7 @@ export function MapPane(props: {
   React.useEffect(() => {
     let disposed = false;
     let observer: MutationObserver | null = null;
+    const pageListeners = new AbortController();
     (async () => {
       const maplibregl = (await import("maplibre-gl")).default;
       if (disposed || !containerRef.current) return;
@@ -197,6 +208,10 @@ export function MapPane(props: {
         center: [4.89, 52.37],
         zoom: 11,
         attributionControl: { compact: true },
+        // Maplibre's own ResizeObserver would repaint on every frame of a
+        // divider drag; the observer below owns resizing instead (rAF
+        // coalesced, held during drags, one clean resize on release).
+        trackResize: false,
       });
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
       mapRef.current = map;
@@ -204,7 +219,37 @@ export function MapPane(props: {
       map.on("error", (event) => console.error("[map]", event.error?.message ?? event));
       // Tap-away (and click-away) dismisses the tooltip; pin clicks stop
       // propagation so they never count as away.
-      map.on("click", () => closePopup());
+      map.on("click", () => {
+        closePopup();
+        if (selectedViaIdRef.current) {
+          selectedViaIdRef.current = null;
+          syncViaSelection();
+        }
+      });
+      // Delete / Backspace removes the selected via, unless focus is in a
+      // text field (list rows are textareas; typing must never nuke pins).
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key !== "Delete" && event.key !== "Backspace") return;
+          const viaId = selectedViaIdRef.current;
+          const dayId = routeEditRef.current.dayId;
+          if (!viaId || !dayId) return;
+          const target = event.target as HTMLElement | null;
+          if (
+            target &&
+            (target.tagName === "INPUT" ||
+              target.tagName === "TEXTAREA" ||
+              target.isContentEditable)
+          ) {
+            return;
+          }
+          event.preventDefault();
+          selectedViaIdRef.current = null;
+          removeRouteVia(dayId, viaId);
+        },
+        { signal: pageListeners.signal },
+      );
       // Route editing: grab the line to bend the day's route. The drag
       // shows a ghost diamond and previews the re-fit (throttled so the
       // public router sees at most ~2 requests a second); release locks
@@ -315,10 +360,10 @@ export function MapPane(props: {
       // resize per frame keeps the map from flashing mid-drag.
       let resizeFrame = 0;
       const resizeObserver = new ResizeObserver(() => {
-        if (resizeFrame) return;
+        if (paneResizingRef.current || resizeFrame) return;
         resizeFrame = requestAnimationFrame(() => {
           resizeFrame = 0;
-          map.resize();
+          if (!paneResizingRef.current) map.resize();
         });
       });
       resizeObserver.observe(containerRef.current);
@@ -344,6 +389,7 @@ export function MapPane(props: {
     })();
     return () => {
       disposed = true;
+      pageListeners.abort();
       observer?.disconnect();
       mapRef.current?.remove();
       mapRef.current = null;
@@ -521,10 +567,11 @@ export function MapPane(props: {
       id: "day-route-line",
       type: "line",
       source: "day-route",
+      layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": "#C05B3F",
         "line-width": 2.5,
-        "line-dasharray": [2, 1.6],
+        "line-dasharray": [0.5, 2.7],
         "line-opacity": 0.85,
       },
     });
@@ -580,6 +627,14 @@ export function MapPane(props: {
   // Locked vias render as draggable diamonds: drag moves the via (and the
   // route re-fits through it), double-click removes it.
   const viaMarkersRef = React.useRef(new Map<string, import("maplibre-gl").Marker>());
+  const selectedViaIdRef = React.useRef<string | null>(null);
+  const syncViaSelection = () => {
+    for (const [id, marker] of viaMarkersRef.current) {
+      marker
+        .getElement()
+        .classList.toggle("travel-via-selected", id === selectedViaIdRef.current);
+    }
+  };
   React.useEffect(() => {
     const map = mapRef.current;
     const maplibregl = libRef.current;
@@ -591,6 +646,7 @@ export function MapPane(props: {
       if (!keep.has(id)) {
         marker.remove();
         viaMarkersRef.current.delete(id);
+        if (selectedViaIdRef.current === id) selectedViaIdRef.current = null;
       }
     }
     for (const via of vias) {
@@ -604,7 +660,13 @@ export function MapPane(props: {
       }
       const el = document.createElement("div");
       el.classList.add("travel-via");
-      el.title = "Route waypoint (drag to adjust, double-click to remove)";
+      el.title =
+        "Route waypoint (drag to adjust, click to select, Delete or double-click to remove)";
+      el.addEventListener("click", (event) => {
+        event.stopPropagation();
+        selectedViaIdRef.current = selectedViaIdRef.current === via.id ? null : via.id;
+        syncViaSelection();
+      });
       const marker = new maplibregl.Marker({ element: el, draggable: true })
         .setLngLat([via.lng, via.lat])
         .addTo(map);
@@ -631,8 +693,8 @@ export function MapPane(props: {
     // Small dashes and fine 0.1-unit phase steps: the coarse classic table
     // reads as a strobe, this reads as a crawl. Dash units multiply by the
     // line width, so DASH 1.4 is a ~3.5px dot at the 2.5px line.
-    const DASH = 1.4;
-    const GAP = 2.2;
+    const DASH = 0.5;
+    const GAP = 2.7;
     const PHASE_STEP = 0.1;
     const dashSeq: number[][] = [];
     for (let x = 0; x < DASH; x += PHASE_STEP) dashSeq.push([x, GAP, DASH - x]);
@@ -688,6 +750,9 @@ export function MapPane(props: {
           width: "100%",
           height: "100%",
           background: "var(--colors-surface-muted)",
+          // While a divider drag holds the canvas at its old size, the
+          // overflowing edge clips instead of spilling into the outline.
+          overflow: "hidden",
         }}
       />
       {routeNotice ? (
