@@ -16,6 +16,9 @@ export function ItemEditor(props: {
 }) {
   const db = useDb();
   const item = db.items[props.itemId];
+  // Field labels within this editor are unique strings, so id = base + label
+  // wires every FieldLabel to its input for screen readers.
+  const fieldIdBase = React.useId();
 
   const closeOnEscape = React.useEffectEvent((event: KeyboardEvent) => {
     if (event.key === "Escape") props.onClose();
@@ -36,8 +39,9 @@ export function ItemEditor(props: {
 
   const field = (label: string, value: string, onChange: (v: string) => void, placeholder = "") => (
     <Block flow="0.1lh">
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel htmlFor={`${fieldIdBase}-${label}`}>{label}</FieldLabel>
       <Input
+        id={`${fieldIdBase}-${label}`}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.currentTarget.value)}

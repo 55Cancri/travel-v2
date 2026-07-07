@@ -137,7 +137,12 @@ export const Button = function <T extends _t.As = "button">(
       className={cx(css(buttonBaseStyles, styleProps, cssProp), className)}
     >
       {isLoading && loadingPlacement === "replace" ? (
-        loader
+        <>
+          {loader}
+          {/* The label keeps the button's accessible name while the loader
+              visually replaces it. */}
+          <span className={css({ srOnly: true })}>{children}</span>
+        </>
       ) : (
         <>
           {isLoading && loadingPlacement === "start" ? loader : start}

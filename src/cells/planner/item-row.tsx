@@ -152,6 +152,10 @@ export function ItemRow(props: {
               aria-label={`Show ${item.place.name} on map`}
               title={item.place.name}
               onPress={props.onFly}
+              // The row's <label> wraps these actions; preventing the click
+              // default keeps a press from also activating the label and
+              // yanking focus into the textarea.
+              onClick={(event) => event.preventDefault()}
               size="1.4rem"
               borderRadius="9999px"
             >
@@ -172,6 +176,7 @@ export function ItemRow(props: {
             aria-label="Edit item"
             title="Edit"
             onPress={props.onEdit}
+            onClick={(event) => event.preventDefault()}
             size="1.6rem"
             borderRadius="9999px"
             opacity={{ base: 1, md: 0 }}
