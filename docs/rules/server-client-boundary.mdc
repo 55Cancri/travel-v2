@@ -6,9 +6,10 @@ alwaysApply: true
 
 # Server / client boundary (HARD)
 
-Server-only code — Cloudflare bindings (`cloudflare:workers` `env`: D1, R2,
-secrets), password hashing, OAuth token exchange, Turnstile verification, any
-SQL — **must never end up in the browser bundle**. A leak ships our DB schema,
+Server-only code, meaning Cloudflare bindings (`cloudflare:workers` `env`:
+D1, R2, secrets), password hashing, OAuth token exchange, Turnstile
+verification, and any SQL, **must never end up in the browser bundle**. A
+leak ships our DB schema,
 auth flow, and attack surface to every visitor. This is not negotiable.
 
 ## The boundary
@@ -17,7 +18,7 @@ auth flow, and attack surface to every visitor. This is not negotiable.
   or a route's `server.handlers`. Those are the only places guaranteed to run
   server-side and be stripped from the client.
 - A module that does `import { env } from "cloudflare:workers"` is **server
-  code**. It may be imported by server functions and server route handlers —
+  code**. It may be imported by server functions and server route handlers,
   never by a client component, the root shell, or rendered JSX.
 - Across the boundary, share **types only**: `import type { SessionUser } from
   "entities/session"`, never a value import that drags the module in.
@@ -28,14 +29,25 @@ auth flow, and attack surface to every visitor. This is not negotiable.
 ## How it stays out of the client
 
 TanStack Start compiles `createServerFn().handler()` bodies and `server.handlers`
-out of the client bundle — the client gets an RPC stub. `cloudflare:workers` is a
+out of the client bundle (the client gets an RPC stub). `cloudflare:workers` is a
 Worker-runtime virtual module, so the client build marks it `external` with
 `treeshake.moduleSideEffects: "no-external"` (`vite.config.ts`). Because `env` is
 read only inside those server-stripped bodies, the now-unused import tree-shakes
 away: no `import "cloudflare:workers"` survives in a browser chunk.
 
-So the safety comes from the boundary above — never read `env` or run
-SQL/secrets/auth outside a server function — not from a bundler guard. Verify
+So the safety comes from the boundary above (never read `env` or run
+SQL/secrets/auth outside a server function), not from a bundler guard. Verify
 after any change that touches the line: `bun run build`, then confirm `dist/client`
 has zero `cloudflare:workers` references and no server markers (DB SQL, OAuth
 endpoints, `pbkdf2`).
+
+## The boundary cuts both ways: loaders run on the server
+
+Route loaders execute on the server during document requests (a hard refresh
+server-renders the route), so a loader that touches a browser-only API
+(IndexedDB, localStorage, `window`, `navigator`) crashes exactly and only on
+refresh, while every client-side navigation works. This class of bug has
+shipped before: a loader that read client-local storage killed its screen on
+reload. Any route whose loader needs client-local facts declares
+`ssr: false` with a comment naming the API that forces it, and the loader
+then runs only in the browser.

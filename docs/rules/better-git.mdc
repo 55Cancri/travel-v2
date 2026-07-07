@@ -1,0 +1,86 @@
+---
+description: >-
+  Git and PR workflow in the BetterGit era: the bleeding-edge integration
+  branch, proactive slicing into honestly-stacked PRs, plain git + gh
+  mechanics, commit-message format, and staying hands-off after merges
+  (BetterGit owns restacks, retargets, and heals). Use whenever doing git or
+  gh work: branching, committing, opening or updating PRs, or reconciling
+  after merges.
+alwaysApply: false
+---
+
+# Git / PR workflow (BetterGit era)
+
+BetterGit (the owner's review app) is the only merge path. It reviews,
+squash-merges, restacks, retargets, and heals. Your job is to produce
+honest git shapes for it; its job is everything after.
+
+## The one rule that prevents disasters
+
+**A PR's GitHub base must be the branch it was actually built on.**
+
+- Independent slice: branch from `origin/main`, PR base `main`.
+- Dependent slice (needs code from a still-open slice): branch FROM that
+  slice's branch and declare it: `gh pr create --base <parent-branch>`.
+- Never declare `main` as the base of a branch that carries another open
+  PR's commits, and never "solve" a dependency by merging a sibling branch
+  into yours. Dependencies are expressed by the base, not by weaving.
+
+Why this is non-negotiable: in 2026-07 the old rule ("all PRs target
+main") plus dependent slices produced nine branches that each contained
+the whole chain below them. Every PR diff inflated to ~25k lines, squash
+merges resurrected a deleted module on main, and the entire stack went
+CONFLICTING. BetterGit now survives that shape (it detects real structure
+by ancestry, retargets, and heals), but surviving it costs healing rounds
+and re-reviews. Honest bases cost nothing.
+
+## The bleeding-edge cycle
+
+`bleeding-edge` is the standing integration branch (main + every open PR
+branch + work in progress), so the owner's running app always has the
+latest code regardless of merge status.
+
+1. Work happens in the working tree on `bleeding-edge`.
+2. When a coherent chunk lands (a feature, a review round's fixes), slice
+   it into PRs without waiting to be asked (standing order, 2026-07-05):
+   update the existing PR in place when the work belongs to one, open a
+   new PR when it does not. Each independent slice branches from
+   `origin/main`; each dependent slice branches from its parent slice's
+   branch, with the PR base set to match.
+3. Merge the PR branches back into `bleeding-edge` (merge, never rebase;
+   same for `main` whenever it moves), then push `bleeding-edge` (only
+   after the PRs exist, never before).
+
+## Slicing discipline
+
+- Never commit on `main`.
+- One PR = one coherent group of related changes, 150-400 LOC. Meta files
+  (rules, docs) ride a dedicated docs PR, not feature PRs.
+- The commit message IS the PR body: motivation paragraph, `## Changes`,
+  `## Test plan`. No em dashes.
+- Fix review feedback in place on the PR branch (new commit + push), never
+  as a fixup PR stacked on top.
+- Lockfiles: commit the branch's own lockfile changes normally. If one
+  conflicts during a BetterGit heal, the branch's version wins and the
+  next install regenerates the rest; do not hand-edit lockfiles.
+
+## After the owner merges: hands off, BetterGit drives
+
+He reviews and merges through BetterGit, fast, sometimes out of order,
+often while you are still slicing. BetterGit owns the post-merge
+choreography: retargeting children, rebasing the remaining stack, healing
+stale branches (flattening merge-woven history when a rebase cannot), and
+refusing squashes that would lie. Therefore:
+
+- Do NOT rebuild, rebase, retarget, or force-push open slice branches
+  after his merges. Fetch and read the new state (`git fetch`,
+  `gh pr view`), fast-forward `main`, re-merge into `bleeding-edge`, and
+  continue working.
+- If a slice branch moved on origin (BetterGit restacked or healed it),
+  your local copy is stale: reset it to origin instead of pushing over
+  it. A rewritten branch's old tip survives under `refs/cr-backup/` in
+  the owner's clone if anything ever looks lost.
+- If a PR you opened gets refused by BetterGit with a healing or
+  containment message, do not work around it with merges or new PRs; the
+  message says what it needs (usually: merge the PR below first, or let
+  the heal run and the owner re-review).

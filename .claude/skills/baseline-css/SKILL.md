@@ -16,7 +16,7 @@ This repo styles through **Panda CSS** (tokens + style props; see
 (this app ships on WKWebView, so "works in Safari" == "works for us"). 🚫 not
 Baseline → don't ship it as the only path.
 
-## ✅ Baseline — use freely
+## ✅ Baseline: use freely
 
 | Feature | Replaces |
 |---|---|
@@ -40,23 +40,29 @@ Baseline → don't ship it as the only path.
 | `clamp()` / `min()` / `max()` | media-query size steps |
 | `accent-color` ; `::backdrop` | custom-painted controls / overlay divs |
 
-We already lean on container queries (Atlas compact layout) and `:has()`. Use
-**subgrid**, **container queries**, and **`text-wrap`** more — they're first
-choices, not exotic.
+We already lean on container queries and `:has()`. Use **subgrid**,
+**container queries**, and **`text-wrap`** more: they're first choices, not
+exotic.
 
-## 🚫 NOT Baseline — avoid (or `@supports`-guard for enhancement only)
+## 🚫 NOT Baseline: avoid (or `@supports`-guard for enhancement only)
 
 Anchor positioning (`anchor()`, `position-anchor`, `@position-try`),
 `field-sizing: content`, scroll-driven animations (`animation-timeline`,
-`scroll()`, `view()`), `text-box-trim`/`text-box-edge`, `@function`,
-cross-document view transitions. For motion, keep using **Framer Motion** (see
-the motion rules), not scroll-driven CSS.
+`scroll()`, `view()`), `@function`, cross-document view transitions. For
+motion, keep using **Framer Motion** (see the motion rules), not
+scroll-driven CSS.
 
-`corner-shape: squircle` / `superellipse()` (Chromium 139+ only, 2026-07) is
-the one sanctioned non-Baseline enhancement: Safari/Firefox drop the property
-at parse time and render the normal `border-radius`, so subtle squircles ship
-safely with zero fallback code. Never reach for clip-path squircle polyfills
-(they kill borders and per-element rendering).
+Two sanctioned non-Baseline enhancements (both degrade by being ignored):
+
+- `corner-shape: squircle` / `superellipse()` (Chromium 139+ only, 2026-07):
+  Safari/Firefox drop the property at parse time and render the normal
+  `border-radius`, so subtle squircles ship safely with zero fallback code.
+  Never reach for clip-path squircle polyfills (they kill borders and
+  per-element rendering).
+- `text-box-trim` / `text-box-edge: cap alphabetic` (Chrome 133+, Safari
+  18.2+; Firefox missing keeps it off Baseline): BOTH our shipping engines
+  (WKWebView + Chromium) have it, so cap-height trimming for lh-rhythm text
+  is fully usable here; non-target browsers just show the old leading.
 
 ## Leveling up color in Panda
 
@@ -74,7 +80,7 @@ moves make the system richer without abandoning semantic tokens:
    "accent.subtle": "color-mix(in oklch, {colors.accent}, white 85%)",
    ```
 
-2. **State variants via relative color** — bump lightness off the base token
+2. **State variants via relative color**: bump lightness off the base token
    rather than minting a new hex:
 
    ```ts
