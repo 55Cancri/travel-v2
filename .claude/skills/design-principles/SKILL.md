@@ -182,3 +182,25 @@ reads visibly low. At badge sizes, half a pixel is visible.
 **Repair.** Pin the badge's line-height (1, or the badge height), then
 measure the ink center against the badge center and nudge with a pixel of
 padding until they match.
+
+## 11. Borrowed colors assume someone else's background
+
+**Principle.** Colors imported from an external source (brand palettes,
+transit line colors, logo hues, API-provided swatches) were tuned for
+that source's own background, usually white print. Rendered on this
+product's surfaces they can vanish: a timetable yellow disappears on a
+pale canvas and sings on a dark one. Passing external color through
+untouched is a decision about contrast, whether or not it was made
+deliberately.
+
+**Look for.**
+- External color fed straight into a fill, stroke, or text without a
+  per-theme contrast pass.
+- A color that reads fine in one theme never checked in the other.
+- Hand-picked overrides for one offending color instead of a rule that
+  catches the whole family (the next bright import breaks again).
+
+**Repair.** Normalize at the boundary with a rule, not a lookup: cap or
+floor lightness per theme (bright imports darken on light surfaces, dark
+imports lift on dark ones) and keep hue and saturation so the color
+stays recognizable. Check both themes before presenting.
