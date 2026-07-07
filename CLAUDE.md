@@ -31,7 +31,7 @@ A single bun root: a TanStack Start + Vite 7 + Panda CSS trip planner and
 offline travel companion (see `OVERVIEW.md` for the vision, `TODO.md` for
 the phased checklist, `HANDOFF.md` for agent handoff context). The
 Cloudflare infra is live: the app deploys to
-https://travel-2.leaftime.workers.dev with Workers AI (/api/curate),
+https://travel-v2.leaftime.workers.dev with Workers AI (/api/curate),
 Google Places (/api/places), and a KV place cache. Trip data still lives
 in localStorage until the D1 + Durable Object sync lands.
 
@@ -526,7 +526,7 @@ sync Durable Object waits on the sync feature). These rules bind:
   keep `--force`: a code-only change does not invalidate the
   website-build resource and would otherwise ship the previous bundle.
   The generated `wrangler.jsonc` holds resolved secrets and stays
-  gitignored. Prod: https://travel-2.leaftime.workers.dev
+  gitignored. Prod: https://travel-v2.leaftime.workers.dev
 - **Server code never reaches the client bundle.** TanStack Start colocates
   server functions with UI, so guard the boundary deliberately. Full rule:
   `docs/rules/server-client-boundary.mdc`.
