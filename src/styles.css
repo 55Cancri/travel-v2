@@ -153,7 +153,17 @@
   padding: 0.5rem 0.75rem;
   box-shadow: none;
   font-family: inherit;
+  font-size: 13.5px;
   animation: popup-settle 180ms ease-out;
+  /* Secondary tooltip text, themed at the bubble: the light theme's dark
+     bubble wants brighter grey than the dark theme's, whose lower contrast
+     canvas makes the same alpha read hotter. */
+  --tooltip-subtext: color-mix(in oklab, var(--colors-text-on-strong) 84%, transparent);
+  --tooltip-faint: color-mix(in oklab, var(--colors-text-on-strong) 66%, transparent);
+}
+[data-theme="dark"] .maplibregl-popup .maplibregl-popup-content {
+  --tooltip-subtext: color-mix(in oklab, var(--colors-text-on-strong) 72%, transparent);
+  --tooltip-faint: color-mix(in oklab, var(--colors-text-on-strong) 58%, transparent);
 }
 .maplibregl-popup .maplibregl-popup-tip {
   animation: popup-fade 180ms ease-out;

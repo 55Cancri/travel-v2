@@ -235,6 +235,56 @@ const zoomWidth = (base: number, high: number) =>
 const walkChains = (parts: DayRoutePart[]) =>
   parts.filter((part): part is Extract<DayRoutePart, { kind: "chain" }> => part.kind === "chain");
 
+// Transit brand colours assume a white timetable; the bright ones (yellows,
+// limes) wash out on the pale map canvas. In light mode, cap the colour's
+// lightness so every line keeps contrast; the dark canvas takes brand
+// colours as-is.
+const groundedLineColor = (hex: string | undefined, dark: boolean) => {
+  if (!hex || dark) return hex;
+  const match = hex.trim().match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!match) return hex;
+  const digits =
+    match[1].length === 3
+      ? Array.from(match[1], (ch) => ch + ch).join("")
+      : match[1];
+  const value = parseInt(digits, 16);
+  const r = ((value >> 16) & 255) / 255;
+  const g = ((value >> 8) & 255) / 255;
+  const b = (value & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const light = (max + min) / 2;
+  if (light <= 0.42) return hex.startsWith("#") ? hex : `#${digits}`;
+  const delta = max - min;
+  const sat = delta === 0 ? 0 : delta / (1 - Math.abs(2 * light - 1));
+  const hue =
+    delta === 0
+      ? 0
+      : max === r
+        ? (((g - b) / delta) % 6) * 60
+        : max === g
+          ? ((b - r) / delta + 2) * 60
+          : ((r - g) / delta + 4) * 60;
+  const capped = 0.42;
+  const chroma = (1 - Math.abs(2 * capped - 1)) * sat;
+  const second = chroma * (1 - Math.abs(((((hue + 360) % 360) / 60) % 2) - 1));
+  const base = capped - chroma / 2;
+  const sector = Math.floor(((hue + 360) % 360) / 60);
+  const [cr, cg, cb] = [
+    [chroma, second, 0],
+    [second, chroma, 0],
+    [0, chroma, second],
+    [0, second, chroma],
+    [second, 0, chroma],
+    [chroma, 0, second],
+  ][sector % 6];
+  const channel = (part: number) =>
+    Math.round((part + base) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(cr)}${channel(cg)}${channel(cb)}`;
+};
+
 const lineBounds = (lines: number[][][]) => {
   let minLng = Infinity;
   let minLat = Infinity;
@@ -456,20 +506,20 @@ const placeCard = (place: Record<string, unknown>, onAdd: (() => void) | null) =
     el.style.cssText = style;
     root.appendChild(el);
   };
-  if (place.label) line(String(place.label), "font-size:0.8em;opacity:0.6");
+  if (place.label) line(String(place.label), "font-size:0.8em;color:var(--tooltip-faint)");
   line(String(place.name ?? ""), "font-weight:600;font-size:1.05em");
   if (place.closed === true) {
     line("Closed at this time", "color:#F87171;font-size:0.85em;font-weight:550");
   } else if (place.open === true) {
     line("Open", "color:#4ADE80;font-size:0.85em;font-weight:550");
   }
-  if (place.hoursDisplay) line(String(place.hoursDisplay), "font-size:0.85em;opacity:0.75");
+  if (place.hoursDisplay) line(String(place.hoursDisplay), "font-size:0.85em;color:var(--tooltip-subtext)");
   for (const note of String(place.notes ?? "")
     .split("\n")
     .filter(Boolean)) {
-    line(note, "font-size:0.85em;opacity:0.75");
+    line(note, "font-size:0.85em;color:var(--tooltip-subtext)");
   }
-  if (place.address) line(String(place.address), "font-size:0.85em;opacity:0.75");
+  if (place.address) line(String(place.address), "font-size:0.85em;color:var(--tooltip-subtext)");
   const links = document.createElement("div");
   links.style.cssText = "display:flex;gap:10px;margin-top:4px;flex-wrap:wrap";
   const link = (label: string, href: string) => {
@@ -509,7 +559,7 @@ const popupHtml = (item: Item) => {
   const address = item.place?.address ? escapeHtml(item.place.address) : "";
   return `<div style="font-weight:600">${name}</div>${
     address
-      ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${address}</div>`
+      ? `<div style="font-size:0.85em;color:var(--tooltip-subtext);margin-top:2px">${address}</div>`
       : ""
   }`;
 };
@@ -712,13 +762,13 @@ export function MapPane(props: {
             ? `<span style="color:#4ADE80;font-size:0.8em;margin-left:6px">● live</span>`
             : "";
         const headsign = ride.headsign
-          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${ARROW_SVG}${escapeHtml(ride.headsign)}</div>`
+          ? `<div style="font-size:0.85em;color:var(--tooltip-subtext);margin-top:2px">${ARROW_SVG}${escapeHtml(ride.headsign)}</div>`
           : "";
         const times = ride.times
-          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(ride.times)}</div>`
+          ? `<div style="font-size:0.85em;color:var(--tooltip-subtext);margin-top:2px">${escapeHtml(ride.times)}</div>`
           : "";
         const next = ride.next
-          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">Next ${escapeHtml(ride.next)}</div>`
+          ? `<div style="font-size:0.85em;color:var(--tooltip-subtext);margin-top:2px">Next ${escapeHtml(ride.next)}</div>`
           : "";
         followCursor(
           `<div style="font-weight:600">${escapeHtml(title)}${liveBadge}</div>${headsign}${times}${next}`,
@@ -739,7 +789,7 @@ export function MapPane(props: {
         const stop = event.features?.[0]?.properties ?? {};
         if (!stop.name) return;
         const time = stop.time
-          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(stop.time)}</div>`
+          ? `<div style="font-size:0.85em;color:var(--tooltip-subtext);margin-top:2px">${escapeHtml(stop.time)}</div>`
           : "";
         followCursor(
           `<div style="font-weight:600">${escapeHtml(stop.name)}</div>${time}`,
@@ -764,7 +814,7 @@ export function MapPane(props: {
         return layers.length > 0 && map.queryRenderedFeatures(point, { layers }).length > 0;
       };
       const noteLine = (text: string) =>
-        `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(text)}</div>`;
+        `<div style="font-size:0.85em;color:var(--tooltip-subtext);margin-top:2px">${escapeHtml(text)}</div>`;
       map.on("mousemove", "overlay-places-hit", (event) => {
         // A pinned card owns the interaction; the hover tooltip stays away.
         if (pinnedPlacePopup?.isOpen()) return;
@@ -784,7 +834,7 @@ export function MapPane(props: {
           .map(noteLine)
           .join("");
         followCursor(
-          `<div style="font-size:0.8em;opacity:0.6">${escapeHtml(String(place.label ?? ""))}</div>` +
+          `<div style="font-size:0.8em;color:var(--tooltip-faint)">${escapeHtml(String(place.label ?? ""))}</div>` +
             `<div style="font-weight:600">${escapeHtml(String(place.name))}</div>` +
             `${status}${notes}${hoursLine}` +
             noteLine("Click for details"),
@@ -877,7 +927,7 @@ export function MapPane(props: {
               ? ""
               : `${departDate.toLocaleString("en-US", { month: "short", day: "numeric" })} · `;
             return (
-              `<div style="font-size:0.85em;opacity:0.75;margin-top:2px">` +
+              `<div style="font-size:0.85em;color:var(--tooltip-subtext);margin-top:2px">` +
               `<span style="font-weight:600">${escapeHtml(entry.line)}</span> ` +
               `${ARROW_SVG}${escapeHtml(entry.headsign)} · ${dayTag}${clockTime(entry.departIso, tz)}` +
               `${entry.live ? ` <span style="color:#4ADE80">●</span>` : ""}</div>`
@@ -984,7 +1034,7 @@ export function MapPane(props: {
         const shown = Array.from(lines.values()).slice(0, 6);
         const extra = lines.size - shown.length;
         followCursor(
-          `<div style="font-size:0.8em;opacity:0.6">Bus lines</div>` +
+          `<div style="font-size:0.8em;color:var(--tooltip-faint)">Bus lines</div>` +
             shown.map((row) => `<div style="font-size:0.85em;margin-top:2px">${row}</div>`).join("") +
             (extra > 0 ? noteLine(`and ${extra} more`) : ""),
           event.lngLat,
@@ -1357,8 +1407,10 @@ export function MapPane(props: {
     // Rides without a brand color get the transport steel blue, picked per
     // theme here because layer paint can't read CSS variables (the theme
     // swap re-runs the route effect, so this stays in sync).
-    const rideFallback =
-      document.documentElement.dataset.theme === "dark" ? "#6B93BF" : "#3A6EA5";
+    const dark = document.documentElement.dataset.theme === "dark";
+    const rideFallback = dark ? "#6B93BF" : "#3A6EA5";
+    const rideColor = (brand: string | undefined) =>
+      groundedLineColor(brand, dark) ?? rideFallback;
     const features: Feature[] = [];
     // Legs are consecutive stop pairs in checklist order; every feature
     // carries its leg index so step mode can spotlight one pair. A chain
@@ -1402,7 +1454,7 @@ export function MapPane(props: {
               kind: "ride",
               chain: -1,
               leg,
-              color: rideLeg.color ?? rideFallback,
+              color: rideColor(rideLeg.color),
               name: rideLeg.name,
               vehicle: rideLeg.vehicle,
               headsign: rideLeg.headsign,
@@ -1419,7 +1471,7 @@ export function MapPane(props: {
                 kind: "stop",
                 chain: -1,
                 leg,
-                color: rideLeg.color ?? rideFallback,
+                color: rideColor(rideLeg.color),
                 name: stop.name,
                 time: stop.timeIso ? clockTime(stop.timeIso, tz) : undefined,
               }),
@@ -1751,6 +1803,7 @@ export function MapPane(props: {
     };
     const paintBuses = () => {
       const on = overlayKinds.includes("buses");
+      const dark = document.documentElement.dataset.theme === "dark";
       setSource(
         "bus-network",
         on
@@ -1759,7 +1812,7 @@ export function MapPane(props: {
               properties: {
                 ref: route.ref,
                 name: route.name,
-                color: route.color,
+                color: groundedLineColor(route.color, dark),
                 operator: route.operator,
               },
               geometry: { type: "MultiLineString" as const, coordinates: route.lines },

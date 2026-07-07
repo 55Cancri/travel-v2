@@ -33,7 +33,10 @@ export function OverlayChips(props: Props) {
             boxShadow="0 2px 10px rgba(0, 0, 0, 0.25)"
             animation={nudge ? "chipNudge 1.6s ease-in-out infinite" : "none"}
             bg={on ? "surface-strong" : "surface-panel"}
-            color={on ? "text-on-strong" : "text-muted"}
+            // Muted text sinks into the pale panel on the light canvas;
+            // the dark canvas has contrast to spare, so muted stays.
+            color={on ? "text-on-strong" : "text-body"}
+            _dark={{ color: on ? "text-on-strong" : "text-muted" }}
             _hover={{
               "@media (hover: hover)": {
                 bg: on ? "surface-strong" : "surface-panel",
