@@ -1,6 +1,6 @@
 # Travel-2 house rules
 
-Rules current as of 2026-07-04. Condensed from `docs/rules/*.mdc`. Those
+Rules current as of 2026-07-06. Condensed from `docs/rules/*.mdc`. Those
 files remain the source of truth and carry the full rationale and examples.
 Before deep work in an area, read the matching rule file:
 
@@ -20,7 +20,7 @@ Before deep work in an area, read the matching rule file:
 | Server code never in the client bundle | `docs/rules/server-client-boundary.mdc` |
 | Auth never leaks account existence | `docs/rules/no-account-enumeration.mdc` |
 | Minimize D1/Workers read cost | `docs/rules/minimize-read-cost.mdc` |
-| Git / PR workflow | `docs/rules/stacked-diffs.mdc` |
+| Git / PR workflow | `docs/rules/better-git.mdc` |
 | Code-health tooling | `docs/rules/fallow-quality-analysis.mdc` |
 | Tests (placement, what earns one, Playwright) | `docs/rules/testing.mdc` |
 
@@ -44,6 +44,17 @@ something in place, never quietly design around the old thing: name the
 conflict, propose the redesign, let the owner decide. "We already wrote it
 this way" is never a reason. Full rule:
 `docs/rules/redesign-for-the-ideal.mdc`.
+
+**Adoption is design work, never transcription (the most-violated form of
+this rule).** Mined and ported material from other projects is inspiration,
+not a source to copy. Every adopted utility, condition, pattern, or snippet
+must pass through the same scrutiny as new code and end with an explicit
+per-item verdict delivered to the owner: "improved: <what changed and why>"
+or "kept as-is: <why it is already ideal>". No third option. Copying
+verbatim without that verdict is a rule-zero violation even when the
+copied code works. (The scrutiny pays: a verbatim port once carried a
+redundant triple-alternative :active selector and a floating-label
+condition whose sibling combinator could not match the new DOM at all.)
 
 ## Communication: push back, surface, propose (HARD RULES)
 
@@ -88,11 +99,33 @@ my own work.
   research (o4-mini default, `--deep` for o3). **`--pro` is the preferred
   heavyweight second opinion**; the deep-research models are options to
   surface as suggestions when a true multi-source research sweep would pay
-  off. Never run two deep jobs in parallel by default: they share the org
-  TPM budget and rate-limit each other (a fanout leg died this way
-  2026-07-04). `--fanout` remains for deliberate bake-offs; otherwise
-  sequence deep runs one at a time. The CLI prints elapsed time, token
-  usage, and estimated cost per job. `openai --help` is the complete manual.
+  off. The CLI streams progress, prints elapsed/tokens/cost per job, and
+  appends every run to runs.jsonl (fanout legs share a group id) so model
+  performance accrues over time. `openai --help` is the complete manual.
+- **Model field guide** (measured 2026-07-04, color-system bake-off; check
+  runs.jsonl for the growing record): `gpt-5.5-pro` is the fastest heavy
+  option (~1.5h) and the most actionable, but by far the most expensive
+  ($30/$180 per M; its bills are token-rate-dominated, ~$8/run). `o3-deep-
+  research` is the marathon runner: longest by a mile (~2.5h+) yet roughly
+  half pro's cost ($10/$40, ~$3.6/run), most thorough, best citations.
+  `o4-mini-deep-research` is the cheap fast survey (~45m, ~$1.5) but its
+  web-search fees ($10/1k calls) can exceed its token cost. Plain
+  `gpt-5.5` with search: ~10m, under $1, fine for surveys.
+- **Prompt multi-model research from DIFFERENT ANGLES, never the same
+  prompt.** The same-prompt trio produced ~90% overlap; each model found
+  only one or two unique things. Split the question into complementary
+  facets (with deliberate slight overlap for cross-checking) and assign one
+  facet per model. Different-angle runs (codex on craft vs deep research on
+  systems) produced near-zero overlap and the best combined answer.
+- **Parallel deep jobs: max two OpenAI at a time.** All three at once
+  rate-limited a leg to death on the shared org TPM pool (2026-07-04).
+  Preferred schedule: start the long one (o3) plus one fast one; when the
+  fast one finishes, its slot frees for the next. Poll (or a Monitor)
+  catches mid-command completions the harness cannot see.
+- **Every deep-research round includes Gemini Deep Research**
+  (`gemini --deep`, or `--deep-max` for the maximum-depth agent; Interactions
+  API, own quota so it never contends with the OpenAI TPM pool). Retry its
+  transient failures up to 3 like any gemini run.
 - **Long runs never get discarded.** Deep research and gpt-5.5-pro can take
   up to ~40 minutes: launch them in a background shell, keep working, and
   when the report lands (even an hour and several topics later), deliver its
@@ -103,8 +136,11 @@ my own work.
   streams progress instead of showing "no output yet". While actively
   working, poll at every natural pause: confirm liveness, catch failed legs
   early (a transient rate limit gets a retry, up to 3), and give the owner a
-  brief status line with elapsed time. When a run lands, report its total
-  duration, tokens, and cost alongside its findings.
+  brief status line with elapsed time. **Every deep-research or pro report
+  ends with its metrics line: total duration, tokens, and dollar cost.
+  Findings without the metrics line are an incomplete delivery, every time,
+  no exceptions** (runs.jsonl has the numbers if the CLI output scrolled
+  away).
 - **A dormant agent cannot poll.** Between turns nothing runs, and the
   harness only notifies when a whole background command exits, so a
   multi-job command (fanout) reports nothing until its LAST leg ends. Before
@@ -324,6 +360,23 @@ Know the modern primitives: `useSyncExternalStore`, `useEffectEvent`,
   silently emits nothing. Enumerable values get inline literals in both
   ternary branches; open-ended/computed values use raw `style={{...}}` (or
   `_motion.style`).
+- **Run the design-principles catalog before presenting any screen.** The
+  skill at `.claude/skills/design-principles` is a PORTABLE design canon
+  (type, spacing, iconography, motion) distilled from real lessons and
+  written to apply to any project. Apply its checklist to every screen
+  touched. When the owner flags a design issue, fix it, and if the lesson
+  generalizes beyond the component it appeared in, distill the principle
+  (stripped of project specifics: no exact sizes, no component names, no
+  screen layouts) and add it in the same turn. Not every flag becomes an
+  entry: project-specific prescriptions stay out.
+- **Type discipline (HARD RULE, owner directive 2026-07-05).** A screen
+  carries at most four type roles: one heading (`2xl`/`3xl`), body (`md`),
+  support (`sm`), and one micro label (`xs`, the only xs on a page).
+  Weights stay at three: 400 body, 500 controls and labels, 600 headings
+  and titles. Never sprinkle per-element `fontSize`/`fontWeight` nudges in
+  feature code: a recurring treatment becomes a named text component, and a
+  size that seems needed outside the four roles means stop and ask. The
+  owner is sick of pages with a different size on every element.
 - Spacing/sizes/radii ride the lh rhythm tokens (`xs`...`2xl`). Colors come
   from semantic tokens (`surface-*`, `text-*`, `border-*`).
 - **`neutral.100` is banned as a surface/fill (HARD BAN).** The light-mode
@@ -368,13 +421,34 @@ called, that an implementation used to be wrong, that a migration
 happened). That story lives in commits and PRs. Headers are 1-3 sentences,
 and narrative goes inline next to the lines it explains.
 
+**No provenance in comments (HARD BAN, the most-violated rule here).**
+A comment may never say where code came from or what motivated its
+existence: not the app, repo, or project it was ported or mined from, not
+occurrence counts from analysis ("used 37 times in ..."), not the research
+round or document that inspired it, not "see docs/<file>" pointers outside
+the module. All of that is evidence for the PR body and commit message,
+never the source. A rationale that leans on history rots the moment the
+history is inaccessible, and it tells the reader nothing about what the
+code DOES. Rewrite the motivation as a timeless design fact ("pins one
+letter-spacing value so every section label matches"), or delete it.
+
+**The copy-paste litmus (apply to every comment before writing it).** Read
+the comment as if the file were copied alone into a stranger's repo. If any
+part becomes false, dangling, or meaningless there (project names, doc
+paths, counts from a codebase the stranger doesn't have), the comment fails
+and must be rewritten. In-repo files get no exemption, because files move.
+The only sanctioned cross-references are relative pointers within the same
+module and names of code the file actually coordinates with.
+
 **No em dashes (HARD BAN, zero exceptions).** No em dash character and no
 double-hyphen `--` standing in for one, anywhere we write: comments, docs,
 commit messages, PR bodies, UI strings, chat replies. Use a comma, colon,
 period, or parentheses. When editing a file that already contains one,
-proactively rewrite it out in passing (no repo-wide sweeps). Also avoid
-semicolons in prose (comments, docs, chat): prefer a period and a new
-sentence.
+proactively rewrite it out in passing (no repo-wide sweeps). Before
+finishing any round of edits, mechanically grep the touched files for the
+character (it keeps slipping into comments unnoticed, and a written check
+catches what intention does not). Also avoid semicolons in prose (comments,
+docs, chat): prefer a period and a new sentence.
 
 ## No quiet failure paths (HARD BANS)
 
@@ -433,6 +507,13 @@ rules bind the moment it is:
 - **Server code never reaches the client bundle.** TanStack Start colocates
   server functions with UI, so guard the boundary deliberately. Full rule:
   `docs/rules/server-client-boundary.mdc`.
+- **The boundary cuts the other way too, and this rule is live already:
+  route loaders run ON THE SERVER during document requests** (a hard
+  refresh renders the route on the dev server today, in the worker later).
+  A loader that touches a browser-only API (IndexedDB, localStorage,
+  `window`) crashes exactly and only on refresh, the easiest bug to miss in
+  SPA-feeling dev. Any route whose loader needs client-local facts sets
+  `ssr: false` with a comment naming the API that forces it.
 - **Auth never leaks account existence** (register and login give uniform
   responses whether or not the email exists). Full rule:
   `docs/rules/no-account-enumeration.mdc`.
@@ -452,23 +533,27 @@ rules bind the moment it is:
   convention across the owner's projects: every repo has `main` plus
   `bleeding-edge`). It always carries main + every open PR branch + feature
   work in progress. The cycle, in order:
-  1. Day-to-day work accumulates **uncommitted** in the working tree on
-     `bleeding-edge`. Do NOT commit or push it, not after a feature, not
-     after a review round.
-  2. The owner tests the feature and iterates through feedback rounds,
-     still uncommitted.
-  3. Only when he says to slice: cut the work into PRs targeting `main`.
-  4. Then merge those PR branches back into `bleeding-edge` (merge, never
+  1. Work happens in the working tree on `bleeding-edge`.
+  2. When a coherent chunk lands (a feature, a review round's fixes), slice
+     it into PRs without waiting to be asked (standing order, 2026-07-05):
+     update the existing PR in place when the work belongs to one, open a
+     new PR when it does not.
+  3. Merge those PR branches back into `bleeding-edge` (merge, never
      rebase, same for open PR tips and `main` whenever they move), so it
-     always has the latest code regardless of merge status. Pushing
-     `bleeding-edge` is fine at this point, after the PRs exist, never
-     before.
-- **PRs are plain `git` + `gh`** (the owner's BetterGit app manages stacks
-  and merges on his side). Never commit on `main`. Commit message = PR body
-  (motivation, `## Changes`, `## Test plan`). 150-400 LOC per PR grouping
-  related work. Fix review feedback in place on the PR branch, don't stack
-  fixup PRs. Expect the owner to merge PRs on GitHub within minutes and in
-  any order: fetch and reconcile before mutating branches.
+     always carries the latest code regardless of merge status, and push it
+     (only after the PRs exist, never before).
+- **PRs are plain `git` + `gh`, honestly based** (the owner's BetterGit app
+  is the only merge path: it reviews, squash-merges, restacks, retargets,
+  and heals). A PR's GitHub base must be the branch it was actually built
+  on: an independent slice branches from `origin/main` with base `main`, a
+  dependent slice branches from its parent slice's branch with the base set
+  to match. Never commit on `main`. Commit message = PR body (motivation,
+  `## Changes`, `## Test plan`). 150-400 LOC per PR grouping related work.
+  Fix review feedback in place on the PR branch, don't stack fixup PRs.
+  After the owner merges (fast, out of order, often mid-slicing): hands
+  off. Never rebuild, rebase, or force-push open slice branches; fetch,
+  read the new state, fast-forward `main`, re-merge into `bleeding-edge`,
+  and continue. Full rule: `docs/rules/better-git.mdc`.
 - **Code-health tooling:** Fallow is not wired into this repo yet. When it
   is, run `bun run fallow:audit -- --changed-since main` after substantial
   JS/TS changes (see `fallow-quality-analysis.mdc`).
