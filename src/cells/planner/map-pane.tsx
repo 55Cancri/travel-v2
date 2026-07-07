@@ -2175,6 +2175,7 @@ export function MapPane(props: {
           placeSelf="end start"
           zIndex={5}
           m="sm"
+          mb={{ base: "16svh", md: "sm" }}
           px="sm"
           py="0.15lh"
           borderRadius="9999px"
@@ -2188,7 +2189,14 @@ export function MapPane(props: {
         </Text>
       ) : null}
       {props.routeDayId && stepStops.length >= 2 ? (
-        <Block gridArea="1 / 1" placeSelf="end center" zIndex={5} mb="md">
+        // On the phone the outline sheet peeks over the map's bottom edge;
+        // the pill clears it so stepping stays reachable.
+        <Block
+          gridArea="1 / 1"
+          placeSelf="end center"
+          zIndex={5}
+          mb={{ base: "16svh", md: "md" }}
+        >
           {props.stepLeg === null ? (
             <Button
               type="button"
