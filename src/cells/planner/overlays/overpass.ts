@@ -10,6 +10,10 @@ const BACKOFF_MS = [3000, 8000];
 
 const rest = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason ?? new Error("aborted"));
+      return;
+    }
     const timer = setTimeout(resolve, ms);
     signal.addEventListener(
       "abort",
