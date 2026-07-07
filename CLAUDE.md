@@ -29,9 +29,11 @@ Before deep work in an area, read the matching rule file:
 
 A single bun root: a TanStack Start + Vite 7 + Panda CSS trip planner and
 offline travel companion (see `OVERVIEW.md` for the vision, `TODO.md` for
-the phased checklist, `HANDOFF.md` for agent handoff context). Cloudflare
-infra (Alchemy config + Drizzle sync schema) exists but is dormant, not yet
-wired to the running app. Local data lives in localStorage until sync lands.
+the phased checklist, `HANDOFF.md` for agent handoff context). The
+Cloudflare infra is live: the app deploys to
+https://travel2-prod.leaftime.workers.dev with Workers AI (/api/curate),
+Google Places (/api/places), and a KV place cache. Trip data still lives
+in localStorage until the D1 + Durable Object sync lands.
 
 ## Redesign for the ideal (the Phoenix rule, rule zero)
 
@@ -503,10 +505,10 @@ scope, and ask. Never ship "a future worker handles this" when no such
 worker exists. Trace flows end-to-end (UI to server to durable effect to
 projection to UI) before claiming done.
 
-## Backend (Cloudflare, currently dormant)
+## Backend (Cloudflare, live)
 
-The Alchemy + Drizzle infra exists but is not wired to the app yet. These
-rules bind the moment it is:
+The Alchemy infra deploys the app (D1 + KV + Workers AI bound; the trip
+sync Durable Object waits on the sync feature). These rules bind:
 
 - **Fight read/write cost on every feature.** We run on Cloudflare's free
   plan. D1 bills rows SCANNED, not returned, so design the schema for the
@@ -516,10 +518,15 @@ rules bind the moment it is:
   when new features land. Never sacrifice a feature to save reads when a
   redesign can save them instead. Full rule:
   `docs/rules/minimize-read-cost.mdc`.
-- **Builds run through `alchemy dev` / `alchemy deploy`, never raw
-  `vite build`** (the Alchemy Vite plugin needs the generated wrangler
-  config first). Until the infra is wired, `bun run dev` / `bun run build`
-  remain the entry points.
+- **The infra is live (2026-07-07): `bun run dev` and `bun run deploy` are
+  the only entry points**, and both execute `alchemy.run.ts` directly
+  under NODE, never the alchemy CLI (the CLI picks bun from the lockfile
+  and bun 1.3.14 segfaults on the entrypoint). Never raw `vite build`
+  (the Alchemy Vite plugin needs the generated wrangler config). Deploys
+  keep `--force`: a code-only change does not invalidate the
+  website-build resource and would otherwise ship the previous bundle.
+  The generated `wrangler.jsonc` holds resolved secrets and stays
+  gitignored. Prod: https://travel2-prod.leaftime.workers.dev
 - **Server code never reaches the client bundle.** TanStack Start colocates
   server functions with UI, so guard the boundary deliberately. Full rule:
   `docs/rules/server-client-boundary.mdc`.
