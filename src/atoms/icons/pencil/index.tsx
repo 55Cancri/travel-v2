@@ -1,6 +1,8 @@
-// Edit affordance for plan rows. A chunky rounded pencil, no framing box:
-// bold body drawn point-down-left with the band that separates the eraser
-// cap near the top end.
+// Edit affordance for plan rows. A fat, compact pencil, no framing box:
+// the width comes from the GEOMETRY (a wide diagonal body with a rounded
+// cap and a short converging tip), not from stroke weight, so it reads
+// chunky without blobbing at small sizes. The cross line is the band
+// where the tip meets the body.
 export function Pencil(props: { size?: number }) {
   const size = props.size ?? 14;
   return (
@@ -10,14 +12,14 @@ export function Pencil(props: { size?: number }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="3"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      <path d="M17.8 3.1a3.1 3.1 0 0 1 4.4 4.4L7.6 22.1 2.3 23.4l1.3-5.3L17.8 3.1z" />
-      <path d="M15.1 5.8l4.4 4.4" />
+      <path d="M4 20 L4.6 13.6 L14.6 3.6 A4.1 4.1 0 0 1 20.4 9.4 L10.4 19.4 Z" />
+      <path d="M4.6 13.6 L10.4 19.4" />
     </svg>
   );
 }
