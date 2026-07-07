@@ -10,6 +10,7 @@ export {
   ArrowLeft,
   Bowl,
   Calendar,
+  CaretLeft,
   CaretRight,
   Cart,
   Clock,
@@ -28,6 +29,7 @@ export {
   Spinner,
   Ticket,
   Utensils,
+  X,
 } from "./icons";
 export type {
   BlockElement,
