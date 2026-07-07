@@ -141,6 +141,15 @@ export default defineConfig({
         "accent-soft": {
           value: { base: "#F6E7E0", _dark: "#4A2E24" },
         },
+        // The highlighter swipe behind the selected day/section title:
+        // marker-yellow in light mode, a deep amber wash in dark so light
+        // text stays readable on it.
+        "surface-selected": {
+          value: {
+            base: "{colors.amber.200}",
+            _dark: "color-mix(in srgb, {colors.amber.400} 30%, {colors.stone.900})",
+          },
+        },
         "text-on-accent": {
           value: { base: "{colors.white}", _dark: "{colors.stone.900}" },
         },
