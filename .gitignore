@@ -12,9 +12,10 @@ dist/
 .alchemy/
 .wrangler/
 
-# env + os
+# env + os (the example ships as the template for real .env files)
 .env
 .env.*
+!.env.example
 .DS_Store
 *.log
 
