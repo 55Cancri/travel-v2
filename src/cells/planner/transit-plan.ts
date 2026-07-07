@@ -8,6 +8,28 @@ export type TransitLeg = {
   line: number[][];
   name?: string;
   color?: string;
+  // What carries you ("Bus", "Train", ...) and where it is headed, for the
+  // hover tooltip on the drawn line.
+  vehicle?: string;
+  headsign?: string;
+};
+
+const VEHICLE_LABELS: Record<string, string> = {
+  BUS: "Bus",
+  COACH: "Coach",
+  TRAM: "Tram",
+  SUBWAY: "Metro",
+  METRO: "Metro",
+  FERRY: "Ferry",
+  RAIL: "Train",
+  REGIONAL_RAIL: "Train",
+  REGIONAL_FAST_RAIL: "Train",
+  HIGHSPEED_RAIL: "Train",
+  LONG_DISTANCE: "Train",
+  NIGHT_RAIL: "Night train",
+  CABLE_CAR: "Cable car",
+  FUNICULAR: "Funicular",
+  AIRPLANE: "Flight",
 };
 
 const TRANSIT_ROUTER = "https://api.transitous.org/api/v1/plan";
@@ -48,6 +70,7 @@ type WirePlanLeg = {
   routeShortName?: string;
   routeLongName?: string;
   routeColor?: string;
+  headsign?: string;
   legGeometry?: { points?: string; precision?: number };
 };
 
@@ -103,6 +126,8 @@ export const fetchRide = async (
         line,
         name: leg.routeShortName ?? leg.routeLongName,
         color: leg.routeColor ? `#${leg.routeColor}` : undefined,
+        vehicle: VEHICLE_LABELS[leg.mode ?? ""] ?? "Transit",
+        headsign: leg.headsign,
       });
     }
   }
