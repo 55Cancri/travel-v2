@@ -192,6 +192,16 @@ export default defineConfig({
               "inset 0 0 0 1px {colors.focus-halo}, inset 0 0 8px {colors.focus-halo}",
           },
         },
+        // A control that needs the user's attention (a chip whose overlay
+        // wants a closer zoom) breathes an expanding amber ring.
+        chipNudge: {
+          "0%, 100%": {
+            boxShadow: "0 2px 10px rgba(0, 0, 0, 0.25), 0 0 0 0 rgba(217, 119, 6, 0.55)",
+          },
+          "50%": {
+            boxShadow: "0 2px 10px rgba(0, 0, 0, 0.25), 0 0 0 5px rgba(217, 119, 6, 0)",
+          },
+        },
       },
       tokens: {
         spacing: rhythm,
