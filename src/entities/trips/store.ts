@@ -59,10 +59,7 @@ export const resetToSeed = () => {
   emit();
 };
 
-const newId = () =>
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const newId = () => crypto.randomUUID();
 
 // ---- container helpers ----------------------------------------------------
 
