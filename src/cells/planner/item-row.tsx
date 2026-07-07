@@ -55,9 +55,8 @@ export function ItemRow(props: {
       borderRadius="xs"
       px="xs"
       mx="-0.25lh"
-      bg={props.highlighted ? "surface-highlight" : "transparent"}
-      transition="background-color 400ms ease"
-      css={{ "&:hover .row-actions": { opacity: 1 } }}
+      animation={props.highlighted ? "rowLocate 1100ms ease-out" : "none"}
+      css={{ "&:hover .row-actions": { opacity: 1, transform: "scale(1)" } }}
     >
       <Block
         as="label"
@@ -161,7 +160,11 @@ export function ItemRow(props: {
             onClick={(event) => event.preventDefault()}
             size="1.6rem"
             borderRadius="9999px"
+            // Reveals by fading + scaling in on row hover (desktop); mobile
+            // has no hover, so it stays present at full size.
             opacity={{ base: 1, md: 0 }}
+            transform={{ base: "scale(1)", md: "scale(0.7)" }}
+            transition="color 140ms ease, opacity 150ms ease, transform 150ms ease"
           >
             <Pencil size={13} />
           </IconButton>

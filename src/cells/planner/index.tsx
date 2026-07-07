@@ -193,7 +193,9 @@ export function Planner(props: { tripId: string }) {
   const highlight = (itemId: string) => {
     storeHighlightItemId(itemId);
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    highlightTimer.current = setTimeout(() => storeHighlightItemId(null), 2200);
+    // Slightly outlives the rowLocate blink so the animation always
+    // finishes before the state (and with it the animation rule) clears.
+    highlightTimer.current = setTimeout(() => storeHighlightItemId(null), 1200);
   };
 
   // Pin click: highlight + scroll the row. ⌘-click additionally zooms to
@@ -382,7 +384,10 @@ export function Planner(props: { tripId: string }) {
           <Button
             type="button"
             onPress={newSegment}
-            px="sm"
+            // Borderless, so left padding reads as pure distance from the
+            // last chip; slim keeps the + tucked against the row.
+            pl="0.15rem"
+            pr="sm"
             py="0.15lh"
             borderRadius="9999px"
             fontSize="sm"

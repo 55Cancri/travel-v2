@@ -141,15 +141,6 @@ export default defineConfig({
         "accent-soft": {
           value: { base: "#F6E7E0", _dark: "#4A2E24" },
         },
-        // The locate flash (pin click highlights its row): find-in-page
-        // amber, warm enough for the stone palette and clearly not the
-        // terracotta accent.
-        "surface-highlight": {
-          value: {
-            base: "color-mix(in srgb, {colors.amber.400} 30%, white)",
-            _dark: "color-mix(in srgb, {colors.amber.400} 22%, {colors.stone.900})",
-          },
-        },
         "text-on-accent": {
           value: { base: "{colors.white}", _dark: "{colors.stone.900}" },
         },
@@ -173,6 +164,26 @@ export default defineConfig({
       },
     },
     extend: {
+      // The locate blink (pin click highlights its row): an inset focus-blue
+      // ring with a soft inner glow that pulses twice and dissolves. Rides
+      // the focus tokens so it re-themes with the palette.
+      keyframes: {
+        rowLocate: {
+          "0%, 100%": { boxShadow: "inset 0 0 0 0 transparent" },
+          "12%, 42%": {
+            boxShadow:
+              "inset 0 0 0 1.5px {colors.focus-ring}, inset 0 0 16px {colors.focus-halo}",
+          },
+          "27%": {
+            boxShadow:
+              "inset 0 0 0 1.5px {colors.focus-halo}, inset 0 0 4px transparent",
+          },
+          "75%": {
+            boxShadow:
+              "inset 0 0 0 1px {colors.focus-halo}, inset 0 0 8px {colors.focus-halo}",
+          },
+        },
+      },
       tokens: {
         spacing: rhythm,
         sizes: rhythm,
