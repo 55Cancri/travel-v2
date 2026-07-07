@@ -1,7 +1,7 @@
 @layer reset, base, tokens, recipes, utilities;
 
 /* Consistent scrollbars for the outline pane (macOS swaps between overlay and
-   classic bars depending on input device / system setting — this normalizes
+   classic bars depending on input device / system setting. This normalizes
    both, and follows the theme). */
 .outline-pane {
   scrollbar-width: thin;
@@ -38,23 +38,40 @@
   z-index: 10;
 }
 
-/* Locked route waypoints (vias): accent diamonds. clip-path (not a rotated
-   transform) draws the diamond because maplibre owns the marker element's
-   transform. */
+/* Locked route waypoints (vias): accent diamonds. The wrapper is the hit
+   target (clip-path clips hit-testing, so the diamond alone is nearly
+   unclickable); the inner child is the visual. clip-path (not a rotated
+   transform) draws the diamond because maplibre owns the wrapper's
+   transform, and the hover scale rides the inner child for the same
+   reason. */
 .travel-via {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  cursor: grab;
+}
+.travel-via-diamond {
   width: 14px;
   height: 14px;
   background: var(--colors-accent);
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  cursor: grab;
+  transition:
+    transform 130ms ease,
+    background-color 130ms ease;
+}
+.travel-via:hover .travel-via-diamond {
+  transform: scale(1.3);
 }
 .travel-via-ghost {
-  opacity: 0.75;
   pointer-events: none;
+}
+.travel-via-ghost .travel-via-diamond {
+  opacity: 0.75;
 }
 /* Selected via: focus-blue fill and a glow that follows the diamond
    (filter drop-shadow respects clip-path where box-shadow would not). */
-.travel-via-selected {
+.travel-via-selected .travel-via-diamond {
   background: var(--colors-focus-ring);
   filter: drop-shadow(0 0 4px var(--colors-focus-ring));
 }

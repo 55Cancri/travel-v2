@@ -25,7 +25,7 @@ const LIGHT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const DARK_STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
 
 // Our own dark map theme. OpenFreeMap's "dark" is pure grayscale (asleep) and
-// "fiord" is aggressively blue — so we take dark's layer structure and repaint
+// "fiord" is aggressively blue, so we take dark's layer structure and repaint
 // it: warm near-black base matching the app's stone palette, night-teal water,
 // dark-green parks, amber-cast motorways, and brighter warm labels for
 // contrast. Paint overrides are keyed by layer id (checked against the style).
@@ -129,6 +129,19 @@ const stylePinElement = (el: HTMLDivElement, item: Item) => {
     el.appendChild(dot);
   }
   dot.style.cssText = `width:13px;height:13px;border-radius:50%;background:var(${KIND_META[item.kind].cssVar});box-shadow:var(--pin-dot-shadow);opacity:${dim ? 0.45 : 1};`;
+};
+
+// Via markers mirror the pin wrapper/inner split: the wrapper is the real
+// hit target (clip-path clips hit-testing, so a bare diamond is nearly
+// unclickable and near-misses fall through to the route hit layer), the
+// inner diamond is the visual.
+const viaElement = () => {
+  const el = document.createElement("div");
+  el.classList.add("travel-via");
+  const diamond = document.createElement("div");
+  diamond.classList.add("travel-via-diamond");
+  el.appendChild(diamond);
+  return el;
 };
 
 const escapeHtml = (value: string) =>
@@ -293,8 +306,8 @@ export function MapPane(props: {
         if (!grabbed) return;
         event.preventDefault();
         map.getCanvas().style.cursor = "grabbing";
-        const ghost = document.createElement("div");
-        ghost.classList.add("travel-via", "travel-via-ghost");
+        const ghost = viaElement();
+        ghost.classList.add("travel-via-ghost");
         const ghostMarker = new maplibregl.Marker({ element: ghost })
           .setLngLat(event.lngLat)
           .addTo(map);
@@ -450,7 +463,7 @@ export function MapPane(props: {
     };
   });
 
-  // Pins: create/update/remove by id — never touches the camera.
+  // Pins: create/update/remove by id, never touching the camera.
   React.useEffect(() => {
     const map = mapRef.current;
     const maplibregl = libRef.current;
@@ -658,8 +671,7 @@ export function MapPane(props: {
         }
         continue;
       }
-      const el = document.createElement("div");
-      el.classList.add("travel-via");
+      const el = viaElement();
       el.title =
         "Route waypoint (drag to adjust, click to select, Delete or double-click to remove)";
       el.addEventListener("click", (event) => {
