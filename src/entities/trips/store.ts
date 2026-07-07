@@ -1,9 +1,9 @@
 import * as React from "react";
 import { seed } from "./seed";
-import type { ContainerRef, Db, Item, ItemKind } from "./types";
+import type { ContainerRef, Db, Item, ItemKind, RouteVia } from "./types";
 
-// Module store, stockpile-v6 style: one snapshot, plain mutation functions,
-// useSyncExternalStore for React. Persistence is localStorage for now — the
+// Module store: one snapshot, plain mutation functions, useSyncExternalStore
+// for React. Persistence is localStorage for now — the
 // mutation surface is the seam where the real sync layer (outbox → Durable
 // Object → D1) slots in later without touching any component.
 
@@ -16,7 +16,10 @@ const load = (): Db | null => {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Db;
     return parsed.version === 1 ? parsed : null;
-  } catch {
+  } catch (error) {
+    // A corrupt stored db falls back to the seed; say so instead of
+    // silently discarding the owner's data.
+    console.warn("[trips] stored db unreadable, using seed:", error);
     return null;
   }
 };
@@ -268,5 +271,52 @@ export const moveItem = (ref: ContainerRef, fromIndex: number, toIndex: number) 
   if (moved === undefined) return;
   ids.splice(toIndex, 0, moved);
   db = withContainerItems(db, ref, ids);
+  emit();
+};
+
+// ---- route vias -----------------------------------------------------------
+
+const withDayVias = (dayId: string, vias: RouteVia[]): boolean => {
+  const day = db.days[dayId];
+  if (!day) return false;
+  db = { ...db, days: { ...db.days, [dayId]: { ...day, vias } } };
+  return true;
+};
+
+// insertAfterViaId places the new via directly after an existing one on the
+// same leg; omitted, it leads its anchor group (grabbed between the stop
+// and that leg's first via).
+export const addRouteVia = (
+  dayId: string,
+  via: { afterItemId: string; lng: number; lat: number },
+  insertAfterViaId?: string,
+) => {
+  const vias = Array.from(db.days[dayId]?.vias ?? []);
+  const entry: RouteVia = { id: newId(), ...via };
+  const anchorIdx = insertAfterViaId
+    ? vias.findIndex((v) => v.id === insertAfterViaId)
+    : -1;
+  if (anchorIdx >= 0) {
+    vias.splice(anchorIdx + 1, 0, entry);
+  } else {
+    const groupStart = vias.findIndex((v) => v.afterItemId === via.afterItemId);
+    vias.splice(groupStart >= 0 ? groupStart : vias.length, 0, entry);
+  }
+  if (!withDayVias(dayId, vias)) return null;
+  emit();
+  return entry.id;
+};
+
+export const moveRouteVia = (dayId: string, viaId: string, lng: number, lat: number) => {
+  const vias = (db.days[dayId]?.vias ?? []).map((v) =>
+    v.id === viaId ? { ...v, lng, lat } : v,
+  );
+  if (!withDayVias(dayId, vias)) return;
+  emit();
+};
+
+export const removeRouteVia = (dayId: string, viaId: string) => {
+  const vias = (db.days[dayId]?.vias ?? []).filter((v) => v.id !== viaId);
+  if (!withDayVias(dayId, vias)) return;
   emit();
 };

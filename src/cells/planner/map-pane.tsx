@@ -1,6 +1,17 @@
 import * as React from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { KIND_META, type Item } from "entities/trips/types";
+import { Block, Text } from "atoms";
+import { KIND_META, type Item, type RouteVia } from "entities/trips/types";
+import { addRouteVia, moveRouteVia, removeRouteVia } from "entities/trips/store";
+import {
+  buildWaypoints,
+  fetchRoadRoute,
+  legAt,
+  nearestPointOnLine,
+  straightRoute,
+  type RoadRoute,
+  type RouteWaypoint,
+} from "./route-plan";
 
 // The map is a projection of the plan. Camera moves are deliberate: it refits
 // ONLY when the scope changes (scopeKey), never because an item was edited or
@@ -14,7 +25,7 @@ const LIGHT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const DARK_STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
 
 // Our own dark map theme. OpenFreeMap's "dark" is pure grayscale (asleep) and
-// "fiord" is aggressively blue — so we take dark's layer structure and repaint
+// "fiord" is aggressively blue, so we take dark's layer structure and repaint
 // it: warm near-black base matching the app's stone palette, night-teal water,
 // dark-green parks, amber-cast motorways, and brighter warm labels for
 // contrast. Paint overrides are keyed by layer id (checked against the style).
@@ -120,6 +131,25 @@ const stylePinElement = (el: HTMLDivElement, item: Item) => {
   dot.style.cssText = `width:13px;height:13px;border-radius:50%;background:var(${KIND_META[item.kind].cssVar});box-shadow:var(--pin-dot-shadow);opacity:${dim ? 0.45 : 1};`;
 };
 
+// Via markers mirror the pin wrapper/inner split: the wrapper is the real
+// hit target (clip-path clips hit-testing, so a bare diamond is nearly
+// unclickable and near-misses fall through to the route hit layer), the
+// inner diamond is the visual.
+const viaElement = () => {
+  const el = document.createElement("div");
+  el.classList.add("travel-via");
+  // Focusable so selecting it can move focus off whatever had it. Maplibre
+  // prevents mousedown defaults over the map, so a click never blurs a
+  // focused row textarea on its own, and the Delete/Backspace listener
+  // (rightly) refuses to remove pins while a text field has focus.
+  el.tabIndex = -1;
+  el.setAttribute("role", "button");
+  const diamond = document.createElement("div");
+  diamond.classList.add("travel-via-diamond");
+  el.appendChild(diamond);
+  return el;
+};
+
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
@@ -136,6 +166,9 @@ const popupHtml = (item: Item) => {
 export function MapPane(props: {
   items: Item[];
   routeItemIds: string[] | null;
+  routeDayId: string | null;
+  routeVias: RouteVia[] | null;
+  paneResizing: boolean;
   scopeKey: string;
   onPinClick: (itemId: string, zoom: boolean) => void;
   apiRef: React.RefObject<MapApi | null>;
@@ -148,9 +181,21 @@ export function MapPane(props: {
   const popupRef = React.useRef<import("maplibre-gl").Popup | null>(null);
   const libRef = React.useRef<typeof import("maplibre-gl") | null>(null);
   const [ready, storeReady] = React.useState(false);
+  // Routing failures surface here instead of dying in the console: the pane
+  // wears a chip naming why the line is straight.
+  const [routeNotice, storeRouteNotice] = React.useState<string | null>(null);
   const [styleTick, storeStyleTick] = React.useState(0);
   const onPinClickRef = React.useRef(props.onPinClick);
   onPinClickRef.current = props.onPinClick;
+  const paneResizingRef = React.useRef(props.paneResizing);
+  paneResizingRef.current = props.paneResizing;
+
+  // One clean canvas resize when the divider settles; the observer skips
+  // frames while the drag is live (the canvas stretches with the pane,
+  // stable, instead of repaint-flashing every frame).
+  React.useEffect(() => {
+    if (!props.paneResizing) mapRef.current?.resize();
+  }, [props.paneResizing]);
 
   const pins: Pin[] = props.items
     .filter((entry) => entry.place && entry.status !== "cancelled")
@@ -158,13 +203,17 @@ export function MapPane(props: {
   const pinSig = pins
     .map((pin) => `${pin.item.id}:${pin.lng}:${pin.lat}:${pin.item.status}:${pin.item.kind}`)
     .join("|");
-  const routeSig = `${(props.routeItemIds ?? ["-"]).join(",")}§${pinSig}`;
+  const viaSig = (props.routeVias ?? [])
+    .map((via) => `${via.id}:${via.afterItemId}:${via.lng}:${via.lat}`)
+    .join("|");
+  const routeSig = `${props.routeDayId ?? "-"}§${(props.routeItemIds ?? ["-"]).join(",")}§${viaSig}§${pinSig}`;
   const pinsRef = React.useRef(pins);
   pinsRef.current = pins;
 
   React.useEffect(() => {
     let disposed = false;
     let observer: MutationObserver | null = null;
+    const pageListeners = new AbortController();
     (async () => {
       const maplibregl = (await import("maplibre-gl")).default;
       if (disposed || !containerRef.current) return;
@@ -178,6 +227,10 @@ export function MapPane(props: {
         center: [4.89, 52.37],
         zoom: 11,
         attributionControl: { compact: true },
+        // Maplibre's own ResizeObserver would repaint on every frame of a
+        // divider drag; the observer below owns resizing instead (rAF
+        // coalesced, held during drags, one clean resize on release).
+        trackResize: false,
       });
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
       mapRef.current = map;
@@ -185,7 +238,140 @@ export function MapPane(props: {
       map.on("error", (event) => console.error("[map]", event.error?.message ?? event));
       // Tap-away (and click-away) dismisses the tooltip; pin clicks stop
       // propagation so they never count as away.
-      map.on("click", () => closePopup());
+      map.on("click", () => {
+        closePopup();
+        if (selectedViaIdRef.current) {
+          selectedViaIdRef.current = null;
+          syncViaSelection();
+        }
+      });
+      // Delete / Backspace removes the selected via, unless focus is in a
+      // text field (list rows are textareas; typing must never nuke pins).
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key !== "Delete" && event.key !== "Backspace") return;
+          const viaId = selectedViaIdRef.current;
+          const dayId = routeEditRef.current.dayId;
+          if (!viaId || !dayId) return;
+          const target = event.target as HTMLElement | null;
+          if (
+            target &&
+            (target.tagName === "INPUT" ||
+              target.tagName === "TEXTAREA" ||
+              target.isContentEditable)
+          ) {
+            return;
+          }
+          event.preventDefault();
+          selectedViaIdRef.current = null;
+          removeRouteVia(dayId, viaId);
+        },
+        { signal: pageListeners.signal },
+      );
+      // Route editing: grab the line to bend the day's route. The drag
+      // shows a ghost diamond and previews the re-fit (throttled so the
+      // public router sees at most ~2 requests a second); release locks
+      // the via into the day. A grab that never moves toggles the route
+      // highlight instead.
+      map.on("mouseenter", "day-route-hit", () => {
+        map.getCanvas().style.cursor = "grab";
+      });
+      // The grab affordance: a handle dot rides the line under the cursor
+      // (snapped onto the route, not floating beside it).
+      const handleEl = document.createElement("div");
+      handleEl.classList.add("travel-route-handle");
+      const handleMarker = new maplibregl.Marker({ element: handleEl });
+      let handleShown = false;
+      const hideHandle = () => {
+        if (!handleShown) return;
+        handleMarker.remove();
+        handleShown = false;
+      };
+      map.on("mousemove", "day-route-hit", (event) => {
+        const { road } = routeEditRef.current;
+        const snapped = nearestPointOnLine(road.line, event.lngLat.lng, event.lngLat.lat);
+        if (!snapped) return;
+        // Position before the first addTo: adding an unpositioned marker
+        // throws inside maplibre and strands the element at the origin.
+        handleMarker.setLngLat(snapped);
+        if (!handleShown) {
+          handleMarker.addTo(map);
+          handleShown = true;
+        }
+      });
+      map.on("mouseleave", "day-route-hit", () => {
+        map.getCanvas().style.cursor = "";
+        hideHandle();
+      });
+      map.on("mousedown", "day-route-hit", (event) => {
+        hideHandle();
+        const { dayId, waypoints, road } = routeEditRef.current;
+        if (!dayId || waypoints.length < 2) return;
+        const grabbed = legAt(road, waypoints, event.lngLat.lng, event.lngLat.lat);
+        if (!grabbed) return;
+        event.preventDefault();
+        map.getCanvas().style.cursor = "grabbing";
+        const ghost = viaElement();
+        ghost.classList.add("travel-via-ghost");
+        const ghostMarker = new maplibregl.Marker({ element: ghost })
+          .setLngLat(event.lngLat)
+          .addTo(map);
+        const startPoint = event.point;
+        let moved = false;
+        let lastPreview = 0;
+        let previewAbort: AbortController | null = null;
+        const tentativeWaypoints = (lng: number, lat: number) =>
+          waypoints.toSpliced(grabbed.legIndex + 1, 0, {
+            kind: "via",
+            via: { id: "ghost", afterItemId: grabbed.afterItemId, lng, lat },
+          });
+        const onMove = (move: import("maplibre-gl").MapMouseEvent) => {
+          if (
+            Math.abs(move.point.x - startPoint.x) > 3 ||
+            Math.abs(move.point.y - startPoint.y) > 3
+          ) {
+            moved = true;
+          }
+          ghostMarker.setLngLat(move.lngLat);
+          const now = performance.now();
+          if (!moved || now - lastPreview < 400) return;
+          lastPreview = now;
+          previewAbort?.abort();
+          previewAbort = new AbortController();
+          fetchRoadRoute(tentativeWaypoints(move.lngLat.lng, move.lngLat.lat), previewAbort.signal)
+            .then((road) => drawRoute(road.line))
+            .catch((error: unknown) => {
+              // Aborted previews are just the next drag frame taking over.
+              if (previewAbort?.signal.aborted) return;
+              console.warn("[map] route preview failed:", error);
+            });
+        };
+        map.on("mousemove", onMove);
+        map.once("mouseup", (up) => {
+          map.off("mousemove", onMove);
+          previewAbort?.abort();
+          ghostMarker.remove();
+          map.getCanvas().style.cursor = "grab";
+          if (!moved) {
+            // A still click toggles the route highlight.
+            routeHighlightedRef.current = !routeHighlightedRef.current;
+            const emphatic = routeHighlightedRef.current;
+            if (map.getLayer("day-route-line")) {
+              map.setPaintProperty("day-route-line", "line-width", emphatic ? 4 : 2.5);
+              map.setPaintProperty("day-route-line", "line-opacity", emphatic ? 1 : 0.85);
+            }
+            return;
+          }
+          // The store change flows back as new routeVias props, and the
+          // route effect refits through the locked via.
+          addRouteVia(
+            dayId,
+            { afterItemId: grabbed.afterItemId, lng: up.lngLat.lng, lat: up.lngLat.lat },
+            grabbed.insertAfterViaId,
+          );
+        });
+      });
       map.on("load", () => {
         if (!disposed) storeReady(true);
       });
@@ -193,10 +379,10 @@ export function MapPane(props: {
       // resize per frame keeps the map from flashing mid-drag.
       let resizeFrame = 0;
       const resizeObserver = new ResizeObserver(() => {
-        if (resizeFrame) return;
+        if (paneResizingRef.current || resizeFrame) return;
         resizeFrame = requestAnimationFrame(() => {
           resizeFrame = 0;
-          map.resize();
+          if (!paneResizingRef.current) map.resize();
         });
       });
       resizeObserver.observe(containerRef.current);
@@ -222,6 +408,7 @@ export function MapPane(props: {
     })();
     return () => {
       disposed = true;
+      pageListeners.abort();
       observer?.disconnect();
       mapRef.current?.remove();
       mapRef.current = null;
@@ -282,7 +469,7 @@ export function MapPane(props: {
     };
   });
 
-  // Pins: create/update/remove by id — never touches the camera.
+  // Pins: create/update/remove by id, never touching the camera.
   React.useEffect(() => {
     const map = mapRef.current;
     const maplibregl = libRef.current;
@@ -370,39 +557,183 @@ export function MapPane(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, pinSig]);
 
-  // Route line for the selected day, in plan order.
+  // What the drag handlers need about the current route, refreshed by the
+  // route effect: the day being edited, its waypoints, and the drawn line.
+  const routeEditRef = React.useRef<{
+    dayId: string | null;
+    waypoints: RouteWaypoint[];
+    road: RoadRoute;
+  }>({ dayId: null, waypoints: [], road: { line: [], waypointVertex: [] } });
+  const routeHighlightedRef = React.useRef(false);
+
+  const drawRoute = (coordinates: number[][]) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const routeData = {
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "LineString" as const, coordinates },
+    };
+    const source = map.getSource("day-route") as
+      | import("maplibre-gl").GeoJSONSource
+      | undefined;
+    if (source) {
+      source.setData(routeData);
+      return;
+    }
+    map.addSource("day-route", { type: "geojson", data: routeData });
+    map.addLayer({
+      id: "day-route-line",
+      type: "line",
+      source: "day-route",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": "#C05B3F",
+        "line-width": 2.5,
+        "line-dasharray": [0.5, 2.7],
+        "line-opacity": 0.85,
+      },
+    });
+    // A wide invisible twin makes the 2.5px line grabbable without fat
+    // rendering; all route pointer interactions bind to it.
+    map.addLayer({
+      id: "day-route-hit",
+      type: "line",
+      source: "day-route",
+      paint: { "line-width": 18, "line-opacity": 0.001 },
+    });
+  };
+
+  // Route line for the selected day, in plan order with its locked vias
+  // interleaved: the straight dashed line draws immediately so scope
+  // changes feel instant, then swaps to the road-following walking route
+  // once the router answers.
   React.useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
     const currentPins = pinsRef.current;
-    const routeCoords = (props.routeItemIds ?? [])
+    const stops = (props.routeItemIds ?? [])
       .map((id) => currentPins.find((pin) => pin.item.id === id))
       .filter((pin): pin is Pin => pin !== undefined)
-      .map((pin) => [pin.lng, pin.lat]);
-    const routeData = {
-      type: "Feature" as const,
-      properties: {},
-      geometry: { type: "LineString" as const, coordinates: routeCoords },
+      .map((pin) => ({ itemId: pin.item.id, lng: pin.lng, lat: pin.lat }));
+    const waypoints = buildWaypoints(stops, props.routeVias ?? []);
+    routeEditRef.current = {
+      dayId: props.routeDayId,
+      waypoints,
+      road: straightRoute(waypoints),
     };
-    const source = map.getSource("day-route") as import("maplibre-gl").GeoJSONSource | undefined;
-    if (source) {
-      source.setData(routeData);
-    } else {
-      map.addSource("day-route", { type: "geojson", data: routeData });
-      map.addLayer({
-        id: "day-route-line",
-        type: "line",
-        source: "day-route",
-        paint: {
-          "line-color": "#C05B3F",
-          "line-width": 2.5,
-          "line-dasharray": [2, 1.6],
-          "line-opacity": 0.85,
-        },
+    drawRoute(routeEditRef.current.road.line);
+    if (waypoints.length < 2) return;
+    const controller = new AbortController();
+    fetchRoadRoute(waypoints, controller.signal)
+      .then((road) => {
+        routeEditRef.current = { dayId: props.routeDayId, waypoints, road };
+        drawRoute(road.line);
+        storeRouteNotice(null);
+      })
+      .catch((error: unknown) => {
+        // A scope change aborts the stale request: flow control, not a
+        // failure. Anything else keeps the straight line (offline and
+        // router hiccups always exist) and says so, on screen.
+        if (controller.signal.aborted) return;
+        console.warn("[map] road route failed, keeping straight line:", error);
+        storeRouteNotice("Road routing unreachable · showing straight lines");
       });
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, styleTick, routeSig]);
+
+  // Locked vias render as draggable diamonds: drag moves the via (and the
+  // route re-fits through it), double-click removes it.
+  const viaMarkersRef = React.useRef(new Map<string, import("maplibre-gl").Marker>());
+  const selectedViaIdRef = React.useRef<string | null>(null);
+  const syncViaSelection = () => {
+    for (const [id, marker] of viaMarkersRef.current) {
+      marker
+        .getElement()
+        .classList.toggle("travel-via-selected", id === selectedViaIdRef.current);
+    }
+  };
+  React.useEffect(() => {
+    const map = mapRef.current;
+    const maplibregl = libRef.current;
+    if (!ready || !map || !maplibregl) return;
+    const dayId = props.routeDayId;
+    const vias = dayId ? (props.routeVias ?? []) : [];
+    const keep = new Set(vias.map((via) => via.id));
+    for (const [id, marker] of viaMarkersRef.current) {
+      if (!keep.has(id)) {
+        marker.remove();
+        viaMarkersRef.current.delete(id);
+        if (selectedViaIdRef.current === id) selectedViaIdRef.current = null;
+      }
+    }
+    for (const via of vias) {
+      const existing = viaMarkersRef.current.get(via.id);
+      if (existing) {
+        // Skip while the owner is mid-drag; setLngLat would yank it back.
+        if (!existing.isDraggable() || existing.getLngLat().lng !== via.lng) {
+          existing.setLngLat([via.lng, via.lat]);
+        }
+        continue;
+      }
+      const el = viaElement();
+      el.title =
+        "Route waypoint (drag to adjust, click to select, Delete or double-click to remove)";
+      el.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const selecting = selectedViaIdRef.current !== via.id;
+        selectedViaIdRef.current = selecting ? via.id : null;
+        syncViaSelection();
+        // Take focus so the next Delete/Backspace unambiguously targets
+        // this via, not a row textarea the focus was parked in.
+        if (selecting) el.focus({ preventScroll: true });
+      });
+      const marker = new maplibregl.Marker({ element: el, draggable: true })
+        .setLngLat([via.lng, via.lat])
+        .addTo(map);
+      marker.on("dragend", () => {
+        if (!dayId) return;
+        const at = marker.getLngLat();
+        moveRouteVia(dayId, via.id, at.lng, at.lat);
+      });
+      el.addEventListener("dblclick", (event) => {
+        event.stopPropagation();
+        if (dayId) removeRouteVia(dayId, via.id);
+      });
+      viaMarkersRef.current.set(via.id, marker);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, routeSig]);
+
+  // Marching ants: the classic dasharray walk, skipped for reduced motion
+  // (the static dashes remain).
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Small dashes and fine 0.1-unit phase steps: the coarse classic table
+    // reads as a strobe, this reads as a crawl. Dash units multiply by the
+    // line width, so DASH 1.4 is a ~3.5px dot at the 2.5px line.
+    const DASH = 0.5;
+    const GAP = 2.7;
+    const PHASE_STEP = 0.1;
+    const dashSeq: number[][] = [];
+    for (let x = 0; x < DASH; x += PHASE_STEP) dashSeq.push([x, GAP, DASH - x]);
+    for (let y = 0; y < GAP; y += PHASE_STEP) dashSeq.push([0, y, DASH, GAP - y]);
+    let step = -1;
+    let frame = 0;
+    const tick = (timestamp: number) => {
+      const next = Math.floor(timestamp / 35) % dashSeq.length;
+      if (next !== step && map.getLayer("day-route-line")) {
+        step = next;
+        map.setPaintProperty("day-route-line", "line-dasharray", dashSeq[next]);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [ready, styleTick]);
 
   // Camera: fit ONLY when the scope changes. City-to-city jumps go instantly.
   React.useEffect(() => {
@@ -433,13 +764,38 @@ export function MapPane(props: {
   }, [ready, props.scopeKey]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: "100%",
-        height: "100%",
-        background: "var(--colors-surface-muted)",
-      }}
-    />
+    <Block grid w="100%" h="100%">
+      <div
+        ref={containerRef}
+        style={{
+          gridArea: "1 / 1",
+          width: "100%",
+          height: "100%",
+          background: "var(--colors-surface-muted)",
+          // While a divider drag holds the canvas at its old size, the
+          // overflowing edge clips instead of spilling into the outline.
+          overflow: "hidden",
+        }}
+      />
+      {routeNotice ? (
+        <Text
+          as="span"
+          gridArea="1 / 1"
+          placeSelf="end start"
+          zIndex={5}
+          m="sm"
+          px="sm"
+          py="0.15lh"
+          borderRadius="9999px"
+          bg="surface-strong"
+          color="text-on-strong"
+          fontSize="xs"
+          fontWeight={550}
+          pointerEvents="none"
+        >
+          {routeNotice}
+        </Text>
+      ) : null}
+    </Block>
   );
 }
