@@ -63,6 +63,11 @@
 .travel-via:hover .travel-via-diamond {
   transform: scale(1.3);
 }
+/* Selection focuses the wrapper (so Delete targets it); the selected
+   diamond's glow is the focus indicator, not a box outline. */
+.travel-via:focus {
+  outline: none;
+}
 .travel-via-ghost {
   pointer-events: none;
 }

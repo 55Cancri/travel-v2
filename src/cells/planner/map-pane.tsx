@@ -138,6 +138,12 @@ const stylePinElement = (el: HTMLDivElement, item: Item) => {
 const viaElement = () => {
   const el = document.createElement("div");
   el.classList.add("travel-via");
+  // Focusable so selecting it can move focus off whatever had it. Maplibre
+  // prevents mousedown defaults over the map, so a click never blurs a
+  // focused row textarea on its own, and the Delete/Backspace listener
+  // (rightly) refuses to remove pins while a text field has focus.
+  el.tabIndex = -1;
+  el.setAttribute("role", "button");
   const diamond = document.createElement("div");
   diamond.classList.add("travel-via-diamond");
   el.appendChild(diamond);
@@ -676,8 +682,12 @@ export function MapPane(props: {
         "Route waypoint (drag to adjust, click to select, Delete or double-click to remove)";
       el.addEventListener("click", (event) => {
         event.stopPropagation();
-        selectedViaIdRef.current = selectedViaIdRef.current === via.id ? null : via.id;
+        const selecting = selectedViaIdRef.current !== via.id;
+        selectedViaIdRef.current = selecting ? via.id : null;
         syncViaSelection();
+        // Take focus so the next Delete/Backspace unambiguously targets
+        // this via, not a row textarea the focus was parked in.
+        if (selecting) el.focus({ preventScroll: true });
       });
       const marker = new maplibregl.Marker({ element: el, draggable: true })
         .setLngLat([via.lng, via.lat])
