@@ -94,11 +94,22 @@ type MarkerEntry = {
 // by the transition duration). The inner dot owns the hover pop and the
 // opacity fade, and the wrapper doubles as a finger-friendly hit area
 // larger than the visible dot.
+//
+// The wrapper is SHARED with maplibre: it owns the inline transform and its
+// own classes on this same element. Styling here must therefore be additive
+// (classList.add, individual style properties), never a className or
+// cssText assignment. An assignment wipes the positioning transform and the
+// maplibregl-marker class, and every pin sits stacked at the container
+// origin until the next camera move re-places it. The inner dot is entirely
+// ours, so cssText is fine there.
 const stylePinElement = (el: HTMLDivElement, item: Item) => {
   const dim = item.status === "done";
-  el.className = "travel-pin";
-  el.style.cssText =
-    "width:22px;height:22px;display:grid;place-items:center;cursor:pointer;";
+  el.classList.add("travel-pin");
+  el.style.width = "22px";
+  el.style.height = "22px";
+  el.style.display = "grid";
+  el.style.placeItems = "center";
+  el.style.cursor = "pointer";
   el.title = item.place?.name ?? item.text;
   let dot = el.firstElementChild as HTMLSpanElement | null;
   if (!dot) {
@@ -214,20 +225,47 @@ export function MapPane(props: {
     };
   }, []);
 
+  const popupLeaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const openPopupFor = (itemId: string) => {
     const map = mapRef.current;
     const maplibregl = libRef.current;
     const entry = markersRef.current.get(itemId);
     if (!map || !maplibregl || !entry) return;
+    // A pending leave would remove the popup we are about to show.
+    if (popupLeaveTimer.current) {
+      clearTimeout(popupLeaveTimer.current);
+      popupLeaveTimer.current = null;
+    }
     popupRef.current ??= new maplibregl.Popup({
       offset: 14,
       closeButton: false,
       closeOnClick: false,
     });
+    // Re-adding builds fresh popup DOM, so the settle animation replays
+    // even when hover moves straight from one pin to the next.
+    if (popupRef.current.isOpen()) popupRef.current.remove();
     popupRef.current
       .setLngLat(entry.marker.getLngLat())
       .setHTML(popupHtml(entry.item))
       .addTo(map);
+  };
+
+  const closePopup = () => {
+    const popup = popupRef.current;
+    if (!popup || !popup.isOpen() || popupLeaveTimer.current) return;
+    const el = popup.getElement();
+    if (!el) {
+      popup.remove();
+      return;
+    }
+    el.classList.add("popup-leave");
+    // Outlives the popup-shuffle-out animation by a hair, so the card is
+    // fully gone before the element is torn down.
+    popupLeaveTimer.current = setTimeout(() => {
+      popupLeaveTimer.current = null;
+      popup.remove();
+    }, 210);
   };
 
   React.useEffect(() => {
@@ -269,7 +307,7 @@ export function MapPane(props: {
       // at the current zoom (⌘-click flies in via focusItem instead, so it
       // skips the recenter to avoid two competing camera moves).
       el.addEventListener("mouseenter", () => openPopupFor(pin.item.id));
-      el.addEventListener("mouseleave", () => popupRef.current?.remove());
+      el.addEventListener("mouseleave", () => closePopup());
       el.addEventListener("click", (event) => {
         const zoom = event.metaKey || event.ctrlKey;
         if (!zoom) {
