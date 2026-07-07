@@ -1062,6 +1062,13 @@ export function MapPane(props: {
       dot.style.display = "grid";
       dot.style.placeItems = "center";
       dot.style.fontSize = "10px";
+      // The map container's 20px line-height overflows the dot and shoves
+      // the digit off center; a tight line box lets the grid truly center it.
+      dot.style.lineHeight = "1";
+      // Digits use none of the font's descent, so a geometrically centered
+      // line box still reads half a pixel low. The padding lifts the ink to
+      // the optical center (measured against canvas font metrics).
+      dot.style.paddingBottom = "1px";
       dot.style.fontWeight = "650";
       dot.style.color = "#FFFFFF";
       const endpoint = leg !== null && (order === leg || order === leg + 1);
