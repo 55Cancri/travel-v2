@@ -1,6 +1,5 @@
 // Booking marker for plan-row detail lines (confirmation codes, phone):
-// a stub ticket with notched edges and a perforation line. Stroke weight
-// matches the sm text these lines carry.
+// a stub ticket with notched edges and a perforation line.
 export function Ticket(props: { size?: number }) {
   const size = props.size ?? 14;
   return (
@@ -10,7 +9,7 @@ export function Ticket(props: { size?: number }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.75"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
