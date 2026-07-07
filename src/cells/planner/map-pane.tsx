@@ -1,16 +1,15 @@
 import * as React from "react";
+import type { Feature } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Block, Text } from "atoms";
 import { KIND_META, type Item, type RouteVia } from "entities/trips/types";
 import { addRouteVia, moveRouteVia, removeRouteVia } from "entities/trips/store";
 import {
-  buildWaypoints,
   fetchRoadRoute,
   legAt,
   nearestPointOnLine,
-  straightRoute,
-  type RoadRoute,
-  type RouteWaypoint,
+  planDayRoute,
+  type DayRoutePart,
 } from "./route-plan";
 
 // The map is a projection of the plan. Camera moves are deliberate: it refits
@@ -150,6 +149,64 @@ const viaElement = () => {
   return el;
 };
 
+const lineFeature = (
+  coordinates: number[][],
+  properties: {
+    kind: string;
+    chain: number;
+    color?: string;
+    name?: string;
+    vehicle?: string;
+    headsign?: string;
+    times?: string;
+    next?: string;
+    live?: boolean;
+  },
+): Feature => ({
+  type: "Feature",
+  properties,
+  geometry: { type: "LineString", coordinates },
+});
+
+const pointFeature = (
+  coordinates: number[],
+  properties: { kind: string; chain: number; color: string; name: string; time?: string },
+): Feature => ({
+  type: "Feature",
+  properties,
+  geometry: { type: "Point", coordinates },
+});
+
+// Wire instants render as the stop's own wall clock.
+const clockTime = (iso: string, tz: string) =>
+  Temporal.Instant.from(iso)
+    .toZonedDateTimeISO(tz)
+    .toPlainTime()
+    .toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+
+// A solid arrow reads at tooltip size where the → glyph looks spindly.
+const ARROW_SVG = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:4px"><path d="M4 11h12.17l-5.58-5.59L12 4l8 8-8 8-1.41-1.41L16.17 13H4z"/></svg>`;
+
+// Route widths scale with zoom: streets grow 4x per two zoom levels while
+// a fixed-width line stays hairline-thin, so a route that reads fine at
+// city scale visually vanishes zoomed to a doorstep. The dash pattern is
+// in line-width units, so the ants scale along automatically.
+const zoomWidth = (base: number, high: number) =>
+  [
+    "interpolate",
+    ["exponential", 1.6],
+    ["zoom"],
+    15,
+    base,
+    20,
+    high,
+  ] as unknown as number;
+
+// The editable walking chains in draw order; a rendered feature's `chain`
+// property indexes into this list.
+const walkChains = (parts: DayRoutePart[]) =>
+  parts.filter((part): part is Extract<DayRoutePart, { kind: "chain" }> => part.kind === "chain");
+
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
@@ -167,6 +224,8 @@ export function MapPane(props: {
   items: Item[];
   routeItemIds: string[] | null;
   routeDayId: string | null;
+  // The day's ISO date: transit rides are planned against its schedules.
+  routeDate: string | null;
   routeVias: RouteVia[] | null;
   paneResizing: boolean;
   scopeKey: string;
@@ -206,7 +265,7 @@ export function MapPane(props: {
   const viaSig = (props.routeVias ?? [])
     .map((via) => `${via.id}:${via.afterItemId}:${via.lng}:${via.lat}`)
     .join("|");
-  const routeSig = `${props.routeDayId ?? "-"}§${(props.routeItemIds ?? ["-"]).join(",")}§${viaSig}§${pinSig}`;
+  const routeSig = `${props.routeDayId ?? "-"}§${props.routeDate ?? "-"}§${(props.routeItemIds ?? ["-"]).join(",")}§${viaSig}§${pinSig}`;
   const pinsRef = React.useRef(pins);
   pinsRef.current = pins;
 
@@ -269,6 +328,80 @@ export function MapPane(props: {
         },
         { signal: pageListeners.signal },
       );
+      // Ride hover: name what the colored line IS ("Bus 80 → Zandvoort",
+      // scheduled times, a live badge when the feed is real-time), in the
+      // same inverted tooltip the pins use. Stop dots get their own
+      // name-and-time tooltip and win over the line underneath them. The
+      // shared popup follows the cursor; content only re-renders when the
+      // feature under it changes.
+      const ridePopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 10,
+      });
+      let rideShownHtml = "";
+      const followCursor = (html: string, lngLat: import("maplibre-gl").LngLat) => {
+        if (html !== rideShownHtml) {
+          ridePopup.setHTML(html);
+          rideShownHtml = html;
+        }
+        ridePopup.setLngLat(lngLat);
+        if (!ridePopup.isOpen()) ridePopup.addTo(map);
+      };
+      map.on("mousemove", "day-route-ride-hit", (event) => {
+        // The stop handler owns the popup while a dot is under the cursor.
+        if (map.queryRenderedFeatures(event.point, { layers: ["day-route-stops-hit"] }).length) {
+          return;
+        }
+        const ride = event.features?.[0]?.properties ?? {};
+        const title = [ride.vehicle, ride.name].filter(Boolean).join(" ") || "Transit ride";
+        const liveBadge =
+          ride.live === true
+            ? `<span style="color:#4ADE80;font-size:0.8em;margin-left:6px">● live</span>`
+            : "";
+        const headsign = ride.headsign
+          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${ARROW_SVG}${escapeHtml(ride.headsign)}</div>`
+          : "";
+        const times = ride.times
+          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(ride.times)}</div>`
+          : "";
+        const next = ride.next
+          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">Next ${escapeHtml(ride.next)}</div>`
+          : "";
+        followCursor(
+          `<div style="font-weight:600">${escapeHtml(title)}${liveBadge}</div>${headsign}${times}${next}`,
+          event.lngLat,
+        );
+      });
+      map.on("mouseleave", "day-route-ride-hit", (event) => {
+        // Leaving the line onto one of its stops hands the popup over
+        // instead of blinking it away (the leave fires after the sibling
+        // layer's move on the same pointer event).
+        if (map.queryRenderedFeatures(event.point, { layers: ["day-route-stops-hit"] }).length) {
+          return;
+        }
+        ridePopup.remove();
+        rideShownHtml = "";
+      });
+      map.on("mousemove", "day-route-stops-hit", (event) => {
+        const stop = event.features?.[0]?.properties ?? {};
+        if (!stop.name) return;
+        const time = stop.time
+          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(stop.time)}</div>`
+          : "";
+        followCursor(
+          `<div style="font-weight:600">${escapeHtml(stop.name)}</div>${time}`,
+          event.lngLat,
+        );
+      });
+      map.on("mouseleave", "day-route-stops-hit", (event) => {
+        if (map.queryRenderedFeatures(event.point, { layers: ["day-route-ride-hit"] }).length) {
+          rideShownHtml = "";
+          return;
+        }
+        ridePopup.remove();
+        rideShownHtml = "";
+      });
       // Route editing: grab the line to bend the day's route. The drag
       // shows a ghost diamond and previews the re-fit (throttled so the
       // public router sees at most ~2 requests a second); release locks
@@ -289,8 +422,10 @@ export function MapPane(props: {
         handleShown = false;
       };
       map.on("mousemove", "day-route-hit", (event) => {
-        const { road } = routeEditRef.current;
-        const snapped = nearestPointOnLine(road.line, event.lngLat.lng, event.lngLat.lat);
+        const chainIdx = Number(event.features?.[0]?.properties?.chain ?? -1);
+        const chain = walkChains(routeEditRef.current.parts)[chainIdx];
+        if (!chain) return;
+        const snapped = nearestPointOnLine(chain.road.line, event.lngLat.lng, event.lngLat.lat);
         if (!snapped) return;
         // Position before the first addTo: adding an unpositioned marker
         // throws inside maplibre and strands the element at the origin.
@@ -306,9 +441,14 @@ export function MapPane(props: {
       });
       map.on("mousedown", "day-route-hit", (event) => {
         hideHandle();
-        const { dayId, waypoints, road } = routeEditRef.current;
-        if (!dayId || waypoints.length < 2) return;
-        const grabbed = legAt(road, waypoints, event.lngLat.lng, event.lngLat.lat);
+        const { dayId, parts } = routeEditRef.current;
+        const chainIdx = Number(event.features?.[0]?.properties?.chain ?? -1);
+        const chain = walkChains(parts)[chainIdx];
+        if (!dayId || !chain || chain.waypoints.length < 2) return;
+        // By index, not identity: a chain's own road fetch can land
+        // mid-drag and replace the object in `parts`.
+        const partIdx = parts.indexOf(chain);
+        const grabbed = legAt(chain.road, chain.waypoints, event.lngLat.lng, event.lngLat.lat);
         if (!grabbed) return;
         event.preventDefault();
         map.getCanvas().style.cursor = "grabbing";
@@ -322,7 +462,7 @@ export function MapPane(props: {
         let lastPreview = 0;
         let previewAbort: AbortController | null = null;
         const tentativeWaypoints = (lng: number, lat: number) =>
-          waypoints.toSpliced(grabbed.legIndex + 1, 0, {
+          chain.waypoints.toSpliced(grabbed.legIndex + 1, 0, {
             kind: "via",
             via: { id: "ghost", afterItemId: grabbed.afterItemId, lng, lat },
           });
@@ -340,7 +480,9 @@ export function MapPane(props: {
           previewAbort?.abort();
           previewAbort = new AbortController();
           fetchRoadRoute(tentativeWaypoints(move.lngLat.lng, move.lngLat.lat), previewAbort.signal)
-            .then((road) => drawRoute(road.line))
+            .then((road) =>
+              drawRoute(parts.map((part, i) => (i === partIdx ? { ...chain, road } : part))),
+            )
             .catch((error: unknown) => {
               // Aborted previews are just the next drag frame taking over.
               if (previewAbort?.signal.aborted) return;
@@ -354,12 +496,25 @@ export function MapPane(props: {
           ghostMarker.remove();
           map.getCanvas().style.cursor = "grab";
           if (!moved) {
-            // A still click toggles the route highlight.
+            // A still click toggles the route highlight, walks and rides
+            // together.
             routeHighlightedRef.current = !routeHighlightedRef.current;
             const emphatic = routeHighlightedRef.current;
             if (map.getLayer("day-route-line")) {
-              map.setPaintProperty("day-route-line", "line-width", emphatic ? 4 : 2.5);
+              map.setPaintProperty(
+                "day-route-line",
+                "line-width",
+                emphatic ? zoomWidth(4, 16) : zoomWidth(2.5, 10),
+              );
               map.setPaintProperty("day-route-line", "line-opacity", emphatic ? 1 : 0.85);
+            }
+            if (map.getLayer("day-route-ride")) {
+              map.setPaintProperty(
+                "day-route-ride",
+                "line-width",
+                emphatic ? zoomWidth(4.5, 18) : zoomWidth(3, 12),
+              );
+              map.setPaintProperty("day-route-ride", "line-opacity", emphatic ? 1 : 0.8);
             }
             return;
           }
@@ -558,56 +713,154 @@ export function MapPane(props: {
   }, [ready, styleTick, pinSig]);
 
   // What the drag handlers need about the current route, refreshed by the
-  // route effect: the day being edited, its waypoints, and the drawn line.
-  const routeEditRef = React.useRef<{
-    dayId: string | null;
-    waypoints: RouteWaypoint[];
-    road: RoadRoute;
-  }>({ dayId: null, waypoints: [], road: { line: [], waypointVertex: [] } });
+  // route effect: the day being edited and its drawn parts. Chains are
+  // addressed by the `chain` property carried on their rendered features.
+  const routeEditRef = React.useRef<{ dayId: string | null; parts: DayRoutePart[] }>({
+    dayId: null,
+    parts: [],
+  });
   const routeHighlightedRef = React.useRef(false);
 
-  const drawRoute = (coordinates: number[][]) => {
+  const drawRoute = (parts: DayRoutePart[]) => {
     const map = mapRef.current;
     if (!map) return;
-    const routeData = {
-      type: "Feature" as const,
-      properties: {},
-      geometry: { type: "LineString" as const, coordinates },
-    };
+    // Rides without a brand color get the transport steel blue, picked per
+    // theme here because layer paint can't read CSS variables (the theme
+    // swap re-runs the route effect, so this stays in sync).
+    const rideFallback =
+      document.documentElement.dataset.theme === "dark" ? "#6B93BF" : "#3A6EA5";
+    const features: Feature[] = [];
+    let chainIdx = 0;
+    for (const part of parts) {
+      if (part.kind === "chain") {
+        features.push(lineFeature(part.road.line, { kind: "walk", chain: chainIdx++ }));
+      } else {
+        for (const leg of part.legs) {
+          if (leg.mode === "walk") {
+            features.push(lineFeature(leg.line, { kind: "walk", chain: -1 }));
+            continue;
+          }
+          const tz = leg.tz ?? "UTC";
+          const times =
+            leg.departIso && leg.arriveIso
+              ? `${clockTime(leg.departIso, tz)} – ${clockTime(leg.arriveIso, tz)} · ${Math.round(
+                  (Temporal.Instant.from(leg.arriveIso).epochMilliseconds -
+                    Temporal.Instant.from(leg.departIso).epochMilliseconds) /
+                    60000,
+                )} min`
+              : undefined;
+          features.push(
+            lineFeature(leg.line, {
+              kind: "ride",
+              chain: -1,
+              color: leg.color ?? rideFallback,
+              name: leg.name,
+              vehicle: leg.vehicle,
+              headsign: leg.headsign,
+              times,
+              next: leg.nextDeparts?.length
+                ? leg.nextDeparts.map((iso) => clockTime(iso, tz)).join(", ")
+                : undefined,
+              live: leg.live,
+            }),
+          );
+          for (const stop of leg.stops ?? []) {
+            features.push(
+              pointFeature([stop.lng, stop.lat], {
+                kind: "stop",
+                chain: -1,
+                color: leg.color ?? rideFallback,
+                name: stop.name,
+                time: stop.timeIso ? clockTime(stop.timeIso, tz) : undefined,
+              }),
+            );
+          }
+        }
+      }
+    }
+    const collection = { type: "FeatureCollection" as const, features };
     const source = map.getSource("day-route") as
       | import("maplibre-gl").GeoJSONSource
       | undefined;
     if (source) {
-      source.setData(routeData);
+      source.setData(collection);
       return;
     }
-    map.addSource("day-route", { type: "geojson", data: routeData });
+    // maxzoom 24: geojson sources tile internally and default to 18, past
+    // which overzoomed lines clip away and the whole route vanishes.
+    map.addSource("day-route", { type: "geojson", data: collection, maxzoom: 24 });
+    // Rides render under the walking ants, solid in the line's own color.
+    map.addLayer({
+      id: "day-route-ride",
+      type: "line",
+      source: "day-route",
+      filter: ["==", ["get", "kind"], "ride"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": zoomWidth(3, 12),
+        "line-opacity": 0.8,
+      },
+    });
     map.addLayer({
       id: "day-route-line",
       type: "line",
       source: "day-route",
+      filter: ["==", ["get", "kind"], "walk"],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": "#C05B3F",
-        "line-width": 2.5,
+        "line-width": zoomWidth(2.5, 10),
         "line-dasharray": [0.5, 2.7],
         "line-opacity": 0.85,
       },
     });
-    // A wide invisible twin makes the 2.5px line grabbable without fat
-    // rendering; all route pointer interactions bind to it.
+    // Every stop the rides call at, page-colored dots ringed in the leg's
+    // line color, sitting on the ride lines.
+    map.addLayer({
+      id: "day-route-stops",
+      type: "circle",
+      source: "day-route",
+      filter: ["==", ["get", "kind"], "stop"],
+      paint: {
+        "circle-radius": zoomWidth(3.5, 9),
+        "circle-color":
+          document.documentElement.dataset.theme === "dark" ? "#171512" : "#FFFFFF",
+        "circle-stroke-color": ["get", "color"],
+        "circle-stroke-width": zoomWidth(1.75, 4),
+      },
+    });
+    map.addLayer({
+      id: "day-route-stops-hit",
+      type: "circle",
+      source: "day-route",
+      filter: ["==", ["get", "kind"], "stop"],
+      paint: { "circle-radius": zoomWidth(10, 20), "circle-opacity": 0.001 },
+    });
+    // Wide invisible twins make the thin lines hoverable without fat
+    // rendering. Editable chains (chain >= 0) get the drag surface; rides
+    // get their own twin for the what-line-is-this tooltip (they cannot
+    // hold a via).
+    map.addLayer({
+      id: "day-route-ride-hit",
+      type: "line",
+      source: "day-route",
+      filter: ["==", ["get", "kind"], "ride"],
+      paint: { "line-width": zoomWidth(18, 36), "line-opacity": 0.001 },
+    });
     map.addLayer({
       id: "day-route-hit",
       type: "line",
       source: "day-route",
-      paint: { "line-width": 18, "line-opacity": 0.001 },
+      filter: [">=", ["get", "chain"], 0],
+      paint: { "line-width": zoomWidth(18, 36), "line-opacity": 0.001 },
     });
   };
 
-  // Route line for the selected day, in plan order with its locked vias
-  // interleaved: the straight dashed line draws immediately so scope
-  // changes feel instant, then swaps to the road-following walking route
-  // once the router answers.
+  // Route for the selected day, in plan order with its locked vias
+  // interleaved: straight placeholder lines draw immediately so scope
+  // changes feel instant, then each part swaps in as its router answers
+  // (walking chains from OSRM, transit rides from Transitous).
   React.useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
@@ -616,29 +869,22 @@ export function MapPane(props: {
       .map((id) => currentPins.find((pin) => pin.item.id === id))
       .filter((pin): pin is Pin => pin !== undefined)
       .map((pin) => ({ itemId: pin.item.id, lng: pin.lng, lat: pin.lat }));
-    const waypoints = buildWaypoints(stops, props.routeVias ?? []);
-    routeEditRef.current = {
-      dayId: props.routeDayId,
-      waypoints,
-      road: straightRoute(waypoints),
-    };
-    drawRoute(routeEditRef.current.road.line);
-    if (waypoints.length < 2) return;
+    const dayId = props.routeDayId;
     const controller = new AbortController();
-    fetchRoadRoute(waypoints, controller.signal)
-      .then((road) => {
-        routeEditRef.current = { dayId: props.routeDayId, waypoints, road };
-        drawRoute(road.line);
-        storeRouteNotice(null);
-      })
-      .catch((error: unknown) => {
-        // A scope change aborts the stale request: flow control, not a
-        // failure. Anything else keeps the straight line (offline and
-        // router hiccups always exist) and says so, on screen.
-        if (controller.signal.aborted) return;
-        console.warn("[map] road route failed, keeping straight line:", error);
-        storeRouteNotice("Road routing unreachable · showing straight lines");
-      });
+    planDayRoute(
+      stops,
+      props.routeVias ?? [],
+      // No day means no stops, so the empty date never reaches a request.
+      props.routeDate ?? "",
+      controller.signal,
+      (parts, settled, failed) => {
+        routeEditRef.current = { dayId, parts };
+        drawRoute(parts);
+        if (settled) {
+          storeRouteNotice(failed ? "Routing unreachable · showing straight lines" : null);
+        }
+      },
+    );
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, routeSig]);
@@ -659,7 +905,21 @@ export function MapPane(props: {
     const maplibregl = libRef.current;
     if (!ready || !map || !maplibregl) return;
     const dayId = props.routeDayId;
-    const vias = dayId ? (props.routeVias ?? []) : [];
+    // Only vias that survived the chain split get a diamond: a via whose
+    // leg turned into a ride keeps its record (it comes back if the leg
+    // walks again) but showing it would offer a drag that bends nothing.
+    // The route effect above runs first and planDayRoute seeds parts
+    // synchronously, so this reads the fresh split.
+    const activeViaIds = new Set(
+      walkChains(routeEditRef.current.parts).flatMap((chain) =>
+        chain.waypoints.flatMap((waypoint) =>
+          waypoint.kind === "via" ? [waypoint.via.id] : [],
+        ),
+      ),
+    );
+    const vias = dayId
+      ? (props.routeVias ?? []).filter((via) => activeViaIds.has(via.id))
+      : [];
     const keep = new Set(vias.map((via) => via.id));
     for (const [id, marker] of viaMarkersRef.current) {
       if (!keep.has(id)) {
@@ -712,19 +972,24 @@ export function MapPane(props: {
     const map = mapRef.current;
     if (!ready || !map) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    // Small dashes and fine 0.1-unit phase steps: the coarse classic table
-    // reads as a strobe, this reads as a crawl. Dash units multiply by the
-    // line width, so DASH 1.4 is a ~3.5px dot at the 2.5px line.
+    // Small dashes walking in 0.25-unit phase steps. The step size is a
+    // renderer budget, not just taste: every distinct round-cap dasharray
+    // occupies a tall SDF strip in maplibre's fixed-size LineAtlas forever
+    // (no eviction), and a finer 0.1 step's 32 patterns overflow it
+    // ("LineAtlas out of space"), after which dashed lines stop rendering
+    // at all. 13 patterns fit alongside the basemap's dashes; the slower
+    // tick keeps the same crawl speed. Dash units multiply by the line
+    // width, so the dots scale with the zoom-interpolated width.
     const DASH = 0.5;
     const GAP = 2.7;
-    const PHASE_STEP = 0.1;
+    const PHASE_STEP = 0.25;
     const dashSeq: number[][] = [];
     for (let x = 0; x < DASH; x += PHASE_STEP) dashSeq.push([x, GAP, DASH - x]);
     for (let y = 0; y < GAP; y += PHASE_STEP) dashSeq.push([0, y, DASH, GAP - y]);
     let step = -1;
     let frame = 0;
     const tick = (timestamp: number) => {
-      const next = Math.floor(timestamp / 35) % dashSeq.length;
+      const next = Math.floor(timestamp / 88) % dashSeq.length;
       if (next !== step && map.getLayer("day-route-line")) {
         step = next;
         map.setPaintProperty("day-route-line", "line-dasharray", dashSeq[next]);
