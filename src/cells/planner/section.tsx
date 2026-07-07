@@ -13,13 +13,14 @@ import {
 } from "entities/trips/store";
 import type { ContainerRef, Item } from "entities/trips/types";
 import { haptics } from "entities/haptics";
+import { caretLine } from "./caret-line";
 import { ItemRow } from "./item-row";
 import { useDragReorder } from "./use-drag-reorder";
 
 // One section = one container (a day's schedule or a segment's idea pool).
 // Day headers are sticky (iOS-contacts style: each day's header holds the top
-// of the viewport while its items scroll, then the next day pushes it out —
-// stickiness is naturally bounded by the <section>). Keyboard engine: Enter
+// of the viewport while its items scroll, then the next day pushes it out.
+// Stickiness is naturally bounded by the <section>). Keyboard engine: Enter
 // inserts below + autofocuses, Backspace on empty deletes + focuses previous,
 // blur trims/removes empties. Multiline paste fans out into one row per line.
 export function Section(props: {
@@ -74,6 +75,29 @@ export function Section(props: {
         const prevId = index > 0 ? items[index - 1]?.id : null;
         if (prevId) pendingFocus.current = prevId;
         removeItem(props.containerRef, item.id);
+        return;
+      }
+      // Up/down hop rows editor-style, keeping the caret's character column
+      // (clamped to the target's length). Wrapped rows keep native caret
+      // movement between their own lines; only the edge line leaves the row.
+      // The DOM query spans every section, so the hop crosses day and pool
+      // boundaries in visual order.
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+        const el = event.currentTarget;
+        const up = event.key === "ArrowUp";
+        const { line, lineCount } = caretLine(el);
+        if (up ? line > 0 : line < lineCount - 1) return;
+        const rows = Array.from(
+          document.querySelectorAll<HTMLTextAreaElement>("textarea[data-plan-input]"),
+        );
+        const neighbor = rows[rows.indexOf(el) + (up ? -1 : 1)];
+        if (!neighbor) return;
+        event.preventDefault();
+        const column = el.selectionStart ?? 0;
+        const at = Math.min(column, neighbor.value.length);
+        neighbor.focus();
+        neighbor.setSelectionRange(at, at);
       }
     };
 

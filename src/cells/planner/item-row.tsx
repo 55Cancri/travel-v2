@@ -102,7 +102,7 @@ export function ItemRow(props: {
           />
         ) : (
           // grid (not a plain div) so the inline-level checkbox button doesn't
-          // sit on a text baseline — that read as "checkbox lower than grip".
+          // sit on a text baseline (that read as "checkbox lower than grip").
           <Block grid w="1.3rem" h="1.3rem" mt="0.475rem">
             <Checkbox
               checked={done}
@@ -118,6 +118,7 @@ export function ItemRow(props: {
             section's key handler spawns a row). */}
         <Block
           as="textarea"
+          data-plan-input=""
           id={inputId}
           ref={props.inputRef}
           value={item.text}
