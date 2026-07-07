@@ -226,12 +226,15 @@ export function ItemRow(props: {
               <Block key={lineKey} grid cols="auto 1fr" gap="sm" alignItems="start">
                 {/* fontSize sm pins this box's 1lh to the value line's box,
                     so the glyph centers on the first line even when the
-                    value wraps. */}
+                    value wraps. The box hugs the glyph width: slack here is
+                    invisible padding that pushes the text away, so the
+                    icon-to-text distance stays the checkbox-to-text one
+                    (the column gap). */}
                 <Center
                   as="span"
                   aria-hidden="true"
                   fontSize="sm"
-                  w="1.1rem"
+                  w="0.8rem"
                   h="1lh"
                   color="text-muted"
                 >
