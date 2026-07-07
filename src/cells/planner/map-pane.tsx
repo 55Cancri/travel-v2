@@ -1,5 +1,6 @@
 import * as React from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { Block, Text } from "atoms";
 import { KIND_META, type Item, type RouteVia } from "entities/trips/types";
 import { addRouteVia, moveRouteVia, removeRouteVia } from "entities/trips/store";
 import {
@@ -159,6 +160,9 @@ export function MapPane(props: {
   const popupRef = React.useRef<import("maplibre-gl").Popup | null>(null);
   const libRef = React.useRef<typeof import("maplibre-gl") | null>(null);
   const [ready, storeReady] = React.useState(false);
+  // Routing failures surface here instead of dying in the console: the pane
+  // wears a chip naming why the line is straight.
+  const [routeNotice, storeRouteNotice] = React.useState<string | null>(null);
   const [styleTick, storeStyleTick] = React.useState(0);
   const onPinClickRef = React.useRef(props.onPinClick);
   onPinClickRef.current = props.onPinClick;
@@ -533,13 +537,15 @@ export function MapPane(props: {
       .then((road) => {
         routeEditRef.current = { dayId: props.routeDayId, waypoints, road };
         drawRoute(road.line);
+        storeRouteNotice(null);
       })
       .catch((error: unknown) => {
         // A scope change aborts the stale request: flow control, not a
         // failure. Anything else keeps the straight line (offline and
-        // router hiccups always exist) and says so.
+        // router hiccups always exist) and says so, on screen.
         if (controller.signal.aborted) return;
         console.warn("[map] road route failed, keeping straight line:", error);
+        storeRouteNotice("Road routing unreachable · showing straight lines");
       });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -645,13 +651,35 @@ export function MapPane(props: {
   }, [ready, props.scopeKey]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: "100%",
-        height: "100%",
-        background: "var(--colors-surface-muted)",
-      }}
-    />
+    <Block grid w="100%" h="100%">
+      <div
+        ref={containerRef}
+        style={{
+          gridArea: "1 / 1",
+          width: "100%",
+          height: "100%",
+          background: "var(--colors-surface-muted)",
+        }}
+      />
+      {routeNotice ? (
+        <Text
+          as="span"
+          gridArea="1 / 1"
+          placeSelf="end start"
+          zIndex={5}
+          m="sm"
+          px="sm"
+          py="0.15lh"
+          borderRadius="9999px"
+          bg="surface-strong"
+          color="text-on-strong"
+          fontSize="xs"
+          fontWeight={550}
+          pointerEvents="none"
+        >
+          {routeNotice}
+        </Text>
+      ) : null}
+    </Block>
   );
 }
