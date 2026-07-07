@@ -320,9 +320,9 @@ that boundary only, never thread it into names we own.
 ## Dates: `Temporal`, never `Date` (HARD BAN)
 
 No `new Date`, `Date.now()`, or `Date` methods in code we own. The polyfill
-is `temporal-polyfill/global`, imported first at the entry. It is NOT
-installed in this repo yet: the first change that touches date logic
-installs it and adds that entry import in the same PR.
+is `temporal-polyfill/global`, imported first in `src/router.tsx` (both
+runtimes reach every route module through it). Its global TYPES ship
+separately: `temporal-polyfill/types/global` in the tsconfig `types` array.
 `Temporal.Now.instant().epochMilliseconds` for a clock read;
 `Temporal.Instant.fromEpochMilliseconds(ms)
 .toZonedDateTimeISO(Temporal.Now.timeZoneId())` to display. Databases store
