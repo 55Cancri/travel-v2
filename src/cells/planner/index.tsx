@@ -30,17 +30,17 @@ type Scope =
   | { type: "day"; id: string };
 
 const formatDay = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", {
+  Temporal.PlainDate.from(iso).toLocaleString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
 
-const nextDate = (lastIso: string | undefined) => {
-  const base = lastIso ? new Date(`${lastIso}T00:00:00`) : new Date();
-  if (lastIso) base.setDate(base.getDate() + 1);
-  return base.toISOString().slice(0, 10);
-};
+const nextDate = (lastIso: string | undefined) =>
+  (lastIso
+    ? Temporal.PlainDate.from(lastIso).add({ days: 1 })
+    : Temporal.Now.plainDateISO()
+  ).toString();
 
 const LEFT_WIDTH_KEY = "travel2:leftw";
 const clampWidth = (width: number) => Math.max(320, Math.min(780, width));
