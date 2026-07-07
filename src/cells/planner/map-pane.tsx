@@ -151,7 +151,14 @@ const viaElement = () => {
 
 const lineFeature = (
   coordinates: number[][],
-  properties: { kind: string; chain: number; color?: string; name?: string },
+  properties: {
+    kind: string;
+    chain: number;
+    color?: string;
+    name?: string;
+    vehicle?: string;
+    headsign?: string;
+  },
 ): Feature => ({
   type: "Feature",
   properties,
@@ -284,6 +291,37 @@ export function MapPane(props: {
         },
         { signal: pageListeners.signal },
       );
+      // Ride hover: name what the colored line IS ("Bus 80 → Zandvoort"),
+      // in the same inverted tooltip the pins use. The tooltip follows the
+      // cursor along the leg; content only re-renders when the leg under
+      // the cursor changes.
+      const ridePopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 10,
+      });
+      let rideShownHtml = "";
+      map.on("mousemove", "day-route-ride-hit", (event) => {
+        const ride = event.features?.[0]?.properties ?? {};
+        const title =
+          [ride.vehicle, ride.name].filter(Boolean).join(" ") || "Transit ride";
+        const headsign = ride.headsign ? `→ ${ride.headsign}` : "";
+        const html = `<div style="font-weight:600">${escapeHtml(title)}</div>${
+          headsign
+            ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(headsign)}</div>`
+            : ""
+        }`;
+        if (html !== rideShownHtml) {
+          ridePopup.setHTML(html);
+          rideShownHtml = html;
+        }
+        ridePopup.setLngLat(event.lngLat);
+        if (!ridePopup.isOpen()) ridePopup.addTo(map);
+      });
+      map.on("mouseleave", "day-route-ride-hit", () => {
+        ridePopup.remove();
+        rideShownHtml = "";
+      });
       // Route editing: grab the line to bend the day's route. The drag
       // shows a ghost diamond and previews the re-fit (throttled so the
       // public router sees at most ~2 requests a second); release locks
@@ -618,6 +656,8 @@ export function MapPane(props: {
                   chain: -1,
                   color: leg.color ?? rideFallback,
                   name: leg.name,
+                  vehicle: leg.vehicle,
+                  headsign: leg.headsign,
                 }),
           );
         }
@@ -658,10 +698,17 @@ export function MapPane(props: {
         "line-opacity": 0.85,
       },
     });
-    // A wide invisible twin makes the thin lines grabbable without fat
-    // rendering; all route pointer interactions bind to it. Only editable
-    // chains (chain >= 0) join in: rides and their station walks cannot
-    // hold a via.
+    // Wide invisible twins make the thin lines hoverable without fat
+    // rendering. Editable chains (chain >= 0) get the drag surface; rides
+    // get their own twin for the what-line-is-this tooltip (they cannot
+    // hold a via).
+    map.addLayer({
+      id: "day-route-ride-hit",
+      type: "line",
+      source: "day-route",
+      filter: ["==", ["get", "kind"], "ride"],
+      paint: { "line-width": 18, "line-opacity": 0.001 },
+    });
     map.addLayer({
       id: "day-route-hit",
       type: "line",
