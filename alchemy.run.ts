@@ -76,7 +76,6 @@ export const website = await TanStackStart("website", {
     TRIP_ROOM: tripRoom,
     AI: ai,
     PLACE_CACHE: placeCache,
-    APP_URL: req("APP_URL"),
     SESSION_SECRET: alchemy.secret.env.SESSION_SECRET,
   },
   adopt: true,
