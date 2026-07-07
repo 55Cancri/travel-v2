@@ -216,7 +216,7 @@ const zoomWidth = (base: number, high: number) =>
 const walkChains = (parts: DayRoutePart[]) =>
   parts.filter((part): part is Extract<DayRoutePart, { kind: "chain" }> => part.kind === "chain");
 
-const fitToLines = (map: import("maplibre-gl").Map, lines: number[][][]) => {
+const lineBounds = (lines: number[][][]) => {
   let minLng = Infinity;
   let minLat = Infinity;
   let maxLng = -Infinity;
@@ -229,14 +229,17 @@ const fitToLines = (map: import("maplibre-gl").Map, lines: number[][][]) => {
       maxLat = Math.max(maxLat, lat);
     }
   }
-  if (minLng > maxLng) return;
-  map.fitBounds(
-    [
-      [minLng, minLat],
-      [maxLng, maxLat],
-    ],
-    { padding: 80, duration: 550, maxZoom: 16.5 },
-  );
+  if (minLng > maxLng) return null;
+  return [
+    [minLng, minLat],
+    [maxLng, maxLat],
+  ] as [[number, number], [number, number]];
+};
+
+const fitToLines = (map: import("maplibre-gl").Map, lines: number[][][]) => {
+  const bounds = lineBounds(lines);
+  if (!bounds) return;
+  map.fitBounds(bounds, { padding: 80, duration: 550, maxZoom: 16.5 });
 };
 
 const escapeHtml = (value: string) =>
@@ -366,6 +369,16 @@ export function MapPane(props: {
           syncViaSelection();
         }
       });
+      // A user gesture during step mode claims the camera. originalEvent
+      // separates real input from our own easeTo/fitBounds moves; wheel and
+      // dragstart also catch gestures that interrupt an in-flight ease
+      // (movestart won't re-fire while the camera is already moving).
+      const claimCamera = (event: { originalEvent?: Event }) => {
+        if (event.originalEvent && stepLegRef.current !== null) cameraClaimedRef.current = true;
+      };
+      map.on("movestart", claimCamera);
+      map.on("wheel", claimCamera);
+      map.on("dragstart", claimCamera);
       // Delete / Backspace removes the selected via, unless focus is in a
       // text field (list rows are textareas; typing must never nuke pins).
       window.addEventListener(
@@ -787,6 +800,11 @@ export function MapPane(props: {
   const legLinesRef = React.useRef<number[][][][]>([]);
   const stepLegRef = React.useRef<number | null>(null);
   stepLegRef.current = props.stepLeg;
+  // Once the user zooms or pans mid-step, the camera is theirs: further
+  // steps pan each leg into view at their zoom instead of re-fitting, and
+  // exiting step mode leaves the view alone. Entering step mode afresh
+  // hands the camera back.
+  const cameraClaimedRef = React.useRef(false);
 
   const drawRoute = (parts: DayRoutePart[]) => {
     const map = mapRef.current;
@@ -1061,9 +1079,22 @@ export function MapPane(props: {
     stepPaint();
     const leg = props.stepLeg;
     if (leg !== null) {
+      if (prevStepLegRef.current === null) cameraClaimedRef.current = false;
       const lines = legLinesRef.current[leg];
-      if (lines?.length) fitToLines(map, lines);
-    } else if (prevStepLegRef.current !== null) {
+      if (lines?.length) {
+        const bounds = lineBounds(lines);
+        if (cameraClaimedRef.current) {
+          if (bounds) {
+            map.easeTo({
+              center: [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2],
+              duration: 550,
+            });
+          }
+        } else {
+          fitToLines(map, lines);
+        }
+      }
+    } else if (prevStepLegRef.current !== null && !cameraClaimedRef.current) {
       const all = legLinesRef.current.flat();
       if (all.length) fitToLines(map, all);
     }
