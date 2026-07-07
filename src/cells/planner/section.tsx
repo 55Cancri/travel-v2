@@ -243,7 +243,8 @@ export function Section(props: {
         <Center as="span" w="1.3rem" h="1.3rem">
           <Plus size={17} />
         </Center>
-        <Text as="span" fontSize="md" fontWeight={500} color="inherit">
+        {/* Button centers its grid items; this label hugs the plus instead. */}
+        <Text as="span" fontSize="md" fontWeight={500} color="inherit" justifySelf="start">
           Add
         </Text>
       </Button>
