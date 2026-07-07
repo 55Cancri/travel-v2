@@ -4,14 +4,7 @@
 // rental locations, and buses draws the area's whole bus network. Any set
 // of overlays can be on at once.
 
-export type OverlayKind =
-  | "vegan"
-  | "vegetarian"
-  | "luggage"
-  | "bikes"
-  | "picks"
-  | "sights"
-  | "buses";
+export type OverlayKind = "vegan" | "luggage" | "bikes" | "picks" | "sights" | "buses";
 
 export type OverlayTraits = {
   kind: OverlayKind;
@@ -25,10 +18,9 @@ export type OverlayTraits = {
 
 // Order is meaningful twice over: it is the chip order, and when one
 // place qualifies for several overlays the earliest enabled kind claims
-// it (so Suggested outranks Sights, and vegan outranks vegetarian).
+// it (so Suggested outranks Sights).
 export const OVERLAYS: OverlayTraits[] = [
   { kind: "vegan", label: "Vegan", color: "#16A34A", minZoom: 12 },
-  { kind: "vegetarian", label: "Vegetarian", color: "#84CC16", minZoom: 12 },
   { kind: "luggage", label: "Luggage", color: "#8B5CF6", minZoom: 11 },
   { kind: "bikes", label: "Bikes", color: "#0EA5E9", minZoom: 12 },
   { kind: "picks", label: "Suggested", color: "#E11D48", minZoom: 13 },

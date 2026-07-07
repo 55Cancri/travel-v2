@@ -1,8 +1,7 @@
 // Point-of-interest overlays from OpenStreetMap via Overpass. One request
 // covers every enabled point overlay for the viewport: the query is a
 // union of per-overlay selectors and the elements classify back into
-// overlays afterward (a place tagged both vegan and vegetarian shows as
-// vegan when both overlays are on, not twice).
+// overlays afterward.
 
 import type { OverlayKind } from "./catalog";
 import { overpassQuery } from "./overpass";
@@ -36,7 +35,6 @@ const SIGHT_LEISURE = /^(park|garden)$/;
 // Overpass selectors per overlay, without the trailing bbox.
 const SELECTORS: Partial<Record<OverlayKind, string[]>> = {
   vegan: [`nwr["diet:vegan"~"yes|only"]${FOOD_AMENITY}`],
-  vegetarian: [`nwr["diet:vegetarian"~"yes|only"]${FOOD_AMENITY}`],
   luggage: [`nwr["amenity"~"^(luggage_locker|left_luggage)$"]`],
   bikes: [`nwr["amenity"="bicycle_rental"]`],
   sights: [
@@ -70,15 +68,11 @@ const sightCategory = (tags: Record<string, string>) => {
 
 const placeNotes = (kind: OverlayKind, tags: Record<string, string>) => {
   const notes: string[] = [];
-  // OSM distinguishes diet:*=only (the whole menu) from =yes (options on
-  // a mixed menu); every food-overlay place names which it is.
+  // OSM distinguishes diet:vegan=only (the whole menu) from =yes (at
+  // least one confirmed vegan item on a mixed menu); every vegan place
+  // names which it is.
   if (kind === "vegan") {
-    notes.push(tags["diet:vegan"] === "only" ? "Fully vegan" : "Vegan options");
-  }
-  if (kind === "vegetarian") {
-    notes.push(
-      tags["diet:vegetarian"] === "only" ? "Fully vegetarian" : "Vegetarian options",
-    );
+    notes.push(tags["diet:vegan"] === "only" ? "Fully vegan" : "Partial vegan");
   }
   if (tags.cuisine) notes.push(titleCase(tags.cuisine.split(";")[0]));
   if (kind === "sights") {
@@ -90,17 +84,13 @@ const placeNotes = (kind: OverlayKind, tags: Record<string, string>) => {
   return notes;
 };
 
-// Every requested overlay an element qualifies for. A doubly tagged place
-// lands in BOTH the vegan and vegetarian caches (each cache must stand
-// alone when the other overlay is off); the map dedupes at paint time
-// with vegan winning.
+// Every requested overlay an element qualifies for; a place that fits
+// several caches lands in each (a cache must stand alone when the other
+// overlays are off), and the map dedupes at paint time in catalog order.
 const classify = (kinds: OverlayKind[], tags: Record<string, string>): OverlayKind[] => {
   const matches: OverlayKind[] = [];
   if (kinds.includes("vegan") && /^(yes|only)$/.test(tags["diet:vegan"] ?? "")) {
     matches.push("vegan");
-  }
-  if (kinds.includes("vegetarian") && /^(yes|only)$/.test(tags["diet:vegetarian"] ?? "")) {
-    matches.push("vegetarian");
   }
   if (kinds.includes("luggage") && /^(luggage_locker|left_luggage)$/.test(tags.amenity ?? "")) {
     matches.push("luggage");
