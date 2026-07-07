@@ -28,10 +28,12 @@ const decodePolyline = (points: string, precision: number) => {
     let byte = 0x20;
     while (byte >= 0x20) {
       byte = points.charCodeAt(idx++) - 63;
-      result |= (byte & 0x1f) << shift;
+      result += (byte & 0x1f) * 2 ** shift;
       shift += 5;
     }
-    return result & 1 ? ~(result >> 1) : result >> 1;
+    // Arithmetic zigzag decode: 32-bit bitwise operators corrupt
+    // precision-7 longitudes past ~107 degrees (Tokyo comes back at -75).
+    return result % 2 === 1 ? -(result + 1) / 2 : result / 2;
   };
   while (idx < points.length) {
     lat += nextDelta();
@@ -52,16 +54,25 @@ type WirePlanLeg = {
 export const fetchRide = async (
   from: { lng: number; lat: number },
   to: { lng: number; lat: number },
-  departIso: string,
+  dateIso: string,
   signal: AbortSignal,
 ) => {
-  const key = `${from.lng},${from.lat};${to.lng},${to.lat};${departIso}`;
+  const key = `${from.lng},${from.lat};${to.lng},${to.lat};${dateIso}`;
   const cached = rideCache.get(key);
   if (cached) return cached;
+  // Depart mid-morning in the hop's own solar time: civil timezones sit
+  // within an hour or two of longitude / 15, close enough to land the
+  // schedule query in normal service hours on any continent (a fixed UTC
+  // hour is 1am-4am in the Americas).
+  const depart = Temporal.PlainDateTime.from(`${dateIso}T09:00:00`)
+    .toZonedDateTime("UTC")
+    .subtract({ hours: Math.round(from.lng / 15) })
+    .toInstant()
+    .toString();
   const query = new URLSearchParams({
     fromPlace: `${from.lat},${from.lng}`,
     toPlace: `${to.lat},${to.lng}`,
-    time: departIso,
+    time: depart,
     numItineraries: "1",
     // Some hops have no transit at all (dunes, parks, small towns). A
     // direct walking itinerary from MOTIS's street router covers those;

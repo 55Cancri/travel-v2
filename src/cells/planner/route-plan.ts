@@ -183,7 +183,7 @@ export type DayRoutePart =
 export const planDayRoute = (
   stops: RouteStop[],
   vias: RouteVia[],
-  departIso: string,
+  dateIso: string,
   signal: AbortSignal,
   onUpdate: (parts: DayRoutePart[], settled: boolean, failed: boolean) => void,
 ) => {
@@ -213,7 +213,7 @@ export const planDayRoute = (
         ? fetchRoadRoute(part.waypoints, signal).then((road) => {
             parts[idx] = { ...part, road };
           })
-        : fetchRide(part.from, part.to, departIso, signal).then((legs) => {
+        : fetchRide(part.from, part.to, dateIso, signal).then((legs) => {
             parts[idx] = { ...part, legs };
           });
     return fetched

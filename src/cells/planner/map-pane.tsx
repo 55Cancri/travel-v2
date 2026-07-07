@@ -151,7 +151,7 @@ const viaElement = () => {
 
 const lineFeature = (
   coordinates: number[][],
-  properties: { kind: string; chain: number; color?: string },
+  properties: { kind: string; chain: number; color?: string; name?: string },
 ): Feature => ({
   type: "Feature",
   properties,
@@ -327,6 +327,9 @@ export function MapPane(props: {
         const chainIdx = Number(event.features?.[0]?.properties?.chain ?? -1);
         const chain = walkChains(parts)[chainIdx];
         if (!dayId || !chain || chain.waypoints.length < 2) return;
+        // By index, not identity: a chain's own road fetch can land
+        // mid-drag and replace the object in `parts`.
+        const partIdx = parts.indexOf(chain);
         const grabbed = legAt(chain.road, chain.waypoints, event.lngLat.lng, event.lngLat.lat);
         if (!grabbed) return;
         event.preventDefault();
@@ -360,7 +363,7 @@ export function MapPane(props: {
           previewAbort = new AbortController();
           fetchRoadRoute(tentativeWaypoints(move.lngLat.lng, move.lngLat.lat), previewAbort.signal)
             .then((road) =>
-              drawRoute(parts.map((part) => (part === chain ? { ...part, road } : part))),
+              drawRoute(parts.map((part, i) => (i === partIdx ? { ...chain, road } : part))),
             )
             .catch((error: unknown) => {
               // Aborted previews are just the next drag frame taking over.
@@ -614,6 +617,7 @@ export function MapPane(props: {
                   kind: "ride",
                   chain: -1,
                   color: leg.color ?? rideFallback,
+                  name: leg.name,
                 }),
           );
         }
@@ -680,15 +684,12 @@ export function MapPane(props: {
       .filter((pin): pin is Pin => pin !== undefined)
       .map((pin) => ({ itemId: pin.item.id, lng: pin.lng, lat: pin.lat }));
     const dayId = props.routeDayId;
-    // Mid-morning UTC keeps the schedule query in normal service hours
-    // across European and American timezones alike; the drawn line barely
-    // depends on the exact departure.
-    const depart = `${props.routeDate ?? "2026-01-01"}T09:00:00Z`;
     const controller = new AbortController();
     planDayRoute(
       stops,
       props.routeVias ?? [],
-      depart,
+      // No day means no stops, so the empty date never reaches a request.
+      props.routeDate ?? "",
       controller.signal,
       (parts, settled, failed) => {
         routeEditRef.current = { dayId, parts };
@@ -718,7 +719,21 @@ export function MapPane(props: {
     const maplibregl = libRef.current;
     if (!ready || !map || !maplibregl) return;
     const dayId = props.routeDayId;
-    const vias = dayId ? (props.routeVias ?? []) : [];
+    // Only vias that survived the chain split get a diamond: a via whose
+    // leg turned into a ride keeps its record (it comes back if the leg
+    // walks again) but showing it would offer a drag that bends nothing.
+    // The route effect above runs first and planDayRoute seeds parts
+    // synchronously, so this reads the fresh split.
+    const activeViaIds = new Set(
+      walkChains(routeEditRef.current.parts).flatMap((chain) =>
+        chain.waypoints.flatMap((waypoint) =>
+          waypoint.kind === "via" ? [waypoint.via.id] : [],
+        ),
+      ),
+    );
+    const vias = dayId
+      ? (props.routeVias ?? []).filter((via) => activeViaIds.has(via.id))
+      : [];
     const keep = new Set(vias.map((via) => via.id));
     for (const [id, marker] of viaMarkersRef.current) {
       if (!keep.has(id)) {
