@@ -1,7 +1,8 @@
 import * as React from "react";
 import type { Feature } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Block, Text } from "atoms";
+import { Block, Button, CaretLeft, CaretRight, Text, X } from "atoms";
+import { Cluster, IconButton } from "alloys";
 import { KIND_META, type Item, type RouteVia } from "entities/trips/types";
 import { addRouteVia, moveRouteVia, removeRouteVia } from "entities/trips/store";
 import {
@@ -154,6 +155,7 @@ const lineFeature = (
   properties: {
     kind: string;
     chain: number;
+    leg: number;
     color?: string;
     name?: string;
     vehicle?: string;
@@ -170,7 +172,14 @@ const lineFeature = (
 
 const pointFeature = (
   coordinates: number[],
-  properties: { kind: string; chain: number; color: string; name: string; time?: string },
+  properties: {
+    kind: string;
+    chain: number;
+    leg: number;
+    color: string;
+    name: string;
+    time?: string;
+  },
 ): Feature => ({
   type: "Feature",
   properties,
@@ -207,6 +216,29 @@ const zoomWidth = (base: number, high: number) =>
 const walkChains = (parts: DayRoutePart[]) =>
   parts.filter((part): part is Extract<DayRoutePart, { kind: "chain" }> => part.kind === "chain");
 
+const fitToLines = (map: import("maplibre-gl").Map, lines: number[][][]) => {
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+  for (const line of lines) {
+    for (const [lng, lat] of line) {
+      minLng = Math.min(minLng, lng);
+      minLat = Math.min(minLat, lat);
+      maxLng = Math.max(maxLng, lng);
+      maxLat = Math.max(maxLat, lat);
+    }
+  }
+  if (minLng > maxLng) return;
+  map.fitBounds(
+    [
+      [minLng, minLat],
+      [maxLng, maxLat],
+    ],
+    { padding: 80, duration: 550, maxZoom: 16.5 },
+  );
+};
+
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
@@ -229,6 +261,10 @@ export function MapPane(props: {
   routeVias: RouteVia[] | null;
   paneResizing: boolean;
   scopeKey: string;
+  // The leg being stepped through (null = step mode off). The planner owns
+  // it so the list can follow along.
+  stepLeg: number | null;
+  onStep: (leg: number | null) => void;
   onPinClick: (itemId: string, zoom: boolean) => void;
   apiRef: React.RefObject<MapApi | null>;
 }) {
@@ -266,6 +302,14 @@ export function MapPane(props: {
     .map((via) => `${via.id}:${via.afterItemId}:${via.lng}:${via.lat}`)
     .join("|");
   const routeSig = `${props.routeDayId ?? "-"}§${props.routeDate ?? "-"}§${(props.routeItemIds ?? ["-"]).join(",")}§${viaSig}§${pinSig}`;
+  // The day's stops in checklist order (the same filter the pins use), for
+  // the step pill's count and labels.
+  const stepStops = (props.routeItemIds ?? [])
+    .map((id) => props.items.find((entry) => entry.id === id))
+    .filter(
+      (entry): entry is Item =>
+        entry !== undefined && entry.place !== undefined && entry.status !== "cancelled",
+    );
   const pinsRef = React.useRef(pins);
   pinsRef.current = pins;
 
@@ -720,6 +764,11 @@ export function MapPane(props: {
     parts: [],
   });
   const routeHighlightedRef = React.useRef(false);
+  // The drawn geometry per leg (a leg can span several lines: station
+  // walks plus the ride), for the step-mode camera.
+  const legLinesRef = React.useRef<number[][][][]>([]);
+  const stepLegRef = React.useRef<number | null>(null);
+  stepLegRef.current = props.stepLeg;
 
   const drawRoute = (parts: DayRoutePart[]) => {
     const map = mapRef.current;
@@ -730,46 +779,66 @@ export function MapPane(props: {
     const rideFallback =
       document.documentElement.dataset.theme === "dark" ? "#6B93BF" : "#3A6EA5";
     const features: Feature[] = [];
+    // Legs are consecutive stop pairs in checklist order; every feature
+    // carries its leg index so step mode can spotlight one pair. A chain
+    // slices at its stops' snapped vertices (vias stay inside their leg);
+    // a ride is one leg, station walks included.
+    const legLines: number[][][][] = [];
     let chainIdx = 0;
     for (const part of parts) {
       if (part.kind === "chain") {
-        features.push(lineFeature(part.road.line, { kind: "walk", chain: chainIdx++ }));
+        const chain = chainIdx++;
+        const stopVertices = part.waypoints.flatMap((waypoint, idx) =>
+          waypoint.kind === "stop" ? [part.road.waypointVertex[idx]] : [],
+        );
+        for (let i = 0; i < stopVertices.length - 1; i++) {
+          const slice = part.road.line.slice(stopVertices[i], stopVertices[i + 1] + 1);
+          const leg = legLines.length;
+          legLines.push([slice.length >= 2 ? slice : part.road.line]);
+          if (slice.length >= 2) {
+            features.push(lineFeature(slice, { kind: "walk", chain, leg }));
+          }
+        }
       } else {
-        for (const leg of part.legs) {
-          if (leg.mode === "walk") {
-            features.push(lineFeature(leg.line, { kind: "walk", chain: -1 }));
+        const leg = legLines.length;
+        legLines.push(part.legs.map((rideLeg) => rideLeg.line));
+        for (const rideLeg of part.legs) {
+          if (rideLeg.mode === "walk") {
+            features.push(lineFeature(rideLeg.line, { kind: "walk", chain: -1, leg }));
             continue;
           }
-          const tz = leg.tz ?? "UTC";
+          const tz = rideLeg.tz ?? "UTC";
           const times =
-            leg.departIso && leg.arriveIso
-              ? `${clockTime(leg.departIso, tz)} – ${clockTime(leg.arriveIso, tz)} · ${Math.round(
-                  (Temporal.Instant.from(leg.arriveIso).epochMilliseconds -
-                    Temporal.Instant.from(leg.departIso).epochMilliseconds) /
+            rideLeg.departIso && rideLeg.arriveIso
+              ? `${clockTime(rideLeg.departIso, tz)} – ${clockTime(rideLeg.arriveIso, tz)} · ${Math.round(
+                  (Temporal.Instant.from(rideLeg.arriveIso).epochMilliseconds -
+                    Temporal.Instant.from(rideLeg.departIso).epochMilliseconds) /
                     60000,
                 )} min`
               : undefined;
           features.push(
-            lineFeature(leg.line, {
+            lineFeature(rideLeg.line, {
               kind: "ride",
               chain: -1,
-              color: leg.color ?? rideFallback,
-              name: leg.name,
-              vehicle: leg.vehicle,
-              headsign: leg.headsign,
+              leg,
+              color: rideLeg.color ?? rideFallback,
+              name: rideLeg.name,
+              vehicle: rideLeg.vehicle,
+              headsign: rideLeg.headsign,
               times,
-              next: leg.nextDeparts?.length
-                ? leg.nextDeparts.map((iso) => clockTime(iso, tz)).join(", ")
+              next: rideLeg.nextDeparts?.length
+                ? rideLeg.nextDeparts.map((iso) => clockTime(iso, tz)).join(", ")
                 : undefined,
-              live: leg.live,
+              live: rideLeg.live,
             }),
           );
-          for (const stop of leg.stops ?? []) {
+          for (const stop of rideLeg.stops ?? []) {
             features.push(
               pointFeature([stop.lng, stop.lat], {
                 kind: "stop",
                 chain: -1,
-                color: leg.color ?? rideFallback,
+                leg,
+                color: rideLeg.color ?? rideFallback,
                 name: stop.name,
                 time: stop.timeIso ? clockTime(stop.timeIso, tz) : undefined,
               }),
@@ -778,12 +847,14 @@ export function MapPane(props: {
         }
       }
     }
+    legLinesRef.current = legLines;
     const collection = { type: "FeatureCollection" as const, features };
     const source = map.getSource("day-route") as
       | import("maplibre-gl").GeoJSONSource
       | undefined;
     if (source) {
       source.setData(collection);
+      stepPaint();
       return;
     }
     // maxzoom 24: geojson sources tile internally and default to 18, past
@@ -855,6 +926,48 @@ export function MapPane(props: {
       filter: [">=", ["get", "chain"], 0],
       paint: { "line-width": zoomWidth(18, 36), "line-opacity": 0.001 },
     });
+    stepPaint();
+  };
+
+  // Step mode paint: the active leg keeps its full colors, every other leg
+  // (and its transit stops) drops to a dim neutral. Applied after every
+  // redraw and on every step so layer rebuilds never lose the focus.
+  const stepPaint = () => {
+    const map = mapRef.current;
+    if (!map || !map.getLayer("day-route-line")) return;
+    const leg = stepLegRef.current;
+    const dark = document.documentElement.dataset.theme === "dark";
+    const dim = dark ? "#4E4842" : "#CFC9C1";
+    if (leg === null) {
+      map.setPaintProperty("day-route-line", "line-color", "#C05B3F");
+      map.setPaintProperty("day-route-line", "line-opacity", 0.85);
+      map.setPaintProperty("day-route-ride", "line-color", ["get", "color"] as never);
+      map.setPaintProperty("day-route-ride", "line-opacity", 0.8);
+      map.setPaintProperty("day-route-stops", "circle-stroke-color", ["get", "color"] as never);
+      map.setPaintProperty("day-route-stops", "circle-opacity", 1);
+      map.setPaintProperty("day-route-stops", "circle-stroke-opacity", 1);
+      return;
+    }
+    const active = ["==", ["get", "leg"], leg];
+    map.setPaintProperty("day-route-line", "line-color", ["case", active, "#C05B3F", dim] as never);
+    map.setPaintProperty("day-route-line", "line-opacity", ["case", active, 1, 0.5] as never);
+    map.setPaintProperty(
+      "day-route-ride",
+      "line-color",
+      ["case", active, ["get", "color"], dim] as never,
+    );
+    map.setPaintProperty("day-route-ride", "line-opacity", ["case", active, 1, 0.45] as never);
+    map.setPaintProperty(
+      "day-route-stops",
+      "circle-stroke-color",
+      ["case", active, ["get", "color"], dim] as never,
+    );
+    map.setPaintProperty("day-route-stops", "circle-opacity", ["case", active, 1, 0.5] as never);
+    map.setPaintProperty(
+      "day-route-stops",
+      "circle-stroke-opacity",
+      ["case", active, 1, 0.5] as never,
+    );
   };
 
   // Route for the selected day, in plan order with its locked vias
@@ -888,6 +1001,57 @@ export function MapPane(props: {
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, routeSig]);
+
+  // Checklist order rendered onto the pins: when a day is selected, each
+  // placed stop's dot grows a numeral (1-based day order). In step mode
+  // the two endpoints of the active leg stay full strength and the rest
+  // fade. Runs after the pin effect (which rebuilds dot styles) because
+  // routeSig contains pinSig.
+  const numberPins = () => {
+    const leg = stepLegRef.current;
+    const orderIds = (props.routeItemIds ?? []).filter((id) => markersRef.current.has(id));
+    for (const [id, entry] of markersRef.current) {
+      const dot = entry.el.firstElementChild as HTMLSpanElement | null;
+      if (!dot) continue;
+      const statusOpacity = entry.item.status === "done" ? "0.45" : "1";
+      const order = orderIds.indexOf(id);
+      if (order < 0) {
+        dot.textContent = "";
+        dot.style.opacity = statusOpacity;
+        continue;
+      }
+      dot.textContent = String(order + 1);
+      dot.style.width = "17px";
+      dot.style.height = "17px";
+      dot.style.display = "grid";
+      dot.style.placeItems = "center";
+      dot.style.fontSize = "10px";
+      dot.style.fontWeight = "650";
+      dot.style.color = "#FFFFFF";
+      const endpoint = leg !== null && (order === leg || order === leg + 1);
+      dot.style.opacity = leg === null || endpoint ? statusOpacity : "0.3";
+    }
+  };
+
+  // Step mode: spotlight one leg, ease the camera onto it, and restore
+  // the whole-route view on exit.
+  const prevStepLegRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    numberPins();
+    stepPaint();
+    const leg = props.stepLeg;
+    if (leg !== null) {
+      const lines = legLinesRef.current[leg];
+      if (lines?.length) fitToLines(map, lines);
+    } else if (prevStepLegRef.current !== null) {
+      const all = legLinesRef.current.flat();
+      if (all.length) fitToLines(map, all);
+    }
+    prevStepLegRef.current = leg;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, styleTick, routeSig, props.stepLeg]);
 
   // Locked vias render as draggable diamonds: drag moves the via (and the
   // route re-fits through it), double-click removes it.
@@ -1061,6 +1225,106 @@ export function MapPane(props: {
           {routeNotice}
         </Text>
       ) : null}
+      {props.routeDayId && stepStops.length >= 2 ? (
+        <Block gridArea="1 / 1" placeSelf="end center" zIndex={5} mb="sm">
+          {props.stepLeg === null ? (
+            <Button
+              type="button"
+              onPress={() => props.onStep(0)}
+              px="sm"
+              py="0.15lh"
+              gap="0.3rem"
+              borderRadius="9999px"
+              bg="surface-strong"
+              color="text-on-strong"
+              fontSize="xs"
+              fontWeight={550}
+              boxShadow="0 2px 10px rgba(0, 0, 0, 0.3)"
+            >
+              Step route
+              <CaretRight size={11} />
+            </Button>
+          ) : (
+            <Cluster
+              gap="0.1rem"
+              px="0.25rem"
+              py="0.15rem"
+              borderRadius="9999px"
+              bg="surface-strong"
+              color="text-on-strong"
+              boxShadow="0 2px 10px rgba(0, 0, 0, 0.3)"
+            >
+              <IconButton
+                aria-label="Previous leg"
+                onPress={() => props.onStep(Math.max(0, (props.stepLeg ?? 1) - 1))}
+                disabled={props.stepLeg === 0}
+                size="1.5rem"
+                borderRadius="9999px"
+                color="text-on-strong"
+                opacity={props.stepLeg === 0 ? 0.4 : 1}
+                _hover={{
+                  "@media (hover: hover)": {
+                    color: "text-on-strong",
+                    _before: { bg: "rgba(255, 255, 255, 0.16)" },
+                  },
+                }}
+              >
+                <CaretLeft size={12} />
+              </IconButton>
+              <Text
+                as="span"
+                fontSize="xs"
+                fontWeight={550}
+                color="inherit"
+                whiteSpace="nowrap"
+                maxW="24rem"
+                overflow="hidden"
+                textOverflow="ellipsis"
+                px="0.3rem"
+              >
+                Leg {props.stepLeg + 1} of {stepStops.length - 1} ·{" "}
+                {stopName(stepStops[props.stepLeg])} → {stopName(stepStops[props.stepLeg + 1])}
+              </Text>
+              <IconButton
+                aria-label="Next leg"
+                onPress={() =>
+                  props.onStep(Math.min(stepStops.length - 2, (props.stepLeg ?? 0) + 1))
+                }
+                disabled={props.stepLeg >= stepStops.length - 2}
+                size="1.5rem"
+                borderRadius="9999px"
+                color="text-on-strong"
+                opacity={props.stepLeg >= stepStops.length - 2 ? 0.4 : 1}
+                _hover={{
+                  "@media (hover: hover)": {
+                    color: "text-on-strong",
+                    _before: { bg: "rgba(255, 255, 255, 0.16)" },
+                  },
+                }}
+              >
+                <CaretRight size={12} />
+              </IconButton>
+              <IconButton
+                aria-label="Exit step mode"
+                onPress={() => props.onStep(null)}
+                size="1.5rem"
+                borderRadius="9999px"
+                color="text-on-strong"
+                _hover={{
+                  "@media (hover: hover)": {
+                    color: "text-on-strong",
+                    _before: { bg: "rgba(255, 255, 255, 0.16)" },
+                  },
+                }}
+              >
+                <X size={11} />
+              </IconButton>
+            </Cluster>
+          )}
+        </Block>
+      ) : null}
     </Block>
   );
 }
+
+const stopName = (item: Item | undefined) => item?.place?.name ?? item?.text ?? "";

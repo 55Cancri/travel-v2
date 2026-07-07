@@ -55,7 +55,7 @@ export function Planner(props: { tripId: string }) {
   const [activeSegmentId, storeActiveSegmentId] = React.useState<string | null>(null);
   const [scope, storeScope] = React.useState<Scope>({ type: "segment" });
   const [showMap, storeShowMap] = React.useState(false);
-  const [highlightItemId, storeHighlightItemId] = React.useState<string | null>(null);
+  const [highlightItemIds, storeHighlightItemIds] = React.useState<string[]>([]);
   const highlightTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapApi = React.useRef<MapApi | null>(null);
   const [tripName, storeTripName] = React.useState(trip?.name ?? "");
@@ -202,13 +202,68 @@ export function Planner(props: { tripId: string }) {
     .find((place) => place !== undefined);
   const placeBias = anchorPlace ? { lng: anchorPlace.lng, lat: anchorPlace.lat } : null;
 
-  const highlight = (itemId: string) => {
-    storeHighlightItemId(itemId);
+  const highlight = (itemIds: string | string[]) => {
+    storeHighlightItemIds(Array.isArray(itemIds) ? itemIds : [itemIds]);
     if (highlightTimer.current) clearTimeout(highlightTimer.current);
     // Slightly outlives the rowLocate blink so the animation always
     // finishes before the state (and with it the animation rule) clears.
-    highlightTimer.current = setTimeout(() => storeHighlightItemId(null), 1200);
+    highlightTimer.current = setTimeout(() => storeHighlightItemIds([]), 1200);
   };
+
+
+  // Step mode: which leg of the selected day's route is spotlighted on the
+  // map (null = off). Stepping also walks the checklist: both endpoint
+  // rows blink and the list scrolls to the leg's start.
+  const [stepLeg, storeStepLeg] = React.useState<number | null>(null);
+  const routeStops = (routeDay?.itemIds ?? [])
+    .map((id) => db.items[id])
+    .filter(
+      (entry): entry is Item =>
+        entry !== undefined && entry.place !== undefined && entry.status !== "cancelled",
+    );
+  const stepTo = (leg: number | null) => {
+    storeStepLeg(leg);
+    if (leg === null) return;
+    const from = routeStops[leg];
+    const to = routeStops[leg + 1];
+    if (!from || !to) return;
+    highlight([from.id, to.id]);
+    document.getElementById(`ti-${from.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+
+  // Arrow keys drive the stepper while it is active, unless focus is in a
+  // text field (rows already use arrows to hop). Escape exits.
+  React.useEffect(() => {
+    if (stepLeg === null) return;
+    const controller = new AbortController();
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        const target = event.target as HTMLElement | null;
+        if (
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable)
+        ) {
+          return;
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          stepTo(Math.min(routeStops.length - 2, stepLeg + 1));
+        } else if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          stepTo(Math.max(0, stepLeg - 1));
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          stepTo(null);
+        }
+      },
+      { signal: controller.signal },
+    );
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepLeg, routeStops.length]);
 
   // Pin click: scroll the row into view, then blink it. The blink waits for
   // the smooth scroll to settle (its duration varies with distance, and a
@@ -256,6 +311,7 @@ export function Planner(props: { tripId: string }) {
 
   const selectScope = (next: Scope) => {
     haptics.tap();
+    storeStepLeg(null);
     storeScope(next);
     storeScopeNonce((nonce) => nonce + 1);
   };
@@ -489,7 +545,7 @@ export function Planner(props: { tripId: string }) {
               title="Ideas"
               subtitle="Not yet scheduled"
               selected={scope.type === "pool"}
-              highlightItemId={highlightItemId}
+              highlightItemIds={highlightItemIds}
               placeBias={placeBias}
               onSelect={() => selectScope({ type: "pool" })}
               onFly={onFly}
@@ -505,7 +561,7 @@ export function Planner(props: { tripId: string }) {
                 selected={scope.type === "day" && scope.id === day.id}
                 stickyHeader
                 stickyTop={CITY_BAR_HEIGHT}
-                highlightItemId={highlightItemId}
+                highlightItemIds={highlightItemIds}
                 placeBias={placeBias}
                 onSelect={() => selectScope({ type: "day", id: day.id })}
                 onFly={onFly}
@@ -587,6 +643,8 @@ export function Planner(props: { tripId: string }) {
           routeDate={routeDay?.date ?? null}
           routeVias={routeDay?.vias ?? null}
           paneResizing={paneResizing}
+          stepLeg={stepLeg}
+          onStep={stepTo}
           scopeKey={scopeKey}
           onPinClick={onPinClick}
           apiRef={mapApi}

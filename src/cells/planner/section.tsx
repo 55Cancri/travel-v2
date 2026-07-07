@@ -33,7 +33,7 @@ export function Section(props: {
   // Offset from the scrollport top while stuck (the city bar's height, so day
   // headers stack directly beneath the always-stuck city name).
   stickyTop?: string;
-  highlightItemId: string | null;
+  highlightItemIds: string[];
   // Address suggestions rank near here (the segment's city).
   placeBias: { lng: number; lat: number } | null;
   onSelect: () => void;
@@ -197,7 +197,7 @@ export function Section(props: {
             key={entry.id}
             item={entry}
             draggable={entry.text.trim() !== "" && textRowCount >= 2}
-            highlighted={props.highlightItemId === entry.id}
+            highlighted={props.highlightItemIds.includes(entry.id)}
             motion={reorder.motionFor(entry.id)}
             inputRef={(el) => {
               if (el) inputs.current.set(entry.id, el);
