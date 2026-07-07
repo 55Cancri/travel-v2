@@ -973,7 +973,9 @@ export function MapPane(props: {
     if (!map || !map.getLayer("day-route-line")) return;
     const leg = stepLegRef.current;
     const dark = document.documentElement.dataset.theme === "dark";
-    const dim = dark ? "#4E4842" : "#CFC9C1";
+    // The light canvas is itself pale, so its dim needs several steps more
+    // depth than the dark theme's to read as "not this leg" at all.
+    const dim = dark ? "#4E4842" : "#A29A92";
     if (leg === null) {
       map.setPaintProperty("day-route-line", "line-color", "#C05B3F");
       map.setPaintProperty("day-route-line", "line-opacity", 0.85);
