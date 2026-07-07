@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Block, Button, Input, Link, Text } from "atoms/blocks";
-import { ArrowLeft, Plus } from "atoms/icons";
+import { ArrowLeft, Block, Button, Input, Link, Plus, Text } from "atoms";
+import { Center, Subtext } from "alloys";
 import { haptics } from "entities/haptics";
 import {
   addDay,
@@ -85,7 +85,11 @@ export function Planner(props: { tripId: string }) {
       storeLeftWidth((width) => {
         try {
           localStorage.setItem(LEFT_WIDTH_KEY, String(width));
-        } catch {}
+        } catch (error) {
+          // Private mode / quota: the width still applies, it just won't
+          // survive a reload.
+          console.warn("[planner] persist split width failed:", error);
+        }
         return width;
       });
     };
@@ -300,12 +304,12 @@ export function Planner(props: { tripId: string }) {
             fontWeight={700}
             letterSpacing="-0.02em"
             color="text-primary"
-            _focus={{ outlineColor: "transparent", borderColor: "transparent" }}
+            _focusWithin={{ borderColor: "transparent", boxShadow: "none" }}
           />
           {trip.dates ? (
-            <Text as="span" fontSize="sm" color="text-muted" whiteSpace="nowrap">
+            <Subtext fontSize="sm" whiteSpace="nowrap">
               {trip.dates}
-            </Text>
+            </Subtext>
           ) : null}
         </Block>
 
@@ -325,7 +329,7 @@ export function Planner(props: { tripId: string }) {
                 <Button
                   type="button"
                   onPointerDown={(event) => onChipPointerDown(event, index, id)}
-                  onClick={() => {
+                  onPress={() => {
                     if (chipDragged.current) return;
                     haptics.tap();
                     storeActiveSegmentId(id);
@@ -352,10 +356,7 @@ export function Planner(props: { tripId: string }) {
                     type="button"
                     aria-label={`Delete ${entry.name}`}
                     title={`Delete ${entry.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      removeCity(id, entry.name);
-                    }}
+                    onPress={() => removeCity(id, entry.name)}
                     grid
                     placeItems="center"
                     position="absolute"
@@ -380,7 +381,7 @@ export function Planner(props: { tripId: string }) {
           })}
           <Button
             type="button"
-            onClick={newSegment}
+            onPress={newSegment}
             px="sm"
             py="0.15lh"
             borderRadius="9999px"
@@ -430,14 +431,14 @@ export function Planner(props: { tripId: string }) {
                 fontWeight={700}
                 letterSpacing="-0.02em"
                 color="text-primary"
-                _focus={{ outlineColor: "transparent", borderColor: "transparent" }}
+                _focusWithin={{ borderColor: "transparent", boxShadow: "none" }}
               />
               {days.length ? (
-                <Text as="span" fontSize="sm" color="text-muted" whiteSpace="nowrap">
+                <Subtext fontSize="sm" whiteSpace="nowrap">
                   {days.length > 1
                     ? `${formatDay(days[0].date)} – ${formatDay(days[days.length - 1].date)}`
                     : formatDay(days[0].date)}
-                </Text>
+                </Subtext>
               ) : null}
             </Block>
 
@@ -471,7 +472,7 @@ export function Planner(props: { tripId: string }) {
 
             <Button
               type="button"
-              onClick={newDay}
+              onPress={newDay}
               grid
               cols="auto auto 1fr"
               gap="sm"
@@ -487,9 +488,9 @@ export function Planner(props: { tripId: string }) {
               _hover={{ color: "text-primary" }}
             >
               <Block as="span" w="1.5rem" h="1.5rem" aria-hidden="true" />
-              <Block as="span" grid placeItems="center" w="1.3rem" h="1.3rem">
+              <Center as="span" w="1.3rem" h="1.3rem">
                 <Plus size={17} />
-              </Block>
+              </Center>
               <Text as="span" fontSize="md" fontWeight={500} color="inherit">
                 Add day
               </Text>
@@ -497,9 +498,7 @@ export function Planner(props: { tripId: string }) {
             </Block>
           </Block>
         ) : (
-          <Text as="p" color="text-muted">
-            Add a city to start planning.
-          </Text>
+          <Subtext as="p">Add a city to start planning.</Subtext>
         )}
       </Block>
 
@@ -550,7 +549,7 @@ export function Planner(props: { tripId: string }) {
       {/* mobile map/list toggle */}
       <Button
         type="button"
-        onClick={() => {
+        onPress={() => {
           haptics.tap();
           storeShowMap((prev) => !prev);
         }}
