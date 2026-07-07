@@ -40,8 +40,9 @@ export default defineConfig({
       // also covers keyboard Space/Enter and cancels on drag-off, so styles
       // ride this instead of :active.
       pressed: "&[data-pressed]",
-      // Hover styling never applies to a disabled control.
-      hover: "&:hover:not(:disabled)",
+      // Hover styling never applies to a disabled control. data-disabled
+      // covers Button as="a", where the disabled attribute does not exist.
+      hover: "&:hover:not(:disabled):not([data-disabled])",
     },
   },
 

@@ -69,8 +69,10 @@ export const Input = (props: _t.Props) => {
   const { ref, className, start, end, _motion, ...restProps } = props;
   const [cssProps, rawElementProps] = splitCssProps(restProps);
   const { css: cssProp, ...styleProps } = cssProps;
+  // The consumer's style prop targets the field root like every other
+  // atom's; only inputElementStyles reach the inner element.
   const {
-    style: inputStyle,
+    style: rootStyle,
     disabled = false,
     ...inputProps
   } = rawElementProps as React.ComponentPropsWithoutRef<"input">;
@@ -90,9 +92,17 @@ export const Input = (props: _t.Props) => {
 
   // The whole box acts as the input's hit area: clicking padding or a slot
   // focuses the text, matching how a native field's border box behaves.
+  // Interactive slot content (a clear button, a link) keeps its own press:
+  // stealing focus from it would swallow the click.
   const focusFromRoot = (event: React.MouseEvent<HTMLDivElement>) => {
     const input = inputRef.current;
     if (!input || event.target === input || disabled) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest("button, a, input, select, textarea")
+    ) {
+      return;
+    }
     event.preventDefault();
     input.focus();
   };
@@ -101,7 +111,7 @@ export const Input = (props: _t.Props) => {
     <motion.div
       {...motionProps}
       data-disabled={disabled || undefined}
-      style={{ ...motionStyle, gridTemplateColumns }}
+      style={{ ...motionStyle, ...rootStyle, gridTemplateColumns }}
       className={cx(
         css(
           fieldRootStyles,
@@ -122,7 +132,6 @@ export const Input = (props: _t.Props) => {
         {...inputProps}
         ref={attachRefs(inputRef, ref)}
         disabled={disabled}
-        style={inputStyle}
         className={css(inputElementStyles)}
       />
       {hasEnd ? (
