@@ -7,7 +7,8 @@ Before deep work in an area, read the matching rule file:
 | Area | Full rule |
 | --- | --- |
 | **Redesign for the ideal (Phoenix rule, rule zero)** | `docs/rules/redesign-for-the-ideal.mdc` |
-| Naming + TS style | `docs/rules/typescript-style.mdc` |
+| Naming + TS style (also applies to Rust names) | `docs/rules/typescript-style.mdc` |
+| Rust style (errors, lints, module shape, async) | `docs/rules/rust-style.mdc` |
 | Files, folders, module shape | `docs/rules/code-organization.mdc` |
 | Panda styling / atoms | `docs/rules/panda-style-reuse.mdc` |
 | Layout | `docs/rules/prefer-grid-over-flex.mdc` |
@@ -211,8 +212,8 @@ quality or speed beats hand-rolling.
 ## Banned words in identifiers (HARD BANS, most-missed rules)
 
 These words may not appear in any name you define: variables, params, fields,
-functions, types, files, folders. Name the actual thing, not its relationship
-to other code. The only pass is an external API's own surface (React's
+functions, types, files, folders, Rust structs. Name the actual thing, not
+its relationship to other code. The only pass is an external API's own surface (React's
 `useState`, the DOM's `event.data`, a `default` export). Keep their word at
 that boundary only, never thread it into names we own.
 
@@ -278,7 +279,8 @@ that boundary only, never thread it into names we own.
   retries, parsing, and math live in named step files, not inline in the
   orchestrator.
 - **Boundary types are deliberate.** Where two languages or processes meet
-  (client/worker, NDJSON on stdout), name the wire shapes on both sides (a
+  (TS/Rust, client/worker, NDJSON on stdout), name the wire shapes on both
+  sides (a
   `Wire*` prefix is fine, it makes schema drift greppable) and update both
   ends plus fixtures in the same change.
 - Inline SVG components are icons: `atoms/icons/<name>/index.tsx`, exported
@@ -341,9 +343,21 @@ Know the modern primitives: `useSyncExternalStore`, `useEffectEvent`,
 
 ## UI: atoms + Panda props
 
-- Build from the wrapped atoms (`Block`, `Text`, `Button`, `Input`, ...),
-  never raw `<div>`/`<span>`/`<button>` with inline styles or CSS modules in
+- Build from the wrapped atoms (`Block`, `Text`, `Button`, `Input`, `Link`,
+  imported from the `atoms` door) and the pre-styled alloys (`alloys` door:
+  `PrimaryButton`, `IconButton`, `Eyebrow`, `Title`, `Subtext`, ...), never
+  raw `<div>`/`<span>`/`<button>` with inline styles or CSS modules in
   feature code. Atoms carry motion wiring, tokens, and the typed prop API.
+  Alloys carry defaults, not closed APIs: every style prop passes through
+  and consumer props win, so call-site nudges never need new props.
+- **Interaction behavior comes from react-aria HOOKS, wrapped invisibly
+  inside the atoms** (`useButton` + `useLongPress` in Button: unified
+  press for pointer/touch/keyboard/virtual clicks with drag-off cancel,
+  plus the WKWebView/VoiceOver quirks catalog we ship on). Import subpaths
+  from the `react-aria` monopackage (`react-aria/useButton`), never the
+  frozen `@react-aria/*` scoped packages and never `react-aria-components`.
+  Consumers see our prop API only (`onPress`, `onLongPress`, `isLoading`);
+  the rendered element stays a native `button`/`a`/`input`.
 - Style atoms with **props**, not `className={css(...)}` (that loses the
   cascade race, see "The cascade contract" in `panda-style-reuse.mdc`).
   Conditions are props (`_hover`, `_focusVisible`, `_disabled`, `_dark`,
@@ -372,11 +386,13 @@ Know the modern primitives: `useSyncExternalStore`, `useEffectEvent`,
 - **Type discipline (HARD RULE, owner directive 2026-07-05).** A screen
   carries at most four type roles: one heading (`2xl`/`3xl`), body (`md`),
   support (`sm`), and one micro label (`xs`, the only xs on a page).
-  Weights stay at three: 400 body, 500 controls and labels, 600 headings
-  and titles. Never sprinkle per-element `fontSize`/`fontWeight` nudges in
-  feature code: a recurring treatment becomes a named text component, and a
-  size that seems needed outside the four roles means stop and ask. The
-  owner is sick of pages with a different size on every element.
+  Weights stay at three. The canonical trio is 400/500/600, but this app's
+  variable font reads light, so the whole ladder sits +50: 450 body (set
+  globally), 550 controls and labels, 650 headings and titles. Never
+  sprinkle per-element `fontSize`/`fontWeight` nudges in feature code: a
+  recurring treatment becomes an alloy, and a size that seems needed
+  outside the four roles means stop and ask. The owner is sick of pages
+  with a different size on every element.
 - Spacing/sizes/radii ride the lh rhythm tokens (`xs`...`2xl`). Colors come
   from semantic tokens (`surface-*`, `text-*`, `border-*`).
 - **`neutral.100` is banned as a surface/fill (HARD BAN).** The light-mode
