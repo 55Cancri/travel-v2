@@ -1,16 +1,25 @@
 import type * as React from "react";
 import type { MotionProps } from "framer-motion";
-import { Block, Button, DotsSixVertical, Pencil, Text } from "atoms";
-import { Checkbox, IconButton, Subtext } from "alloys";
+import {
+  Block,
+  Button,
+  Calendar,
+  Clock,
+  DotsSixVertical,
+  MapPin,
+  Pencil,
+  Ticket,
+} from "atoms";
+import { Center, Checkbox, IconButton, Subtext } from "alloys";
 import { KIND_META, type Item } from "entities/trips/types";
 
-// One plan row. The grip COLUMN is always reserved (stockpile's layout-stability
-// trick) so checkboxes and text never shift as handles appear — the handle
-// itself only renders when the row is draggable. Label-wrapped input, time
-// chip, colored place dot (flies the map; ⌘-click a map pin does the reverse),
-// and a pencil (hover on desktop, always on mobile) that opens the item editor
-// — where cancel/restore, kind, time and details live. Lodging/transport items
-// grow a details card.
+// One plan row. The grip COLUMN is always reserved so checkboxes and text
+// never shift as handles appear (the handle itself only renders when the row
+// is draggable). Label-wrapped input, then the action pair: a pencil (hover
+// on desktop, always on mobile) that opens the item editor, and the colored
+// kind dot at the row edge (flies the map; ⌘-click a map pin does the
+// reverse). Time and booking details render as indented icon lines under
+// the text.
 export function ItemRow(props: {
   item: Item;
   draggable: boolean;
@@ -32,6 +41,13 @@ export function ItemRow(props: {
   const done = item.status === "done";
   const inputId = `ti-${item.id}`;
   const kind = KIND_META[item.kind];
+  const details = item.details;
+  const checkInOut = details?.checkIn
+    ? `in: ${details.checkIn}${details.checkOut ? ` · out: ${details.checkOut}` : ""}`
+    : undefined;
+  const booking = details?.code
+    ? `${details.code}${details.phone ? ` · ${details.phone}` : ""}`
+    : undefined;
   return (
     <Block
       data-item-row=""
@@ -39,9 +55,8 @@ export function ItemRow(props: {
       borderRadius="xs"
       px="xs"
       mx="-0.25lh"
-      bg={props.highlighted ? "accent-soft" : "transparent"}
-      transition="background-color 400ms ease"
-      css={{ "&:hover .row-actions": { opacity: 1 } }}
+      animation={props.highlighted ? "rowLocate 1100ms ease-out" : "none"}
+      css={{ "&:hover .row-actions": { opacity: 1, transform: "scale(1)" } }}
     >
       <Block
         as="label"
@@ -131,30 +146,33 @@ export function ItemRow(props: {
           textDecoration={done || cancelled ? "line-through" : "none"}
           style={{ fieldSizing: "content" } as React.CSSProperties}
         />
+        {/* Actions: pencil reveals on hover ahead of the kind dot, which
+            anchors the row edge. */}
         <Block flex gap="xs" alignItems="center" mt="0.45rem">
-          {item.time ? (
-            <Text
-              as="span"
-              fontSize="sm"
-              fontWeight={550}
-              px="xs"
-              py="0.05lh"
-              bg="surface-muted"
-              borderRadius="xs"
-              color="text-muted"
-              whiteSpace="nowrap"
-            >
-              {item.time}
-            </Text>
-          ) : null}
+          <IconButton
+            className="row-actions"
+            aria-label="Edit item"
+            title="Edit"
+            onPress={props.onEdit}
+            // The row's <label> wraps these actions; preventing the click
+            // default keeps a press from also activating the label and
+            // yanking focus into the textarea.
+            onClick={(event) => event.preventDefault()}
+            size="1.6rem"
+            borderRadius="9999px"
+            // Reveals by fading + scaling in on row hover (desktop); mobile
+            // has no hover, so it stays present at full size.
+            opacity={{ base: 1, md: 0 }}
+            transform={{ base: "scale(1)", md: "scale(0.7)" }}
+            transition="color 140ms ease, opacity 150ms ease, transform 150ms ease"
+          >
+            <Pencil size={13} />
+          </IconButton>
           {item.place ? (
             <IconButton
               aria-label={`Show ${item.place.name} on map`}
               title={item.place.name}
               onPress={props.onFly}
-              // The row's <label> wraps these actions; preventing the click
-              // default keeps a press from also activating the label and
-              // yanking focus into the textarea.
               onClick={(event) => event.preventDefault()}
               size="1.4rem"
               borderRadius="9999px"
@@ -171,18 +189,6 @@ export function ItemRow(props: {
               />
             </IconButton>
           ) : null}
-          <IconButton
-            className="row-actions"
-            aria-label="Edit item"
-            title="Edit"
-            onPress={props.onEdit}
-            onClick={(event) => event.preventDefault()}
-            size="1.6rem"
-            borderRadius="9999px"
-            opacity={{ base: 1, md: 0 }}
-          >
-            <Pencil size={13} />
-          </IconButton>
         </Block>
       </Block>
 
@@ -199,10 +205,11 @@ export function ItemRow(props: {
         </Subtext>
       ) : null}
 
-      {item.details ? (
-        // Indented detail lines under the text (no card chrome): a fixed icon
-        // column keeps every icon the same size and every line starting at the
-        // same x — flush with the item text above.
+      {item.time || details ? (
+        // Indented metadata lines under the text (no card chrome): the time,
+        // then any booking details. A fixed icon column keeps every line-art
+        // glyph the same size and every line starting at the same x, flush
+        // with the item text above.
         <Block
           pl="calc(1.5rem + 1.3rem + 1lh)"
           mb="xs"
@@ -211,33 +218,31 @@ export function ItemRow(props: {
         >
           {(
             [
-              ["📍", item.details.address],
-              ["🗓", item.details.dates],
-              [
-                "🕑",
-                item.details.checkIn
-                  ? `in: ${item.details.checkIn}${item.details.checkOut ? ` · out: ${item.details.checkOut}` : ""}`
-                  : undefined,
-              ],
-              [
-                "🎟",
-                item.details.code
-                  ? `${item.details.code}${item.details.phone ? ` · ${item.details.phone}` : ""}`
-                  : undefined,
-              ],
+              ["time", <Clock size={12} />, item.time],
+              ["address", <MapPin size={12} />, details?.address],
+              ["dates", <Calendar size={12} />, details?.dates],
+              ["in-out", <Clock size={12} />, checkInOut],
+              ["booking", <Ticket size={12} />, booking],
             ] as const
-          ).map(([icon, value]) =>
+          ).map(([lineKey, icon, value]) =>
             value ? (
-              <Block key={icon} grid cols="auto 1fr" gap="sm" alignItems="baseline">
-                <Text
+              <Block key={lineKey} grid cols="auto 1fr" gap="sm" alignItems="start">
+                {/* fontSize sm pins this box's 1lh to the value line's box,
+                    so the glyph centers on the first line even when the
+                    value wraps. The box hugs the glyph width: slack here is
+                    invisible padding that pushes the text away, so the
+                    icon-to-text distance stays the checkbox-to-text one
+                    (the column gap). */}
+                <Center
                   as="span"
                   aria-hidden="true"
-                  w="1.1rem"
-                  textAlign="center"
-                  style={{ fontSize: "0.8rem", lineHeight: "1.5" }}
+                  fontSize="sm"
+                  w="0.8rem"
+                  h="1lh"
+                  color="text-muted"
                 >
                   {icon}
-                </Text>
+                </Center>
                 <Subtext fontSize="sm">{value}</Subtext>
               </Block>
             ) : null,

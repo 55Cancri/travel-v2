@@ -67,11 +67,10 @@ export default defineConfig({
       WebkitFontSmoothing: "antialiased",
       MozOsxFontSmoothing: "grayscale",
       background: "surface-page",
-      // Pin colors — themed via CSS vars so map markers (plain DOM elements)
-      // retheme without a JS pass. Light mode keeps a warm ring + soft drop
-      // shadow (grounds dots on the pale map); dark mode gets bare color.
-      "--pin-dot-shadow":
-        "0 0 0 1.5px rgba(62, 48, 40, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3)",
+      // Pin colors, themed via CSS vars so map markers (plain DOM elements)
+      // retheme without a JS pass. Light mode gets only a soft drop shadow
+      // to ground dots on the pale map (no ring); dark mode gets bare color.
+      "--pin-dot-shadow": "0 1px 3px rgba(0, 0, 0, 0.3)",
       "--pin-activity": "#C05B3F",
       "--pin-food": "#B4436C",
       "--pin-lodging": "#0F766E",
@@ -142,6 +141,15 @@ export default defineConfig({
         "accent-soft": {
           value: { base: "#F6E7E0", _dark: "#4A2E24" },
         },
+        // The highlighter swipe behind the selected day/section title:
+        // marker-yellow in light mode, a deep amber wash in dark so light
+        // text stays readable on it.
+        "surface-selected": {
+          value: {
+            base: "{colors.amber.200}",
+            _dark: "color-mix(in srgb, {colors.amber.400} 30%, {colors.stone.900})",
+          },
+        },
         "text-on-accent": {
           value: { base: "{colors.white}", _dark: "{colors.stone.900}" },
         },
@@ -165,6 +173,26 @@ export default defineConfig({
       },
     },
     extend: {
+      // The locate blink (pin click highlights its row): an inset focus-blue
+      // ring with a soft inner glow that pulses twice and dissolves. Rides
+      // the focus tokens so it re-themes with the palette.
+      keyframes: {
+        rowLocate: {
+          "0%, 100%": { boxShadow: "inset 0 0 0 0 transparent" },
+          "12%, 42%": {
+            boxShadow:
+              "inset 0 0 0 1.5px {colors.focus-ring}, inset 0 0 16px {colors.focus-halo}",
+          },
+          "27%": {
+            boxShadow:
+              "inset 0 0 0 1.5px {colors.focus-halo}, inset 0 0 4px transparent",
+          },
+          "75%": {
+            boxShadow:
+              "inset 0 0 0 1px {colors.focus-halo}, inset 0 0 8px {colors.focus-halo}",
+          },
+        },
+      },
       tokens: {
         spacing: rhythm,
         sizes: rhythm,

@@ -137,19 +137,20 @@ export function Section(props: {
         zIndex={props.stickyHeader ? 3 : "auto"}
         style={{ top: props.stickyHeader ? (props.stickyTop ?? "0px") : undefined }}
       >
-        {/* selected = quiet accent underline (colored text read as an error) */}
+        {/* selected = highlighter swipe across the title, unmissable at a
+            glance (an underline was too quiet). Negative margins cancel the
+            padding so the text never shifts when selection moves. */}
         <Text
           as="span"
           fontSize="lg"
           fontWeight={650}
           letterSpacing="-0.01em"
           color="inherit"
-          style={{
-            textDecorationLine: props.selected ? "underline" : "none",
-            textDecorationColor: "var(--colors-accent)",
-            textDecorationThickness: "2px",
-            textUnderlineOffset: "5px",
-          }}
+          bg={props.selected ? "surface-selected" : "transparent"}
+          px="0.3em"
+          mx="-0.3em"
+          borderRadius="2px"
+          transition="background-color 160ms ease"
         >
           {props.title}
         </Text>
@@ -218,7 +219,8 @@ export function Section(props: {
         <Center as="span" w="1.3rem" h="1.3rem">
           <Plus size={17} />
         </Center>
-        <Text as="span" fontSize="md" fontWeight={500} color="inherit">
+        {/* Button centers its grid items; this label hugs the plus instead. */}
+        <Text as="span" fontSize="md" fontWeight={500} color="inherit" justifySelf="start">
           Add
         </Text>
       </Button>

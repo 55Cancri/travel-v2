@@ -17,3 +17,6 @@ dist/
 .env.*
 .DS_Store
 *.log
+
+# vite dev cache
+.vite/

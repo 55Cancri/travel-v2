@@ -1,5 +1,8 @@
-// Edit affordance for plan rows — opens the item editor. Classic pencil:
-// stubby body, fat 2.5 stroke, and the divider line that reads as the eraser.
+// Edit affordance for plan rows. A fat, compact pencil, no framing box:
+// the width comes from the GEOMETRY (a wide diagonal body with a rounded
+// cap and a short converging tip), not from stroke weight, so it reads
+// chunky without blobbing at small sizes. The cross line is the band
+// where the tip meets the body.
 export function Pencil(props: { size?: number }) {
   const size = props.size ?? 14;
   return (
@@ -9,14 +12,14 @@ export function Pencil(props: { size?: number }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      <path d="M15.5 5.5a2.4 2.4 0 0 1 3.4 3.4L8.5 19.3 3.6 20.4l1.1-4.9L15.5 5.5z" />
-      <path d="M13.4 7.6l3.4 3.4" />
+      <path d="M4 20 L4.6 13.6 L14.6 3.6 A4.1 4.1 0 0 1 20.4 9.4 L10.4 19.4 Z" />
+      <path d="M4.6 13.6 L10.4 19.4" />
     </svg>
   );
 }
