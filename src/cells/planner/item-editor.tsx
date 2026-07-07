@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Block, Button, Input, Text } from "atoms/blocks";
+import { Block, Button, Input } from "atoms";
+import { Eyebrow, FieldLabel, PrimaryButton, Subtext } from "alloys";
 import { haptics } from "entities/haptics";
 import { removeItem, updateItem, useDb } from "entities/trips/store";
 import { KIND_META, type ContainerRef, type ItemDetails, type ItemKind } from "entities/trips/types";
@@ -15,14 +16,19 @@ export function ItemEditor(props: {
 }) {
   const db = useDb();
   const item = db.items[props.itemId];
+  // Field labels within this editor are unique strings, so id = base + label
+  // wires every FieldLabel to its input for screen readers.
+  const fieldIdBase = React.useId();
 
+  const closeOnEscape = React.useEffectEvent((event: KeyboardEvent) => {
+    if (event.key === "Escape") props.onClose();
+  });
   React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const controller = new AbortController();
+    window.addEventListener("keydown", closeOnEscape, {
+      signal: controller.signal,
+    });
+    return () => controller.abort();
   }, []);
 
   if (!item) return null;
@@ -33,10 +39,9 @@ export function ItemEditor(props: {
 
   const field = (label: string, value: string, onChange: (v: string) => void, placeholder = "") => (
     <Block flow="0.1lh">
-      <Text as="label" fontSize="sm" fontWeight={550} color="text-muted">
-        {label}
-      </Text>
+      <FieldLabel htmlFor={`${fieldIdBase}-${label}`}>{label}</FieldLabel>
       <Input
+        id={`${fieldIdBase}-${label}`}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.currentTarget.value)}
@@ -119,7 +124,7 @@ export function ItemEditor(props: {
               <Button
                 key={kind}
                 type="button"
-                onClick={() => {
+                onPress={() => {
                   haptics.tap();
                   updateItem(item.id, { kind });
                 }}
@@ -157,16 +162,14 @@ export function ItemEditor(props: {
         {field("Note", item.note ?? "", (v) => updateItem(item.id, { note: v || undefined }), "small print under the item")}
 
         {item.place ? (
-          <Text as="p" fontSize="sm" color="text-muted">
+          <Subtext as="p" fontSize="sm">
             📍 {item.place.name}
-            {item.place.address ? ` — ${item.place.address}` : ""}
-          </Text>
+            {item.place.address ? ` · ${item.place.address}` : ""}
+          </Subtext>
         ) : null}
 
         <Block flow="sm">
-          <Text as="p" fontSize="sm" fontWeight={650} color="text-muted">
-            Details
-          </Text>
+          <Eyebrow as="p">Details</Eyebrow>
           {field("Address", details.address ?? "", (v) => setDetail("address", v))}
           <Block grid gridTemplateColumns="1fr 1fr" gap="sm">
             {field("Dates", details.dates ?? "", (v) => setDetail("dates", v))}
@@ -191,7 +194,7 @@ export function ItemEditor(props: {
         >
           <Button
             type="button"
-            onClick={() => {
+            onPress={() => {
               haptics.tap();
               updateItem(item.id, { status: cancelled ? "planned" : "cancelled" });
             }}
@@ -209,7 +212,7 @@ export function ItemEditor(props: {
           </Button>
           <Button
             type="button"
-            onClick={() => {
+            onPress={() => {
               removeItem(props.containerRef, item.id);
               props.onClose();
             }}
@@ -222,20 +225,7 @@ export function ItemEditor(props: {
             Delete
           </Button>
           <Block />
-          <Button
-            type="button"
-            onClick={props.onClose}
-            px="md"
-            py="xs"
-            borderRadius="sm"
-            fontSize="sm"
-            fontWeight={600}
-            bg="accent"
-            color="text-on-accent"
-            _hover={{ bg: "accent-strong" }}
-          >
-            Done
-          </Button>
+          <PrimaryButton onPress={props.onClose}>Done</PrimaryButton>
         </Block>
       </Block>
     </>

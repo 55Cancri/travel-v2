@@ -1,32 +1,8 @@
 import type * as React from "react";
 import type { MotionProps } from "framer-motion";
-import { css, cx } from "panda/css";
-import { Block, Button, Checkbox, Text } from "atoms/blocks";
-import { DotsSixVertical, Pencil } from "atoms/icons";
+import { Block, Button, DotsSixVertical, Pencil, Text } from "atoms";
+import { Checkbox, IconButton, Subtext } from "alloys";
 import { KIND_META, type Item } from "entities/trips/types";
-
-// Auto-growing row text: long items WRAP onto extra lines (the row grows)
-// instead of truncating. field-sizing:content sizes the textarea to its value;
-// Enter never inserts a newline (the section's key handler spawns a row).
-const rowTextCss = css({
-  width: "100%",
-  border: "0",
-  outline: "none",
-  background: "transparent",
-  padding: "0",
-  paddingBlock: "xs",
-  margin: "0",
-  fontFamily: "inherit",
-  fontSize: "md",
-  fontWeight: 500,
-  lineHeight: "1.5",
-  resize: "none",
-  overflow: "hidden",
-  transition: "color 200ms ease",
-  _placeholder: { color: "text-muted" },
-});
-const rowTextNormalCss = css({ color: "text-primary", textDecoration: "none" });
-const rowTextMutedCss = css({ color: "text-muted", textDecoration: "line-through" });
 
 // One plan row. The grip COLUMN is always reserved (stockpile's layout-stability
 // trick) so checkboxes and text never shift as handles appear — the handle
@@ -121,7 +97,12 @@ export function ItemRow(props: {
             />
           </Block>
         )}
-        <textarea
+        {/* Auto-growing row text: long items WRAP onto extra lines (the row
+            grows) instead of truncating. field-sizing:content sizes the
+            textarea to its value; Enter never inserts a newline (the
+            section's key handler spawns a row). */}
+        <Block
+          as="textarea"
           id={inputId}
           ref={props.inputRef}
           value={item.text}
@@ -131,10 +112,23 @@ export function ItemRow(props: {
           onPaste={props.onPaste}
           onBlur={props.onBlur}
           onKeyDown={props.onKeyDown}
-          className={cx(
-            rowTextCss,
-            done || cancelled ? rowTextMutedCss : rowTextNormalCss,
-          )}
+          width="100%"
+          border="0"
+          outline="none"
+          background="transparent"
+          padding="0"
+          paddingBlock="xs"
+          margin="0"
+          fontFamily="inherit"
+          fontSize="md"
+          fontWeight={500}
+          lineHeight="1.5"
+          resize="none"
+          overflow="hidden"
+          transition="color 200ms ease"
+          _placeholder={{ color: "text-muted" }}
+          color={done || cancelled ? "text-muted" : "text-primary"}
+          textDecoration={done || cancelled ? "line-through" : "none"}
           style={{ fieldSizing: "content" } as React.CSSProperties}
         />
         <Block flex gap="xs" alignItems="center" mt="0.45rem">
@@ -154,22 +148,16 @@ export function ItemRow(props: {
             </Text>
           ) : null}
           {item.place ? (
-            <Button
-              type="button"
+            <IconButton
               aria-label={`Show ${item.place.name} on map`}
               title={item.place.name}
-              onClick={(event) => {
-                event.preventDefault();
-                props.onFly();
-              }}
-              grid
-              placeItems="center"
-              w="1.4rem"
-              h="1.4rem"
-              p={0}
-              bg="transparent"
+              onPress={props.onFly}
+              // The row's <label> wraps these actions; preventing the click
+              // default keeps a press from also activating the label and
+              // yanking focus into the textarea.
+              onClick={(event) => event.preventDefault()}
+              size="1.4rem"
               borderRadius="9999px"
-              _hover={{ bg: "surface-hover" }}
             >
               <Block
                 as="span"
@@ -181,45 +169,34 @@ export function ItemRow(props: {
                   boxShadow: "var(--pin-dot-shadow)",
                 }}
               />
-            </Button>
+            </IconButton>
           ) : null}
-          <Button
-            type="button"
+          <IconButton
             className="row-actions"
             aria-label="Edit item"
             title="Edit"
-            onClick={(event) => {
-              event.preventDefault();
-              props.onEdit();
-            }}
-            grid
-            placeItems="center"
-            w="1.6rem"
-            h="1.6rem"
-            p={0}
-            bg="transparent"
-            color="text-muted"
+            onPress={props.onEdit}
+            onClick={(event) => event.preventDefault()}
+            size="1.6rem"
             borderRadius="9999px"
             opacity={{ base: 1, md: 0 }}
-            _hover={{ bg: "surface-hover", color: "text-primary" }}
           >
             <Pencil size={13} />
-          </Button>
+          </IconButton>
         </Block>
       </Block>
 
       {item.note && !empty ? (
-        <Text
+        <Subtext
           as="p"
           fontSize="sm"
-          color="text-muted"
           mt="-0.15lh"
           pb="xs"
           pl="calc(1.5rem + 1.3rem + 1lh)"
           textDecoration={cancelled ? "line-through" : "none"}
         >
           {item.note}
-        </Text>
+        </Subtext>
       ) : null}
 
       {item.details ? (
@@ -261,9 +238,7 @@ export function ItemRow(props: {
                 >
                   {icon}
                 </Text>
-                <Text as="span" fontSize="sm" color="text-muted">
-                  {value}
-                </Text>
+                <Subtext fontSize="sm">{value}</Subtext>
               </Block>
             ) : null,
           )}

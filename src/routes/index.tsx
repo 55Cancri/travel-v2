@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Block, Button, Link, Text } from "atoms/blocks";
+import { Block, Button, Link, Text } from "atoms";
+import { Numeric, PrimaryButton, Subtext, Title } from "alloys";
 import { haptics } from "entities/haptics";
 import { createTrip, resetToSeed, useDb, useMounted } from "entities/trips/store";
 
@@ -22,23 +23,12 @@ function TripsScreen() {
   return (
     <Block as="main" maxW="42rem" mx="auto" px="md" pt="lg" pb="2xl" flow="md">
       <Block grid cols="1fr auto" alignItems="baseline">
-        <Text as="h1" fontSize="2xl" fontWeight={700} letterSpacing="-0.02em">
+        <Text as="h1" fontSize="2xl" fontWeight={650} letterSpacing="-0.02em">
           Trips
         </Text>
-        <Button
-          type="button"
-          onClick={newTrip}
-          px="sm"
-          py="xs"
-          borderRadius="sm"
-          bg="accent"
-          color="text-on-accent"
-          fontSize="sm"
-          fontWeight={550}
-          _hover={{ bg: "accent-strong" }}
-        >
+        <PrimaryButton onPress={newTrip} px="sm">
           + New trip
-        </Button>
+        </PrimaryButton>
       </Block>
 
       <Block flow="sm">
@@ -75,17 +65,15 @@ function TripsScreen() {
               _hover={{ borderColor: "border-strong" }}
             >
               <Block grid cols="1fr auto" alignItems="baseline" gap="sm">
-                <Text as="span" fontSize="lg" fontWeight={600}>
-                  {trip.name}
-                </Text>
-                <Text as="span" fontSize="sm" color="text-muted">
+                <Title fontSize="lg">{trip.name}</Title>
+                <Numeric fontSize="sm" color="text-muted">
                   {done}/{active.length} done
-                </Text>
+                </Numeric>
               </Block>
               {trip.dates ? (
-                <Text as="p" fontSize="sm" color="text-muted" mt="xs">
+                <Subtext as="p" fontSize="sm" mt="xs">
                   {trip.dates}
-                </Text>
+                </Subtext>
               ) : null}
               {segments.length ? (
                 <Block flex gap="xs" mt="sm" flexWrap="wrap">
@@ -113,7 +101,7 @@ function TripsScreen() {
 
       <Button
         type="button"
-        onClick={() => resetToSeed()}
+        onPress={() => resetToSeed()}
         bg="transparent"
         color="text-muted"
         fontSize="xs"
