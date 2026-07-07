@@ -210,7 +210,6 @@ export function Planner(props: { tripId: string }) {
     highlightTimer.current = setTimeout(() => storeHighlightItemIds([]), 1200);
   };
 
-
   // Step mode: which leg of the selected day's route is spotlighted on the
   // map (null = off). Stepping also walks the checklist: both endpoint
   // rows blink and the list scrolls to the leg's start.
