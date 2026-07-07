@@ -159,6 +159,7 @@ const lineFeature = (
     vehicle?: string;
     headsign?: string;
     times?: string;
+    next?: string;
     live?: boolean;
   },
 ): Feature => ({
@@ -364,8 +365,11 @@ export function MapPane(props: {
         const times = ride.times
           ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(ride.times)}</div>`
           : "";
+        const next = ride.next
+          ? `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">Next ${escapeHtml(ride.next)}</div>`
+          : "";
         followCursor(
-          `<div style="font-weight:600">${escapeHtml(title)}${liveBadge}</div>${headsign}${times}`,
+          `<div style="font-weight:600">${escapeHtml(title)}${liveBadge}</div>${headsign}${times}${next}`,
           event.lngLat,
         );
       });
@@ -754,6 +758,9 @@ export function MapPane(props: {
               vehicle: leg.vehicle,
               headsign: leg.headsign,
               times,
+              next: leg.nextDeparts?.length
+                ? leg.nextDeparts.map((iso) => clockTime(iso, tz)).join(", ")
+                : undefined,
               live: leg.live,
             }),
           );
