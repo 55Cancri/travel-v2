@@ -48,6 +48,28 @@
 .maplibregl-popup {
   filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.25));
 }
+/* Tooltips animate in: fade + scale + a small settle from rotated to
+   straight. The transform rides the CONTENT (maplibre positions the popup
+   root with an inline transform, which an animation there would fight);
+   the tip fades on the same clock so it never pops in ahead. */
+@keyframes popup-settle {
+  from {
+    opacity: 0;
+    transform: rotate(-5deg) scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+}
+@keyframes popup-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 .maplibregl-popup .maplibregl-popup-content {
   background: var(--colors-surface-strong);
   color: var(--colors-text-on-strong);
@@ -55,16 +77,39 @@
   padding: 0.5rem 0.75rem;
   box-shadow: none;
   font-family: inherit;
+  animation: popup-settle 180ms ease-out;
 }
+.maplibregl-popup .maplibregl-popup-tip {
+  animation: popup-fade 180ms ease-out;
+}
+/* The settle pivots around the arrow side, and the tip overlaps the bubble
+   by 1px: a hairline seam otherwise shows where the triangle's antialiased
+   edge meets the content box. */
 .maplibregl-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
   border-top-color: var(--colors-surface-strong);
+  margin-top: -1px;
+}
+.maplibregl-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-content {
+  transform-origin: bottom center;
 }
 .maplibregl-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
   border-bottom-color: var(--colors-surface-strong);
+  margin-bottom: -1px;
+}
+.maplibregl-popup.maplibregl-popup-anchor-top .maplibregl-popup-content {
+  transform-origin: top center;
 }
 .maplibregl-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
   border-right-color: var(--colors-surface-strong);
+  margin-right: -1px;
+}
+.maplibregl-popup.maplibregl-popup-anchor-left .maplibregl-popup-content {
+  transform-origin: left center;
 }
 .maplibregl-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
   border-left-color: var(--colors-surface-strong);
+  margin-left: -1px;
+}
+.maplibregl-popup.maplibregl-popup-anchor-right .maplibregl-popup-content {
+  transform-origin: right center;
 }

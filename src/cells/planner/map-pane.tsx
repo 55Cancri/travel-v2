@@ -4,10 +4,11 @@ import { KIND_META, type Item } from "entities/trips/types";
 
 // The map is a projection of the plan. Camera moves are deliberate: it refits
 // ONLY when the scope changes (scopeKey), never because an item was edited or
-// toggled — that was the "dots wiggle / zoom out on click" bug. Pin clicks
-// highlight the row; ⌘-click zooms to street level. Far jumps (city → city)
-// cut straight there instead of animating, so tiles start loading sooner.
-// The style follows <html data-theme> (OpenFreeMap liberty ↔ dark).
+// toggled (that was the "dots wiggle / zoom out on click" bug). Hovering a
+// pin shows its tooltip; clicking highlights the row and gently recenters on
+// the pin without changing zoom; ⌘-click zooms to street level. Far jumps
+// (city to city) cut straight there instead of animating, so tiles start
+// loading sooner. The style follows <html data-theme>.
 
 const LIGHT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const DARK_STYLE_URL = "https://tiles.openfreemap.org/styles/dark";
@@ -83,6 +84,8 @@ type Pin = { item: Item; lng: number; lat: number };
 type MarkerEntry = {
   marker: import("maplibre-gl").Marker;
   el: HTMLDivElement;
+  // Refreshed on every pin update so hover handlers read current content.
+  item: Item;
 };
 
 // The marker element is a two-layer sandwich: maplibre positions the OUTER
@@ -129,6 +132,9 @@ export function MapPane(props: {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<import("maplibre-gl").Map | null>(null);
   const markersRef = React.useRef(new Map<string, MarkerEntry>());
+  // One popup for the whole map, opened on pin hover (and on focusItem).
+  // A single instance means tooltips can never pile up.
+  const popupRef = React.useRef<import("maplibre-gl").Popup | null>(null);
   const libRef = React.useRef<typeof import("maplibre-gl") | null>(null);
   const [ready, storeReady] = React.useState(false);
   const [styleTick, storeStyleTick] = React.useState(0);
@@ -208,23 +214,29 @@ export function MapPane(props: {
     };
   }, []);
 
+  const openPopupFor = (itemId: string) => {
+    const map = mapRef.current;
+    const maplibregl = libRef.current;
+    const entry = markersRef.current.get(itemId);
+    if (!map || !maplibregl || !entry) return;
+    popupRef.current ??= new maplibregl.Popup({
+      offset: 14,
+      closeButton: false,
+      closeOnClick: false,
+    });
+    popupRef.current
+      .setLngLat(entry.marker.getLngLat())
+      .setHTML(popupHtml(entry.item))
+      .addTo(map);
+  };
+
   React.useEffect(() => {
     props.apiRef.current = {
       focusItem: (itemId, place, zoom = 16) => {
         const map = mapRef.current;
         if (!map) return;
         map.flyTo({ center: [place.lng, place.lat], zoom, duration: 1200 });
-        // Open the marker's popup if it's in the current scope; close the
-        // previous one so tooltips don't pile up.
-        const entry = markersRef.current.get(itemId);
-        if (entry) {
-          for (const [, other] of markersRef.current) {
-            const popup = other.marker.getPopup();
-            if (popup?.isOpen() && other !== entry) other.marker.togglePopup();
-          }
-          const popup = entry.marker.getPopup();
-          if (popup && !popup.isOpen()) entry.marker.togglePopup();
-        }
+        openPopupFor(itemId);
       },
     };
   });
@@ -246,20 +258,29 @@ export function MapPane(props: {
       const existing = markersRef.current.get(pin.item.id);
       if (existing) {
         existing.marker.setLngLat([pin.lng, pin.lat]);
+        existing.item = pin.item;
         stylePinElement(existing.el, pin.item);
         continue;
       }
       const el = document.createElement("div");
       stylePinElement(el, pin.item);
-      el.addEventListener("click", (event) =>
-        onPinClickRef.current(pin.item.id, event.metaKey || event.ctrlKey),
-      );
+      // Hover shows the tooltip; leaving hides it. Click is reserved for
+      // the row jump: highlight + scroll, plus a gentle recenter on the pin
+      // at the current zoom (⌘-click flies in via focusItem instead, so it
+      // skips the recenter to avoid two competing camera moves).
+      el.addEventListener("mouseenter", () => openPopupFor(pin.item.id));
+      el.addEventListener("mouseleave", () => popupRef.current?.remove());
+      el.addEventListener("click", (event) => {
+        const zoom = event.metaKey || event.ctrlKey;
+        if (!zoom) {
+          const at = markersRef.current.get(pin.item.id)?.marker.getLngLat();
+          if (at) map.easeTo({ center: at, duration: 500 });
+        }
+        onPinClickRef.current(pin.item.id, zoom);
+      });
       const marker = new maplibregl.Marker({ element: el }).setLngLat([pin.lng, pin.lat]);
-      marker.setPopup(
-        new maplibregl.Popup({ offset: 12, closeButton: false }).setHTML(popupHtml(pin.item)),
-      );
       marker.addTo(map);
-      markersRef.current.set(pin.item.id, { marker, el });
+      markersRef.current.set(pin.item.id, { marker, el, item: pin.item });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, pinSig]);
