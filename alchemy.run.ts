@@ -67,8 +67,8 @@ export const placeCache = await KVNamespace("place-cache", {
 });
 
 export const website = await TanStackStart("website", {
-  // worker name = public URL host: travel2-prod.<subdomain>.workers.dev
-  name: `${app.name}-${app.stage}`,
+  // worker name = public URL host: travel-2.<subdomain>.workers.dev
+  name: "travel-2",
   bindings: {
     DB: db,
     AI: ai,
