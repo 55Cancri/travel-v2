@@ -31,6 +31,28 @@ type Scope =
   | { type: "pool" }
   | { type: "day"; id: string };
 
+// The sheet's resting heights, as translateY in svh on a 96svh panel:
+// full shows almost everything, half splits with the map, peek leaves the
+// grabber and trip header while the map takes the screen.
+type SheetRest = "peek" | "half" | "full";
+const SHEET_OFFSETS: Record<SheetRest, number> = { full: 4, half: 46, peek: 82 };
+
+const DESKTOP_QUERY = "(min-width: 768px)";
+
+function usePhone() {
+  return React.useSyncExternalStore(
+    (notify) => {
+      const media = window.matchMedia(DESKTOP_QUERY);
+      media.addEventListener("change", notify);
+      return () => media.removeEventListener("change", notify);
+    },
+    () => !window.matchMedia(DESKTOP_QUERY).matches,
+    // Server-rendered documents assume desktop; the client corrects on
+    // hydration before anything interactive happens.
+    () => false,
+  );
+}
+
 const formatDay = (iso: string) =>
   Temporal.PlainDate.from(iso).toLocaleString("en-US", {
     weekday: "short",
@@ -56,7 +78,15 @@ export function Planner(props: { tripId: string }) {
   const trip = db.trips[props.tripId];
   const [activeSegmentId, storeActiveSegmentId] = React.useState<string | null>(null);
   const [scope, storeScope] = React.useState<Scope>({ type: "segment" });
-  const [showMap, storeShowMap] = React.useState(false);
+  // Phone layout: the map owns the screen and the outline rides a
+  // bottom sheet, dragged by its grabber between three resting heights.
+  const phone = usePhone();
+  const [sheetRest, storeSheetRest] = React.useState<SheetRest>("half");
+  const [sheetDragPx, storeSheetDragPx] = React.useState<number | null>(null);
+  const sheetDragPxRef = React.useRef(0);
+  const sheetGrip = React.useRef<{ pointerId: number; startY: number; basePx: number } | null>(
+    null,
+  );
   const [highlightItemIds, storeHighlightItemIds] = React.useState<string[]>([]);
   const highlightTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapApi = React.useRef<MapApi | null>(null);
@@ -276,6 +306,9 @@ export function Planner(props: { tripId: string }) {
   // the camera.
   const scrollWatch = React.useRef(0);
   const onPinClick = (itemId: string, zoom: boolean) => {
+    // On the phone, the tapped pin's row lives in the sheet: a peeked
+    // sheet rises to half so the blink is actually visible.
+    storeSheetRest((rest) => (rest === "peek" ? "half" : rest));
     const row = document.getElementById(`ti-${itemId}`);
     if (row) {
       row.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -307,7 +340,55 @@ export function Planner(props: { tripId: string }) {
     if (!item.place) return;
     haptics.tap();
     mapApi.current?.focusItem(item.id, item.place, 16);
-    storeShowMap(true);
+    // Flying to a place is a map moment: the sheet drops out of the way.
+    storeSheetRest("peek");
+  };
+
+  // The sheet drags from its grabber only, so list scrolling and row
+  // drag-reorder never fight it. Release snaps to the nearest rest.
+  const onSheetGrab = (event: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // NotFoundError means the pointer already lifted (or is synthetic):
+      // the drag still works uncaptured, it just loses the glide-off-the-
+      // handle grace. Anything else is a real bug.
+      if (!(error instanceof DOMException && error.name === "NotFoundError")) throw error;
+    }
+    sheetGrip.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      basePx: (SHEET_OFFSETS[sheetRest] * window.innerHeight) / 100,
+    };
+    sheetDragPxRef.current = 0;
+    storeSheetDragPx(0);
+  };
+  const onSheetDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const grip = sheetGrip.current;
+    if (!grip || event.pointerId !== grip.pointerId) return;
+    const svh = window.innerHeight / 100;
+    const raw = grip.basePx + (event.clientY - grip.startY);
+    const clamped = Math.min(
+      Math.max(raw, SHEET_OFFSETS.full * svh),
+      SHEET_OFFSETS.peek * svh,
+    );
+    sheetDragPxRef.current = clamped - grip.basePx;
+    storeSheetDragPx(clamped - grip.basePx);
+  };
+  const onSheetRelease = (event: React.PointerEvent<HTMLDivElement>) => {
+    const grip = sheetGrip.current;
+    if (!grip || event.pointerId !== grip.pointerId) return;
+    sheetGrip.current = null;
+    const svh = window.innerHeight / 100;
+    const finalSvh = (grip.basePx + sheetDragPxRef.current) / svh;
+    let nearest: SheetRest = "half";
+    for (const rest of ["peek", "half", "full"] as const) {
+      if (Math.abs(SHEET_OFFSETS[rest] - finalSvh) < Math.abs(SHEET_OFFSETS[nearest] - finalSvh)) {
+        nearest = rest;
+      }
+    }
+    storeSheetRest(nearest);
+    storeSheetDragPx(null);
   };
 
   // An overlay card's "Add to plan" lands in the segment's idea pool: not
@@ -370,11 +451,53 @@ export function Planner(props: { tripId: string }) {
         } as React.CSSProperties
       }
     >
-      {/* ---- outline pane ----
-          No pt on the scroller itself: sticky children pin below a scroll
-          container's padding-top, which left a strip rows scrolled through
-          above the "stuck" headers. Top spacing lives on the first child. */}
-      <Block className="outline-pane" minH="0" overflowY="auto" px="md" pb="2xl" flow="md">
+      {/* ---- outline: desktop column, phone bottom sheet ----
+          The sheet is a fixed 96svh panel translated to one of three
+          resting heights; the transform is live only on the phone, where
+          the map owns the screen underneath. */}
+      <Block
+        position={{ base: "fixed", md: "static" }}
+        left={{ base: "0", md: "auto" }}
+        right={{ base: "0", md: "auto" }}
+        bottom={{ base: "0", md: "auto" }}
+        zIndex={{ base: 40, md: "auto" }}
+        h={{ base: "96svh", md: "100%" }}
+        minH="0"
+        grid
+        gridTemplateRows={{ base: "auto 1fr", md: "1fr" }}
+        bg={{ base: "surface-page", md: "transparent" }}
+        borderTopLeftRadius={{ base: "1rem", md: "0" }}
+        borderTopRightRadius={{ base: "1rem", md: "0" }}
+        boxShadow={{ base: "0 -8px 30px rgba(0, 0, 0, 0.25)", md: "none" }}
+        style={{
+          transform: phone
+            ? `translateY(calc(${SHEET_OFFSETS[sheetRest]}svh + ${sheetDragPx ?? 0}px))`
+            : undefined,
+          transition:
+            phone && sheetDragPx === null
+              ? "transform 280ms cubic-bezier(0.32, 0.72, 0, 1)"
+              : undefined,
+        }}
+      >
+        {/* grabber (phone only): the sheet's one drag surface */}
+        <Block
+          hideFrom="md"
+          onPointerDown={onSheetGrab}
+          onPointerMove={onSheetDragMove}
+          onPointerUp={onSheetRelease}
+          onPointerCancel={onSheetRelease}
+          grid
+          placeItems="center"
+          h="1.5rem"
+          cursor="grab"
+          style={{ touchAction: "none" }}
+        >
+          <Block as="span" w="2.75rem" h="0.3rem" borderRadius="9999px" bg="border-strong" />
+        </Block>
+        {/* No pt on the scroller itself: sticky children pin below a scroll
+            container's padding-top, which left a strip rows scrolled through
+            above the "stuck" headers. Top spacing lives on the first child. */}
+        <Block className="outline-pane" minH="0" overflowY="auto" px="md" pb="2xl" flow="md">
         <Block grid cols="auto 1fr auto" gap="sm" alignItems="center" pt="md">
           <Link
             to="/"
@@ -609,6 +732,7 @@ export function Planner(props: { tripId: string }) {
         ) : (
           <Subtext as="p">Add a city to start planning.</Subtext>
         )}
+        </Block>
       </Block>
 
       {/* ---- resizable divider (desktop only) ---- */}
@@ -635,12 +759,12 @@ export function Planner(props: { tripId: string }) {
         />
       </Block>
 
-      {/* ---- map pane: side-by-side on desktop, full-screen overlay on mobile ---- */}
+      {/* ---- map pane: side-by-side on desktop; on the phone it owns the
+          screen and the outline sheet rides above it ---- */}
       <Block
-        display={{ base: showMap ? "block" : "none", md: "block" }}
         position={{ base: "fixed", md: "relative" }}
         inset={{ base: "0", md: "auto" }}
-        zIndex={{ base: 50, md: "auto" }}
+        zIndex={{ base: 0, md: "auto" }}
         h={{ base: "100svh", md: "100%" }}
         borderLeftWidth={{ base: "0", md: "1px" }}
         borderLeftStyle="solid"
@@ -661,33 +785,6 @@ export function Planner(props: { tripId: string }) {
           apiRef={mapApi}
         />
       </Block>
-
-      {/* mobile map/list toggle */}
-      <Button
-        type="button"
-        onPress={() => {
-          haptics.tap();
-          storeShowMap((prev) => !prev);
-        }}
-        hideFrom="md"
-        px="md"
-        py="xs"
-        borderRadius="9999px"
-        bg="surface-strong"
-        color="text-on-strong"
-        fontSize="sm"
-        fontWeight={600}
-        boxShadow="0 6px 18px rgba(0, 0, 0, 0.28)"
-        style={{
-          position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
-          bottom: "calc(1.25rem + env(safe-area-inset-bottom))",
-          zIndex: 60,
-        }}
-      >
-        {showMap ? "☰ List" : "◉ Map"}
-      </Button>
 
       {editing ? (
         <ItemEditor

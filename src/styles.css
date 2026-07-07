@@ -103,6 +103,13 @@
 .maplibregl-popup {
   filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.25));
 }
+/* On the phone the outline sheet peeks over the map's bottom edge; the
+   attribution circle rises above it. */
+@media (max-width: 767px) {
+  .maplibregl-ctrl-bottom-right {
+    bottom: 14svh;
+  }
+}
 /* Tooltips animate in: fade + scale + a small settle from rotated to
    straight. The transform rides the CONTENT (maplibre positions the popup
    root with an inline transform, which an animation there would fight);
