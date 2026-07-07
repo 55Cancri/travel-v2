@@ -1,5 +1,11 @@
 import alchemy from "alchemy";
-import { D1Database, DurableObjectNamespace, TanStackStart } from "alchemy/cloudflare";
+import {
+  Ai,
+  D1Database,
+  DurableObjectNamespace,
+  KVNamespace,
+  TanStackStart,
+} from "alchemy/cloudflare";
 
 // Ported from stochastic-v3, trimmed to what travel-2 needs. NOT DEPLOYED YET —
 // local dev runs plain `vite dev` with localStorage mock data. When we flip to
@@ -50,12 +56,26 @@ export const tripRoom = DurableObjectNamespace("trip-room", {
 //   adopt: true,
 // });
 
+// Workers AI: the curation model behind /api/curate (ranking map sights
+// against the plan's own taste). Rides the free plan's daily allocation.
+export const ai = Ai();
+
+// Response cache for external place providers (Yelp, Foursquare, Google
+// Places, TripAdvisor): identical viewport queries answer from KV instead
+// of burning each provider's small free quota.
+export const placeCache = await KVNamespace("place-cache", {
+  title: `${app.name}-${app.stage}-place-cache`,
+  adopt: true,
+});
+
 export const website = await TanStackStart("website", {
   // worker name = public URL host: travel2-prod.<subdomain>.workers.dev
   name: `${app.name}-${app.stage}`,
   bindings: {
     DB: db,
     TRIP_ROOM: tripRoom,
+    AI: ai,
+    PLACE_CACHE: placeCache,
     APP_URL: req("APP_URL"),
     SESSION_SECRET: alchemy.secret.env.SESSION_SECRET,
   },
