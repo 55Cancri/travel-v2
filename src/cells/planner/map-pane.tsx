@@ -858,8 +858,7 @@ export function MapPane(props: {
           feature.geometry.type === "Point"
             ? (feature.geometry.coordinates as [number, number])
             : ([event.lngLat.lng, event.lngLat.lat] as [number, number]);
-        const itemKind: ItemKind =
-          place.kind === "vegan" || place.kind === "vegetarian" ? "food" : "activity";
+        const itemKind: ItemKind = place.kind === "vegan" ? "food" : "activity";
         const popup = new maplibregl.Popup({
           closeButton: true,
           closeOnClick: false,
@@ -1713,8 +1712,8 @@ export function MapPane(props: {
 
   // Ambient overlays: paint whatever the caches hold for the enabled
   // toggles, then refresh any cache the current view has escaped. Points
-  // dedupe across overlays in catalog order, so a place tagged both vegan
-  // and vegetarian shows once, on the stricter overlay.
+  // dedupe across overlays in catalog order, so a place qualifying for
+  // two overlays shows once, on the earlier one.
   React.useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
