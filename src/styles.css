@@ -21,39 +21,50 @@
   background: var(--colors-border-strong);
 }
 
-/* Map pins pop on hover — the one under the cursor rises above its neighbors
-   (helps when close-together places overlap). */
-.travel-pin {
+/* Map pins pop on hover: the one under the cursor rises above its neighbors
+   (helps when close-together places overlap). The transition lives on the
+   INNER dot only. Maplibre positions the marker wrapper with an inline
+   transform every frame, so any transform transition on the wrapper makes
+   pins trail the camera during pan/zoom. */
+.travel-pin-dot {
   transition:
     transform 130ms ease,
     opacity 130ms ease;
 }
-.travel-pin:hover {
+.travel-pin:hover .travel-pin-dot {
   transform: scale(1.45);
 }
 .maplibregl-marker:hover {
   z-index: 10;
 }
 
-/* Map popups follow the theme. Unlayered + higher specificity than
-   maplibre-gl.css (also unlayered), so these win the cascade. */
+/* Map popups are inverted tooltips (dark-on-light page gets a dark tip,
+   dark mode gets a light one) via the surface-strong pair. The shadow rides
+   a drop-shadow filter on the popup ROOT, not a box-shadow on the content
+   box: a box shadow paints along the content edge and draws a seam where
+   the arrow meets the bubble, while drop-shadow wraps their union so the
+   arrow sits flush. Unlayered + higher specificity than maplibre-gl.css
+   (also unlayered), so these win the cascade. */
+.maplibregl-popup {
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.25));
+}
 .maplibregl-popup .maplibregl-popup-content {
-  background: var(--colors-surface-panel);
-  color: var(--colors-text-primary);
+  background: var(--colors-surface-strong);
+  color: var(--colors-text-on-strong);
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  box-shadow: none;
   font-family: inherit;
 }
 .maplibregl-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
-  border-top-color: var(--colors-surface-panel);
+  border-top-color: var(--colors-surface-strong);
 }
 .maplibregl-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
-  border-bottom-color: var(--colors-surface-panel);
+  border-bottom-color: var(--colors-surface-strong);
 }
 .maplibregl-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
-  border-right-color: var(--colors-surface-panel);
+  border-right-color: var(--colors-surface-strong);
 }
 .maplibregl-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
-  border-left-color: var(--colors-surface-panel);
+  border-left-color: var(--colors-surface-strong);
 }

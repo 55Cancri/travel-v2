@@ -9,8 +9,10 @@ export { Text, type Props as TextProps } from "./text";
 export {
   ArrowLeft,
   Bowl,
+  Calendar,
   CaretRight,
   Cart,
+  Clock,
   Compass,
   DotsSixVertical,
   DotsThree,
@@ -19,10 +21,12 @@ export {
   Google,
   Lock,
   MagnifyingGlass,
+  MapPin,
   Pencil,
   Person,
   Plus,
   Spinner,
+  Ticket,
   Utensils,
 } from "./icons";
 export type {

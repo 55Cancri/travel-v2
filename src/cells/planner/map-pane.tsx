@@ -85,11 +85,25 @@ type MarkerEntry = {
   el: HTMLDivElement;
 };
 
+// The marker element is a two-layer sandwich: maplibre positions the OUTER
+// wrapper with an inline transform every frame, so the wrapper must never
+// carry a transform transition (one there makes every pin trail the camera
+// by the transition duration). The inner dot owns the hover pop and the
+// opacity fade, and the wrapper doubles as a finger-friendly hit area
+// larger than the visible dot.
 const stylePinElement = (el: HTMLDivElement, item: Item) => {
   const dim = item.status === "done";
   el.className = "travel-pin";
-  el.style.cssText = `width:13px;height:13px;border-radius:50%;background:var(${KIND_META[item.kind].cssVar});box-shadow:var(--pin-dot-shadow);cursor:pointer;opacity:${dim ? 0.45 : 1};`;
+  el.style.cssText =
+    "width:22px;height:22px;display:grid;place-items:center;cursor:pointer;";
   el.title = item.place?.name ?? item.text;
+  let dot = el.firstElementChild as HTMLSpanElement | null;
+  if (!dot) {
+    dot = document.createElement("span");
+    dot.className = "travel-pin-dot";
+    el.appendChild(dot);
+  }
+  dot.style.cssText = `width:13px;height:13px;border-radius:50%;background:var(${KIND_META[item.kind].cssVar});box-shadow:var(--pin-dot-shadow);opacity:${dim ? 0.45 : 1};`;
 };
 
 const escapeHtml = (value: string) =>
@@ -155,9 +169,21 @@ export function MapPane(props: {
       map.on("load", () => {
         if (!disposed) storeReady(true);
       });
-      const resizeObserver = new ResizeObserver(() => map.resize());
+      // Divider drags fire resize continuously; coalescing to one canvas
+      // resize per frame keeps the map from flashing mid-drag.
+      let resizeFrame = 0;
+      const resizeObserver = new ResizeObserver(() => {
+        if (resizeFrame) return;
+        resizeFrame = requestAnimationFrame(() => {
+          resizeFrame = 0;
+          map.resize();
+        });
+      });
       resizeObserver.observe(containerRef.current);
-      map.once("remove", () => resizeObserver.disconnect());
+      map.once("remove", () => {
+        if (resizeFrame) cancelAnimationFrame(resizeFrame);
+        resizeObserver.disconnect();
+      });
       // Follow <html data-theme>: swap style, then re-add our layers once the
       // new style is in (styleTick re-runs the pin/route effects).
       observer = new MutationObserver(async () => {
