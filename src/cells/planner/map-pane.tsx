@@ -1412,7 +1412,15 @@ export function MapPane(props: {
         const zoom = event.metaKey || event.ctrlKey;
         if (!zoom) {
           const at = markersRef.current.get(pin.item.id)?.marker.getLngLat();
-          if (at) map.easeTo({ center: at, duration: 500 });
+          if (at) {
+            // On the phone the outline sheet rises to half on a pin tap;
+            // the pin eases into the middle of the strip that stays
+            // visible above it instead of hiding behind the sheet.
+            const lift = window.matchMedia("(min-width: 768px)").matches
+              ? 0
+              : -map.getContainer().clientHeight * 0.25;
+            map.easeTo({ center: at, offset: [0, lift], duration: 500 });
+          }
         }
         onPinClickRef.current(pin.item.id, zoom);
       });

@@ -311,7 +311,20 @@ export function Planner(props: { tripId: string }) {
     storeSheetRest((rest) => (rest === "peek" ? "half" : rest));
     const row = document.getElementById(`ti-${itemId}`);
     if (row) {
-      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      const scroller = row.closest(".outline-pane");
+      if (phone && scroller instanceof HTMLElement) {
+        // The sheet's lower half hangs off-screen at the half rest, so
+        // container-centering parks the row at the phone's bottom edge.
+        // Land it near the sheet's top instead, just under the sticky
+        // city bar with a little context above.
+        const rowTop =
+          row.getBoundingClientRect().top -
+          scroller.getBoundingClientRect().top +
+          scroller.scrollTop;
+        scroller.scrollTo({ top: Math.max(0, rowTop - 110), behavior: "smooth" });
+      } else {
+        row.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
       cancelAnimationFrame(scrollWatch.current);
       let restingTop = Infinity;
       let stillFrames = 0;
@@ -479,7 +492,9 @@ export function Planner(props: { tripId: string }) {
               : undefined,
         }}
       >
-        {/* grabber (phone only): the sheet's one drag surface */}
+        {/* grabber (phone only): the sheet's one drag surface. The bar
+            sits low in its well so it reads inside the sheet, not glued
+            to the rounded lip. */}
         <Block
           hideFrom="md"
           onPointerDown={onSheetGrab}
@@ -488,11 +503,12 @@ export function Planner(props: { tripId: string }) {
           onPointerCancel={onSheetRelease}
           grid
           placeItems="center"
-          h="1.5rem"
+          h="2rem"
+          pt="0.7rem"
           cursor="grab"
           style={{ touchAction: "none" }}
         >
-          <Block as="span" w="2.75rem" h="0.3rem" borderRadius="9999px" bg="border-strong" />
+          <Block as="span" w="2.25rem" h="0.25rem" borderRadius="9999px" bg="border-strong" />
         </Block>
         {/* No pt on the scroller itself: sticky children pin below a scroll
             container's padding-top, which left a strip rows scrolled through
