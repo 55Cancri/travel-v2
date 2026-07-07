@@ -23,6 +23,9 @@ export type TransitLeg = {
   tz?: string;
   live?: boolean;
   stops?: RideStop[];
+  // Departures of the same line, same direction, after this one: the
+  // "next buses" the tooltip offers.
+  nextDeparts?: string[];
 };
 
 const VEHICLE_LABELS: Record<string, string> = {
@@ -78,6 +81,7 @@ const decodePolyline = (points: string, precision: number) => {
 
 type WireStop = {
   name?: string;
+  stopId?: string;
   lat?: number;
   lon?: number;
   tz?: string;
@@ -98,6 +102,34 @@ type WirePlanLeg = {
   endTime?: string;
   realTime?: boolean;
   legGeometry?: { points?: string; precision?: number };
+};
+
+const STOP_TIMES = "https://api.transitous.org/api/v1/stoptimes";
+
+type WireStopTime = {
+  routeShortName?: string;
+  headsign?: string;
+  place?: { departure?: string };
+};
+
+// The boarding stop's departures board, narrowed to the same line and
+// direction. ISO instants compare as strings.
+const fetchNextDeparts = async (
+  stopId: string,
+  routeName: string | undefined,
+  headsign: string | undefined,
+  afterIso: string,
+  signal: AbortSignal,
+) => {
+  const query = new URLSearchParams({ stopId, time: afterIso, n: "30" });
+  const res = await fetch(`${STOP_TIMES}?${query}`, { signal });
+  if (!res.ok) throw new Error(`stop times responded ${res.status}`);
+  const body = (await res.json()) as { stopTimes?: WireStopTime[] };
+  return (body.stopTimes ?? [])
+    .filter((entry) => entry.routeShortName === routeName && entry.headsign === headsign)
+    .map((entry) => entry.place?.departure)
+    .filter((iso): iso is string => iso !== undefined && iso > afterIso)
+    .slice(0, 3);
 };
 
 const rideStop = (stop: WireStop | undefined): RideStop | null =>
@@ -149,6 +181,7 @@ export const fetchRide = async (
   const wireLegs = body.itineraries?.[0]?.legs ?? body.direct?.[0]?.legs;
   if (!wireLegs?.length) throw new Error("transit router returned no itinerary");
   const legs: TransitLeg[] = [];
+  const boards: Array<{ ride: TransitLeg; stopId: string }> = [];
   for (const leg of wireLegs) {
     const points = leg.legGeometry?.points;
     if (!points) continue;
@@ -157,7 +190,7 @@ export const fetchRide = async (
     if (leg.mode === "WALK") {
       legs.push({ mode: "walk", line });
     } else {
-      legs.push({
+      const ride: TransitLeg = {
         mode: "ride",
         line,
         name: leg.routeShortName ?? leg.routeLongName,
@@ -171,10 +204,32 @@ export const fetchRide = async (
         stops: [leg.from, ...(leg.intermediateStops ?? []), leg.to]
           .map(rideStop)
           .filter((stop): stop is RideStop => stop !== null),
-      });
+      };
+      if (leg.from?.stopId && leg.startTime) {
+        boards.push({ ride, stopId: leg.from.stopId });
+      }
+      legs.push(ride);
     }
   }
   if (!legs.length) throw new Error("transit itinerary had no drawable legs");
+  // Departures boards for every boarding stop, in parallel. A board that
+  // fails only costs its ride the extra times, never the ride itself.
+  await Promise.all(
+    boards.map(async (board) => {
+      try {
+        board.ride.nextDeparts = await fetchNextDeparts(
+          board.stopId,
+          board.ride.name,
+          board.ride.headsign,
+          board.ride.departIso ?? "",
+          signal,
+        );
+      } catch (error) {
+        if (signal.aborted) return;
+        console.warn("[transit] departures board failed:", error);
+      }
+    }),
+  );
   rideCache.set(key, legs);
   return legs;
 };
