@@ -3,7 +3,8 @@ import type { Feature } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Block, Button, CaretLeft, CaretRight, Text, X } from "atoms";
 import { Cluster, IconButton } from "alloys";
-import { KIND_META, type Item, type RouteVia } from "entities/trips/types";
+import tzLookup from "tz-lookup";
+import { KIND_META, type Item, type ItemKind, type RouteVia } from "entities/trips/types";
 import { addRouteVia, moveRouteVia, removeRouteVia } from "entities/trips/store";
 import {
   fetchRoadRoute,
@@ -17,9 +18,13 @@ import {
   fetchBusStops,
   fetchOverlayPlaces,
   fetchStopBoard,
+  formatHours,
+  isOpenAt,
   OverlayChips,
   OVERLAYS,
   overlayTraits,
+  parseOpeningHours,
+  suggestPicks,
   type BusRoute,
   type BusStopPoint,
   type OverlayKind,
@@ -290,22 +295,64 @@ const containsView = (outer: ViewBounds, inner: ViewBounds) =>
   outer.north >= inner.north &&
   outer.east >= inner.east;
 
+// A red no-entry badge (ring plus slash) drawn once onto a canvas; place
+// features whose hours say "closed at the relevant time" wear it over
+// their dot.
+const closedBadgeImage = () => {
+  const size = 30;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new ImageData(size, size);
+  ctx.strokeStyle = "#DC2626";
+  ctx.lineWidth = 3.5;
+  ctx.lineCap = "round";
+  const mid = size / 2;
+  const radius = mid - 3;
+  ctx.beginPath();
+  ctx.arc(mid, mid, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  const reach = radius / Math.SQRT2;
+  ctx.beginPath();
+  ctx.moveTo(mid - reach, mid - reach);
+  ctx.lineTo(mid + reach, mid + reach);
+  ctx.stroke();
+  return ctx.getImageData(0, 0, size, size);
+};
+
+// Item times are free text ("10:30a", "4p", "4–5:30p"); the first
+// hour[:minutes] plus meridiem run is the start, in minutes from
+// midnight. Null when nothing parses.
+const parseItemTime = (value: string | undefined) => {
+  const match = value?.match(/(\d{1,2})(?::(\d{2}))?\s*(a|p)/i);
+  if (!match) return null;
+  const hour = (Number(match[1]) % 12) + (match[3].toLowerCase() === "p" ? 12 : 0);
+  return hour * 60 + Number(match[2] ?? 0);
+};
+
 // Overlay sources and layers, recreated after every style swap. They slot
 // under the day-route layers when those exist: the plan outranks ambient
 // context. Bus stops only render at street zoom, where a departure board
 // is a meaningful hover target.
 const ensureOverlayLayers = (map: import("maplibre-gl").Map) => {
+  if (!map.hasImage("overlay-closed-badge")) {
+    map.addImage("overlay-closed-badge", closedBadgeImage(), { pixelRatio: 2 });
+  }
   if (map.getSource("overlay-places")) return;
   const empty = { type: "FeatureCollection" as const, features: [] };
   const beforeId = map.getLayer("day-route-ride") ? "day-route-ride" : undefined;
   map.addSource("bus-network", { type: "geojson", data: empty, maxzoom: 24 });
   map.addSource("bus-stops", { type: "geojson", data: empty, maxzoom: 24 });
   map.addSource("overlay-places", { type: "geojson", data: empty, maxzoom: 24 });
+  // Zoom floors on the visible layers keep cached data from another city
+  // from littering a country-level view while its chip says "zoom in".
   map.addLayer(
     {
       id: "bus-network-line",
       type: "line",
       source: "bus-network",
+      minzoom: 10,
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#D97706"] as unknown as string,
@@ -320,6 +367,7 @@ const ensureOverlayLayers = (map: import("maplibre-gl").Map) => {
       id: "bus-network-hit",
       type: "line",
       source: "bus-network",
+      minzoom: 10,
       // 0.001, not 0: maplibre culls fully transparent lines from
       // rendering, and culled geometry is unhoverable.
       paint: { "line-width": zoomWidth(12, 26), "line-opacity": 0.001 },
@@ -357,6 +405,7 @@ const ensureOverlayLayers = (map: import("maplibre-gl").Map) => {
       id: "overlay-places-dot",
       type: "circle",
       source: "overlay-places",
+      minzoom: 10,
       paint: {
         "circle-radius": zoomWidth(5, 10),
         "circle-color": ["get", "color"] as unknown as string,
@@ -368,13 +417,91 @@ const ensureOverlayLayers = (map: import("maplibre-gl").Map) => {
   );
   map.addLayer(
     {
+      id: "overlay-places-closed",
+      type: "symbol",
+      source: "overlay-places",
+      minzoom: 10,
+      filter: ["==", ["get", "closed"], true],
+      layout: {
+        "icon-image": "overlay-closed-badge",
+        "icon-size": zoomWidth(0.9, 1.8),
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+      },
+    },
+    beforeId,
+  );
+  map.addLayer(
+    {
       id: "overlay-places-hit",
       type: "circle",
       source: "overlay-places",
+      minzoom: 10,
       paint: { "circle-radius": zoomWidth(12, 22), "circle-opacity": 0.001 },
     },
     beforeId,
   );
+};
+
+// The pinned place card: what the hover tooltip grows into on click. Real
+// DOM (not an HTML string) so the links and the add button carry
+// listeners. Colors are literal because the popup skin is the same
+// inverted dark surface in both themes.
+const placeCard = (place: Record<string, unknown>, onAdd: (() => void) | null) => {
+  const root = document.createElement("div");
+  root.style.cssText = "display:grid;gap:3px;min-width:190px;max-width:260px";
+  const line = (text: string, style: string) => {
+    const el = document.createElement("div");
+    el.textContent = text;
+    el.style.cssText = style;
+    root.appendChild(el);
+  };
+  if (place.label) line(String(place.label), "font-size:0.8em;opacity:0.6");
+  line(String(place.name ?? ""), "font-weight:600;font-size:1.05em");
+  if (place.closed === true) {
+    line("Closed at this time", "color:#F87171;font-size:0.85em;font-weight:550");
+  } else if (place.open === true) {
+    line("Open", "color:#4ADE80;font-size:0.85em;font-weight:550");
+  }
+  if (place.hoursDisplay) line(String(place.hoursDisplay), "font-size:0.85em;opacity:0.75");
+  for (const note of String(place.notes ?? "")
+    .split("\n")
+    .filter(Boolean)) {
+    line(note, "font-size:0.85em;opacity:0.75");
+  }
+  if (place.address) line(String(place.address), "font-size:0.85em;opacity:0.75");
+  const links = document.createElement("div");
+  links.style.cssText = "display:flex;gap:10px;margin-top:4px;flex-wrap:wrap";
+  const link = (label: string, href: string) => {
+    const anchor = document.createElement("a");
+    anchor.textContent = label;
+    anchor.href = href;
+    anchor.target = "_blank";
+    anchor.rel = "noreferrer";
+    anchor.style.cssText = "color:#7DB3E8;font-size:0.85em;text-decoration:underline";
+    links.appendChild(anchor);
+  };
+  if (place.website) link("Website", String(place.website));
+  if (place.menu) link("Menu", String(place.menu));
+  if (place.phone) link(String(place.phone), `tel:${String(place.phone).replace(/\s+/g, "")}`);
+  if (links.childElementCount) root.appendChild(links);
+  if (onAdd) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Add to plan";
+    button.style.cssText =
+      "margin-top:6px;justify-self:start;padding:3px 10px;border-radius:9999px;" +
+      "border:1px solid rgba(255,255,255,0.35);background:transparent;color:inherit;" +
+      "font-size:0.85em;font-weight:550;cursor:pointer";
+    button.addEventListener("click", () => {
+      onAdd();
+      button.textContent = "Added ✓";
+      button.disabled = true;
+      button.style.opacity = "0.6";
+    });
+    root.appendChild(button);
+  }
+  return root;
 };
 
 const popupHtml = (item: Item) => {
@@ -401,6 +528,9 @@ export function MapPane(props: {
   stepLeg: number | null;
   onStep: (leg: number | null) => void;
   onPinClick: (itemId: string, zoom: boolean) => void;
+  // A pinned place card's "Add to plan": the planner owns where it lands
+  // (the segment's idea pool).
+  onAddPlace: (place: { name: string; lng: number; lat: number; address?: string }, kind: ItemKind) => void;
   apiRef: React.RefObject<MapApi | null>;
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -417,6 +547,8 @@ export function MapPane(props: {
   const [styleTick, storeStyleTick] = React.useState(0);
   const onPinClickRef = React.useRef(props.onPinClick);
   onPinClickRef.current = props.onPinClick;
+  const onAddPlaceRef = React.useRef(props.onAddPlace);
+  onAddPlaceRef.current = props.onAddPlace;
   const paneResizingRef = React.useRef(props.paneResizing);
   paneResizingRef.current = props.paneResizing;
 
@@ -493,9 +625,15 @@ export function MapPane(props: {
       if (import.meta.env.DEV) (window as { __map?: unknown }).__map = map;
       map.on("error", (event) => console.error("[map]", event.error?.message ?? event));
       // Tap-away (and click-away) dismisses the tooltip; pin clicks stop
-      // propagation so they never count as away.
+      // propagation so they never count as away. This general handler runs
+      // before the delegated layer handlers (registration order), so a
+      // click on a place dot closes the previous pinned card here and the
+      // layer handler below opens the new one.
+      let pinnedPlacePopup: import("maplibre-gl").Popup | null = null;
       map.on("click", () => {
         closePopup();
+        pinnedPlacePopup?.remove();
+        pinnedPlacePopup = null;
         if (selectedViaIdRef.current) {
           selectedViaIdRef.current = null;
           syncViaSelection();
@@ -628,11 +766,18 @@ export function MapPane(props: {
       const noteLine = (text: string) =>
         `<div style="font-size:0.85em;opacity:0.7;margin-top:2px">${escapeHtml(text)}</div>`;
       map.on("mousemove", "overlay-places-hit", (event) => {
+        // A pinned card owns the interaction; the hover tooltip stays away.
+        if (pinnedPlacePopup?.isOpen()) return;
         if (overlayHoverBlockers(event.point, ["day-route-stops-hit", "day-route-ride-hit"])) {
           return;
         }
         const place = event.features?.[0]?.properties ?? {};
         if (!place.name) return;
+        const status =
+          place.closed === true
+            ? `<div style="color:#F87171;font-size:0.85em;margin-top:2px">Closed at this time</div>`
+            : "";
+        const hoursLine = place.hoursDisplay ? noteLine(String(place.hoursDisplay)) : "";
         const notes = String(place.notes ?? "")
           .split("\n")
           .filter(Boolean)
@@ -640,9 +785,52 @@ export function MapPane(props: {
           .join("");
         followCursor(
           `<div style="font-size:0.8em;opacity:0.6">${escapeHtml(String(place.label ?? ""))}</div>` +
-            `<div style="font-weight:600">${escapeHtml(String(place.name))}</div>${notes}`,
+            `<div style="font-weight:600">${escapeHtml(String(place.name))}</div>` +
+            `${status}${notes}${hoursLine}` +
+            noteLine("Click for details"),
           event.lngLat,
         );
+      });
+      // Clicking a place pins its card open: a real popover the cursor can
+      // enter, with links out (website, menu, phone) and an add-to-plan
+      // button. The general click handler above already dismissed any
+      // previous card.
+      map.on("click", "overlay-places-hit", (event) => {
+        const feature = event.features?.[0];
+        const place = feature?.properties;
+        if (!feature || !place?.name) return;
+        ridePopup.remove();
+        rideShownHtml = "";
+        const at =
+          feature.geometry.type === "Point"
+            ? (feature.geometry.coordinates as [number, number])
+            : ([event.lngLat.lng, event.lngLat.lat] as [number, number]);
+        const itemKind: ItemKind =
+          place.kind === "vegan" || place.kind === "vegetarian" ? "food" : "activity";
+        const popup = new maplibregl.Popup({
+          closeButton: true,
+          closeOnClick: false,
+          offset: 10,
+          maxWidth: "300px",
+        });
+        popup.setDOMContent(
+          placeCard(place, () =>
+            onAddPlaceRef.current(
+              {
+                name: String(place.name),
+                lng: at[0],
+                lat: at[1],
+                address: place.address ? String(place.address) : undefined,
+              },
+              itemKind,
+            ),
+          ),
+        );
+        popup.setLngLat(at).addTo(map);
+        popup.on("close", () => {
+          if (pinnedPlacePopup === popup) pinnedPlacePopup = null;
+        });
+        pinnedPlacePopup = popup;
       });
       map.on("mouseleave", "overlay-places-hit", (event) => {
         if (
@@ -661,9 +849,42 @@ export function MapPane(props: {
       });
       // A bus stop's departure board loads on hover: the popup opens with
       // the stop name at once and the next departures fill in when the
-      // feed answers, unless the cursor has moved on.
+      // feed answers, unless the cursor has moved on. The fetch waits out
+      // a short settle (sweeping across a dense cluster must not fire one
+      // request per stop crossed) and boards cache briefly, so re-hovering
+      // the same stop is free.
       let boardStopId: string | null = null;
       let boardAbort: AbortController | null = null;
+      let boardTimer = 0;
+      const boardCache = new Map<string, { atMs: number; rows: string }>();
+      const BOARD_TTL_MS = 60_000;
+      // A feed can have service gaps (seasonal timetables); MOTIS then
+      // answers with the next KNOWN departures, weeks out. Any departure
+      // not on today's date wears its date so "8:19 AM" can't read as
+      // this morning.
+      const boardRows = (
+        entries: Awaited<ReturnType<typeof fetchStopBoard>>,
+        tz: string,
+      ) => {
+        const today = Temporal.Now.instant().toZonedDateTimeISO(tz).toPlainDate();
+        return entries
+          .slice(0, 6)
+          .map((entry) => {
+            const departDate = Temporal.Instant.from(entry.departIso)
+              .toZonedDateTimeISO(tz)
+              .toPlainDate();
+            const dayTag = departDate.equals(today)
+              ? ""
+              : `${departDate.toLocaleString("en-US", { month: "short", day: "numeric" })} · `;
+            return (
+              `<div style="font-size:0.85em;opacity:0.75;margin-top:2px">` +
+              `<span style="font-weight:600">${escapeHtml(entry.line)}</span> ` +
+              `${ARROW_SVG}${escapeHtml(entry.headsign)} · ${dayTag}${clockTime(entry.departIso, tz)}` +
+              `${entry.live ? ` <span style="color:#4ADE80">●</span>` : ""}</div>`
+            );
+          })
+          .join("");
+      };
       map.on("mousemove", "bus-stops-hit", (event) => {
         if (
           overlayHoverBlockers(event.point, [
@@ -684,39 +905,46 @@ export function MapPane(props: {
         }
         boardStopId = stopId;
         boardAbort?.abort();
-        const controller = new AbortController();
-        boardAbort = controller;
+        window.clearTimeout(boardTimer);
         const title = `<div style="font-weight:600">${escapeHtml(String(stop.name ?? "Stop"))}</div>`;
-        followCursor(`${title}${noteLine("Loading times…")}`, event.lngLat);
         const tz = String(stop.tz ?? "UTC");
-        fetchStopBoard(stopId, controller.signal)
-          .then((entries) => {
-            if (boardStopId !== stopId || controller.signal.aborted) return;
-            const rows = entries
-              .slice(0, 6)
-              .map(
-                (entry) =>
-                  `<div style="font-size:0.85em;opacity:0.75;margin-top:2px">` +
-                  `<span style="font-weight:600">${escapeHtml(entry.line)}</span> ` +
-                  `${ARROW_SVG}${escapeHtml(entry.headsign)} · ${clockTime(entry.departIso, tz)}` +
-                  `${entry.live ? ` <span style="color:#4ADE80">●</span>` : ""}</div>`,
-              )
-              .join("");
-            const html = `${title}${rows || noteLine("No departures found")}`;
-            rideShownHtml = html;
-            if (ridePopup.isOpen()) ridePopup.setHTML(html);
-          })
-          .catch((error) => {
-            if (controller.signal.aborted) return;
-            console.warn("[overlays] stop board failed:", error);
-            const html = `${title}${noteLine("Times unavailable")}`;
-            rideShownHtml = html;
-            if (ridePopup.isOpen()) ridePopup.setHTML(html);
-          });
+        const cached = boardCache.get(stopId);
+        if (cached && Temporal.Now.instant().epochMilliseconds - cached.atMs < BOARD_TTL_MS) {
+          followCursor(`${title}${cached.rows}`, event.lngLat);
+          return;
+        }
+        followCursor(`${title}${noteLine("Loading times…")}`, event.lngLat);
+        boardTimer = window.setTimeout(() => {
+          if (boardStopId !== stopId) return;
+          const controller = new AbortController();
+          boardAbort = controller;
+          fetchStopBoard(stopId, controller.signal)
+            .then((entries) => {
+              if (controller.signal.aborted) return;
+              const rows = boardRows(entries, tz) || noteLine("No departures found");
+              boardCache.set(stopId, {
+                atMs: Temporal.Now.instant().epochMilliseconds,
+                rows,
+              });
+              if (boardStopId !== stopId) return;
+              const html = `${title}${rows}`;
+              rideShownHtml = html;
+              if (ridePopup.isOpen()) ridePopup.setHTML(html);
+            })
+            .catch((error) => {
+              if (controller.signal.aborted) return;
+              console.warn("[overlays] stop board failed:", error);
+              if (boardStopId !== stopId) return;
+              const html = `${title}${noteLine("Times unavailable")}`;
+              rideShownHtml = html;
+              if (ridePopup.isOpen()) ridePopup.setHTML(html);
+            });
+        }, 180);
       });
       map.on("mouseleave", "bus-stops-hit", (event) => {
         boardStopId = null;
         boardAbort?.abort();
+        window.clearTimeout(boardTimer);
         if (
           overlayHoverBlockers(event.point, [
             "day-route-stops-hit",
@@ -749,6 +977,7 @@ export function MapPane(props: {
           const route = feature.properties ?? {};
           const ref = String(route.ref ?? "");
           const detail = String(route.name ?? "").replace(/^Bus\s+\S+:\s*/, "");
+          if (!ref && !detail) continue;
           lines.set(`${ref}|${detail}`, ref ? `<span style="font-weight:600">${escapeHtml(ref)}</span> ${escapeHtml(detail)}` : escapeHtml(detail));
         }
         if (!lines.size) return;
@@ -1442,6 +1671,38 @@ export function MapPane(props: {
       const source = map.getSource(id) as import("maplibre-gl").GeoJSONSource | undefined;
       source?.setData({ type: "FeatureCollection", features });
     };
+    // The moment hours are judged against: mid-step with a timed target
+    // stop, the planned visit ("will it be open when I'm there"); any
+    // other time, now. Both in the place's own zone.
+    const stepTimeMinutes = (() => {
+      const leg = stepLegRef.current;
+      if (leg === null || !props.routeDate) return null;
+      return parseItemTime(stepStops[leg + 1]?.time) ?? parseItemTime(stepStops[leg]?.time);
+    })();
+    const momentByZone = new Map<string, Temporal.ZonedDateTime>();
+    const momentAt = (lng: number, lat: number) => {
+      let zone = "UTC";
+      try {
+        zone = tzLookup(lat, lng);
+      } catch (error) {
+        console.warn("[overlays] timezone lookup failed:", error);
+      }
+      let moment = momentByZone.get(zone);
+      if (!moment) {
+        moment =
+          stepTimeMinutes !== null && props.routeDate
+            ? Temporal.PlainDate.from(props.routeDate).toZonedDateTime({
+                timeZone: zone,
+                plainTime: new Temporal.PlainTime(
+                  Math.floor(stepTimeMinutes / 60),
+                  stepTimeMinutes % 60,
+                ),
+              })
+            : Temporal.Now.instant().toZonedDateTimeISO(zone);
+        momentByZone.set(zone, moment);
+      }
+      return moment;
+    };
     const paintPlaces = () => {
       const features: Feature[] = [];
       const seen = new Set<string>();
@@ -1451,19 +1712,42 @@ export function MapPane(props: {
         for (const place of cached?.places ?? []) {
           if (seen.has(place.id)) continue;
           seen.add(place.id);
+          const rules = place.hours ? parseOpeningHours(place.hours) : null;
+          const open = rules ? isOpenAt(rules, momentAt(place.lng, place.lat)) : undefined;
           features.push({
             type: "Feature",
             properties: {
+              kind: place.kind,
               label: overlay.label,
               color: overlay.color,
               name: place.name,
               notes: place.notes.join("\n"),
+              hoursDisplay: place.hours ? formatHours(place.hours) : undefined,
+              open: open === true,
+              closed: open === false,
+              website: place.website,
+              menu: place.menu,
+              phone: place.phone,
+              address: place.address,
             },
             geometry: { type: "Point", coordinates: [place.lng, place.lat] },
           });
         }
       }
       setSource("overlay-places", features);
+    };
+    // Suggested derives from the sights data (fetched even when the
+    // Sights chip itself is off) plus what the plan already talks about.
+    const refreshPicks = () => {
+      if (!overlayKinds.includes("picks")) return;
+      const sightsCache = overlayPlacesRef.current.get("sights");
+      if (!sightsCache) return;
+      const picks = suggestPicks(
+        sightsCache.places,
+        props.items.map((entry) => entry.text),
+      );
+      overlayPlacesRef.current.set("picks", { view: sightsCache.view, places: picks });
+      setHint("picks", String(picks.length));
     };
     const paintBuses = () => {
       const on = overlayKinds.includes("buses");
@@ -1493,13 +1777,20 @@ export function MapPane(props: {
           : [],
       );
     };
+    refreshPicks();
     paintPlaces();
     paintBuses();
     const zoom = map.getZoom();
     const view = visibleView(map);
     const fetchView = paddedView(map);
-    const pointKinds = overlayKinds.filter((kind) => kind !== "buses");
-    const staleKinds = pointKinds.filter((kind) => {
+    // Picks carry no selectors of their own: they ride the sights data,
+    // which joins the fetch set whenever Suggested is on.
+    const pointKinds = overlayKinds.filter((kind) => kind !== "buses" && kind !== "picks");
+    const neededKinds =
+      overlayKinds.includes("picks") && !pointKinds.includes("sights")
+        ? pointKinds.concat("sights")
+        : pointKinds;
+    const staleKinds = neededKinds.filter((kind) => {
       const cached = overlayPlacesRef.current.get(kind);
       return !cached || !containsView(cached.view, view);
     });
@@ -1510,7 +1801,9 @@ export function MapPane(props: {
     }
     const fetchKinds = staleKinds.filter((kind) => zoom >= overlayTraits(kind).minZoom);
     for (const kind of staleKinds) {
-      setHint(kind, fetchKinds.includes(kind) ? "…" : "zoom in");
+      const hint = fetchKinds.includes(kind) ? "loading" : "zoom in";
+      if (kind !== "sights" || overlayKinds.includes("sights")) setHint(kind, hint);
+      if (kind === "sights" && overlayKinds.includes("picks")) setHint("picks", hint);
     }
     if (fetchKinds.length) {
       fetchOverlayPlaces(fetchKinds, fetchView, controller.signal)
@@ -1518,14 +1811,20 @@ export function MapPane(props: {
           for (const kind of fetchKinds) {
             const own = places.filter((place) => place.kind === kind);
             overlayPlacesRef.current.set(kind, { view: fetchView, places: own });
-            setHint(kind, String(own.length));
+            if (kind !== "sights" || overlayKinds.includes("sights")) {
+              setHint(kind, String(own.length));
+            }
           }
+          refreshPicks();
           paintPlaces();
         })
         .catch((error) => {
           if (controller.signal.aborted) return;
           console.warn("[overlays] places fetch failed:", error);
-          for (const kind of fetchKinds) setHint(kind, "failed");
+          for (const kind of fetchKinds) {
+            if (kind !== "sights" || overlayKinds.includes("sights")) setHint(kind, "failed");
+            if (kind === "sights" && overlayKinds.includes("picks")) setHint("picks", "failed");
+          }
         });
     }
     if (overlayKinds.includes("buses")) {
@@ -1536,7 +1835,7 @@ export function MapPane(props: {
       } else if (zoom < overlayTraits("buses").minZoom) {
         setHint("buses", "zoom in");
       } else {
-        setHint("buses", "…");
+        setHint("buses", "loading");
         fetchBusNetwork(fetchView, controller.signal)
           .then((routes) => {
             busNetworkRef.current = { view: fetchView, routes };
@@ -1565,8 +1864,11 @@ export function MapPane(props: {
       }
     }
     return () => controller.abort();
+    // routeSig covers the items whose texts steer Suggested and whose
+    // times anchor the closed-at-this-time judgment; stepLeg re-anchors it
+    // as the user steps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, styleTick, overlayKinds, viewTick]);
+  }, [ready, styleTick, overlayKinds, viewTick, routeSig, props.stepLeg]);
 
   // Locked vias render as draggable diamonds: drag moves the via (and the
   // route re-fits through it), double-click removes it.

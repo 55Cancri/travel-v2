@@ -6,13 +6,15 @@ import {
   addDay,
   addSegment,
   deleteSegment,
+  insertItemAfter,
   moveSegment,
   renameSegment,
   renameTrip,
   segmentItemCount,
+  updateItem,
   useDb,
 } from "entities/trips/store";
-import type { ContainerRef, Item } from "entities/trips/types";
+import type { ContainerRef, Item, ItemKind, Place } from "entities/trips/types";
 import { ItemEditor } from "./item-editor";
 import { MapPane, type MapApi } from "./map-pane";
 import { Section } from "./section";
@@ -306,6 +308,15 @@ export function Planner(props: { tripId: string }) {
     haptics.tap();
     mapApi.current?.focusItem(item.id, item.place, 16);
     storeShowMap(true);
+  };
+
+  // An overlay card's "Add to plan" lands in the segment's idea pool: not
+  // yet scheduled, ready to drag onto a day.
+  const addPlaceToPool = (place: Place, kind: ItemKind) => {
+    if (!segmentId) return;
+    const poolCount = segment?.poolItemIds.length ?? 0;
+    const created = insertItemAfter({ type: "pool", id: segmentId }, poolCount - 1, kind);
+    updateItem(created.id, { text: place.name, place });
   };
 
   const selectScope = (next: Scope) => {
@@ -646,6 +657,7 @@ export function Planner(props: { tripId: string }) {
           onStep={stepTo}
           scopeKey={scopeKey}
           onPinClick={onPinClick}
+          onAddPlace={addPlaceToPool}
           apiRef={mapApi}
         />
       </Block>
