@@ -1,16 +1,15 @@
 import * as React from "react";
+import type { Feature } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Block, Text } from "atoms";
 import { KIND_META, type Item, type RouteVia } from "entities/trips/types";
 import { addRouteVia, moveRouteVia, removeRouteVia } from "entities/trips/store";
 import {
-  buildWaypoints,
   fetchRoadRoute,
   legAt,
   nearestPointOnLine,
-  straightRoute,
-  type RoadRoute,
-  type RouteWaypoint,
+  planDayRoute,
+  type DayRoutePart,
 } from "./route-plan";
 
 // The map is a projection of the plan. Camera moves are deliberate: it refits
@@ -150,6 +149,20 @@ const viaElement = () => {
   return el;
 };
 
+const lineFeature = (
+  coordinates: number[][],
+  properties: { kind: string; chain: number; color?: string },
+): Feature => ({
+  type: "Feature",
+  properties,
+  geometry: { type: "LineString", coordinates },
+});
+
+// The editable walking chains in draw order; a rendered feature's `chain`
+// property indexes into this list.
+const walkChains = (parts: DayRoutePart[]) =>
+  parts.filter((part): part is Extract<DayRoutePart, { kind: "chain" }> => part.kind === "chain");
+
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
@@ -167,6 +180,8 @@ export function MapPane(props: {
   items: Item[];
   routeItemIds: string[] | null;
   routeDayId: string | null;
+  // The day's ISO date: transit rides are planned against its schedules.
+  routeDate: string | null;
   routeVias: RouteVia[] | null;
   paneResizing: boolean;
   scopeKey: string;
@@ -206,7 +221,7 @@ export function MapPane(props: {
   const viaSig = (props.routeVias ?? [])
     .map((via) => `${via.id}:${via.afterItemId}:${via.lng}:${via.lat}`)
     .join("|");
-  const routeSig = `${props.routeDayId ?? "-"}§${(props.routeItemIds ?? ["-"]).join(",")}§${viaSig}§${pinSig}`;
+  const routeSig = `${props.routeDayId ?? "-"}§${props.routeDate ?? "-"}§${(props.routeItemIds ?? ["-"]).join(",")}§${viaSig}§${pinSig}`;
   const pinsRef = React.useRef(pins);
   pinsRef.current = pins;
 
@@ -289,8 +304,10 @@ export function MapPane(props: {
         handleShown = false;
       };
       map.on("mousemove", "day-route-hit", (event) => {
-        const { road } = routeEditRef.current;
-        const snapped = nearestPointOnLine(road.line, event.lngLat.lng, event.lngLat.lat);
+        const chainIdx = Number(event.features?.[0]?.properties?.chain ?? -1);
+        const chain = walkChains(routeEditRef.current.parts)[chainIdx];
+        if (!chain) return;
+        const snapped = nearestPointOnLine(chain.road.line, event.lngLat.lng, event.lngLat.lat);
         if (!snapped) return;
         // Position before the first addTo: adding an unpositioned marker
         // throws inside maplibre and strands the element at the origin.
@@ -306,9 +323,11 @@ export function MapPane(props: {
       });
       map.on("mousedown", "day-route-hit", (event) => {
         hideHandle();
-        const { dayId, waypoints, road } = routeEditRef.current;
-        if (!dayId || waypoints.length < 2) return;
-        const grabbed = legAt(road, waypoints, event.lngLat.lng, event.lngLat.lat);
+        const { dayId, parts } = routeEditRef.current;
+        const chainIdx = Number(event.features?.[0]?.properties?.chain ?? -1);
+        const chain = walkChains(parts)[chainIdx];
+        if (!dayId || !chain || chain.waypoints.length < 2) return;
+        const grabbed = legAt(chain.road, chain.waypoints, event.lngLat.lng, event.lngLat.lat);
         if (!grabbed) return;
         event.preventDefault();
         map.getCanvas().style.cursor = "grabbing";
@@ -322,7 +341,7 @@ export function MapPane(props: {
         let lastPreview = 0;
         let previewAbort: AbortController | null = null;
         const tentativeWaypoints = (lng: number, lat: number) =>
-          waypoints.toSpliced(grabbed.legIndex + 1, 0, {
+          chain.waypoints.toSpliced(grabbed.legIndex + 1, 0, {
             kind: "via",
             via: { id: "ghost", afterItemId: grabbed.afterItemId, lng, lat },
           });
@@ -340,7 +359,9 @@ export function MapPane(props: {
           previewAbort?.abort();
           previewAbort = new AbortController();
           fetchRoadRoute(tentativeWaypoints(move.lngLat.lng, move.lngLat.lat), previewAbort.signal)
-            .then((road) => drawRoute(road.line))
+            .then((road) =>
+              drawRoute(parts.map((part) => (part === chain ? { ...part, road } : part))),
+            )
             .catch((error: unknown) => {
               // Aborted previews are just the next drag frame taking over.
               if (previewAbort?.signal.aborted) return;
@@ -354,12 +375,17 @@ export function MapPane(props: {
           ghostMarker.remove();
           map.getCanvas().style.cursor = "grab";
           if (!moved) {
-            // A still click toggles the route highlight.
+            // A still click toggles the route highlight, walks and rides
+            // together.
             routeHighlightedRef.current = !routeHighlightedRef.current;
             const emphatic = routeHighlightedRef.current;
             if (map.getLayer("day-route-line")) {
               map.setPaintProperty("day-route-line", "line-width", emphatic ? 4 : 2.5);
               map.setPaintProperty("day-route-line", "line-opacity", emphatic ? 1 : 0.85);
+            }
+            if (map.getLayer("day-route-ride")) {
+              map.setPaintProperty("day-route-ride", "line-width", emphatic ? 4.5 : 3);
+              map.setPaintProperty("day-route-ride", "line-opacity", emphatic ? 1 : 0.8);
             }
             return;
           }
@@ -558,34 +584,68 @@ export function MapPane(props: {
   }, [ready, styleTick, pinSig]);
 
   // What the drag handlers need about the current route, refreshed by the
-  // route effect: the day being edited, its waypoints, and the drawn line.
-  const routeEditRef = React.useRef<{
-    dayId: string | null;
-    waypoints: RouteWaypoint[];
-    road: RoadRoute;
-  }>({ dayId: null, waypoints: [], road: { line: [], waypointVertex: [] } });
+  // route effect: the day being edited and its drawn parts. Chains are
+  // addressed by the `chain` property carried on their rendered features.
+  const routeEditRef = React.useRef<{ dayId: string | null; parts: DayRoutePart[] }>({
+    dayId: null,
+    parts: [],
+  });
   const routeHighlightedRef = React.useRef(false);
 
-  const drawRoute = (coordinates: number[][]) => {
+  const drawRoute = (parts: DayRoutePart[]) => {
     const map = mapRef.current;
     if (!map) return;
-    const routeData = {
-      type: "Feature" as const,
-      properties: {},
-      geometry: { type: "LineString" as const, coordinates },
-    };
+    // Rides without a brand color get the transport steel blue, picked per
+    // theme here because layer paint can't read CSS variables (the theme
+    // swap re-runs the route effect, so this stays in sync).
+    const rideFallback =
+      document.documentElement.dataset.theme === "dark" ? "#6B93BF" : "#3A6EA5";
+    const features: Feature[] = [];
+    let chainIdx = 0;
+    for (const part of parts) {
+      if (part.kind === "chain") {
+        features.push(lineFeature(part.road.line, { kind: "walk", chain: chainIdx++ }));
+      } else {
+        for (const leg of part.legs) {
+          features.push(
+            leg.mode === "walk"
+              ? lineFeature(leg.line, { kind: "walk", chain: -1 })
+              : lineFeature(leg.line, {
+                  kind: "ride",
+                  chain: -1,
+                  color: leg.color ?? rideFallback,
+                }),
+          );
+        }
+      }
+    }
+    const collection = { type: "FeatureCollection" as const, features };
     const source = map.getSource("day-route") as
       | import("maplibre-gl").GeoJSONSource
       | undefined;
     if (source) {
-      source.setData(routeData);
+      source.setData(collection);
       return;
     }
-    map.addSource("day-route", { type: "geojson", data: routeData });
+    map.addSource("day-route", { type: "geojson", data: collection });
+    // Rides render under the walking ants, solid in the line's own color.
+    map.addLayer({
+      id: "day-route-ride",
+      type: "line",
+      source: "day-route",
+      filter: ["==", ["get", "kind"], "ride"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["get", "color"],
+        "line-width": 3,
+        "line-opacity": 0.8,
+      },
+    });
     map.addLayer({
       id: "day-route-line",
       type: "line",
       source: "day-route",
+      filter: ["==", ["get", "kind"], "walk"],
       layout: { "line-cap": "round", "line-join": "round" },
       paint: {
         "line-color": "#C05B3F",
@@ -594,20 +654,23 @@ export function MapPane(props: {
         "line-opacity": 0.85,
       },
     });
-    // A wide invisible twin makes the 2.5px line grabbable without fat
-    // rendering; all route pointer interactions bind to it.
+    // A wide invisible twin makes the thin lines grabbable without fat
+    // rendering; all route pointer interactions bind to it. Only editable
+    // chains (chain >= 0) join in: rides and their station walks cannot
+    // hold a via.
     map.addLayer({
       id: "day-route-hit",
       type: "line",
       source: "day-route",
+      filter: [">=", ["get", "chain"], 0],
       paint: { "line-width": 18, "line-opacity": 0.001 },
     });
   };
 
-  // Route line for the selected day, in plan order with its locked vias
-  // interleaved: the straight dashed line draws immediately so scope
-  // changes feel instant, then swaps to the road-following walking route
-  // once the router answers.
+  // Route for the selected day, in plan order with its locked vias
+  // interleaved: straight placeholder lines draw immediately so scope
+  // changes feel instant, then each part swaps in as its router answers
+  // (walking chains from OSRM, transit rides from Transitous).
   React.useEffect(() => {
     const map = mapRef.current;
     if (!ready || !map) return;
@@ -616,29 +679,25 @@ export function MapPane(props: {
       .map((id) => currentPins.find((pin) => pin.item.id === id))
       .filter((pin): pin is Pin => pin !== undefined)
       .map((pin) => ({ itemId: pin.item.id, lng: pin.lng, lat: pin.lat }));
-    const waypoints = buildWaypoints(stops, props.routeVias ?? []);
-    routeEditRef.current = {
-      dayId: props.routeDayId,
-      waypoints,
-      road: straightRoute(waypoints),
-    };
-    drawRoute(routeEditRef.current.road.line);
-    if (waypoints.length < 2) return;
+    const dayId = props.routeDayId;
+    // Mid-morning UTC keeps the schedule query in normal service hours
+    // across European and American timezones alike; the drawn line barely
+    // depends on the exact departure.
+    const depart = `${props.routeDate ?? "2026-01-01"}T09:00:00Z`;
     const controller = new AbortController();
-    fetchRoadRoute(waypoints, controller.signal)
-      .then((road) => {
-        routeEditRef.current = { dayId: props.routeDayId, waypoints, road };
-        drawRoute(road.line);
-        storeRouteNotice(null);
-      })
-      .catch((error: unknown) => {
-        // A scope change aborts the stale request: flow control, not a
-        // failure. Anything else keeps the straight line (offline and
-        // router hiccups always exist) and says so, on screen.
-        if (controller.signal.aborted) return;
-        console.warn("[map] road route failed, keeping straight line:", error);
-        storeRouteNotice("Road routing unreachable · showing straight lines");
-      });
+    planDayRoute(
+      stops,
+      props.routeVias ?? [],
+      depart,
+      controller.signal,
+      (parts, settled, failed) => {
+        routeEditRef.current = { dayId, parts };
+        drawRoute(parts);
+        if (settled) {
+          storeRouteNotice(failed ? "Routing unreachable · showing straight lines" : null);
+        }
+      },
+    );
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, routeSig]);

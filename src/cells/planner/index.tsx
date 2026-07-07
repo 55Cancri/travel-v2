@@ -576,6 +576,7 @@ export function Planner(props: { tripId: string }) {
           items={scopedItems}
           routeItemIds={routeItemIds}
           routeDayId={routeDay?.id ?? null}
+          routeDate={routeDay?.date ?? null}
           routeVias={routeDay?.vias ?? null}
           paneResizing={paneResizing}
           scopeKey={scopeKey}
