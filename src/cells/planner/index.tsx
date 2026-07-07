@@ -195,6 +195,12 @@ export function Planner(props: { tripId: string }) {
   const routeDay = scope.type === "day" ? (db.days[scope.id] ?? null) : null;
   const routeItemIds = routeDay?.itemIds ?? null;
   const scopeKey = `${segmentId ?? "-"}:${scope.type}:${scope.type === "day" ? scope.id : ""}#${scopeNonce}`;
+  // Address suggestions rank near the city being planned: the segment's
+  // first placed item anchors the geocoder bias.
+  const anchorPlace = [...(segment?.poolItemIds ?? []), ...days.flatMap((day) => day.itemIds)]
+    .map((id) => db.items[id]?.place)
+    .find((place) => place !== undefined);
+  const placeBias = anchorPlace ? { lng: anchorPlace.lng, lat: anchorPlace.lat } : null;
 
   const highlight = (itemId: string) => {
     storeHighlightItemId(itemId);
@@ -484,6 +490,7 @@ export function Planner(props: { tripId: string }) {
               subtitle="Not yet scheduled"
               selected={scope.type === "pool"}
               highlightItemId={highlightItemId}
+              placeBias={placeBias}
               onSelect={() => selectScope({ type: "pool" })}
               onFly={onFly}
               onEdit={(item, ref) => storeEditing({ itemId: item.id, ref })}
@@ -499,6 +506,7 @@ export function Planner(props: { tripId: string }) {
                 stickyHeader
                 stickyTop={CITY_BAR_HEIGHT}
                 highlightItemId={highlightItemId}
+                placeBias={placeBias}
                 onSelect={() => selectScope({ type: "day", id: day.id })}
                 onFly={onFly}
                 onEdit={(item, ref) => storeEditing({ itemId: item.id, ref })}

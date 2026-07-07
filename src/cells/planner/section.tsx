@@ -9,6 +9,7 @@ import {
   removeItem,
   setItemText,
   toggleItemDone,
+  updateItem,
   useDb,
 } from "entities/trips/store";
 import type { ContainerRef, Item } from "entities/trips/types";
@@ -33,6 +34,8 @@ export function Section(props: {
   // headers stack directly beneath the always-stuck city name).
   stickyTop?: string;
   highlightItemId: string | null;
+  // Address suggestions rank near here (the segment's city).
+  placeBias: { lng: number; lat: number } | null;
   onSelect: () => void;
   onFly: (item: Item) => void;
   onEdit: (item: Item, containerRef: ContainerRef) => void;
@@ -199,6 +202,13 @@ export function Section(props: {
             inputRef={(el) => {
               if (el) inputs.current.set(entry.id, el);
               else inputs.current.delete(entry.id);
+            }}
+            bias={props.placeBias}
+            onPick={(hit) => {
+              updateItem(entry.id, {
+                text: hit.label,
+                place: { name: hit.label, address: hit.address, lat: hit.lat, lng: hit.lng },
+              });
             }}
             onChange={(text) => setItemText(entry.id, text)}
             onPaste={pasteHandler(entry, index)}
