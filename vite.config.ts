@@ -1,14 +1,18 @@
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import alchemy from "alchemy/cloudflare/tanstack-start";
+import { defineConfig, type PluginOption } from "vite";
 import viteTsConfigPaths from "vite-tsconfig-paths";
 
 // Panda CSS runs through PostCSS (postcss.config.cjs), so it needs no Vite
-// plugin here. Local-only for now — the alchemy() Cloudflare plugin from
-// stochastic-v3 gets added when we wire up deploy.
+// plugin here. The alchemy() plugin targets the server build at the
+// Cloudflare worker runtime and hands dev the emulated bindings; it needs
+// the wrangler config that `alchemy dev` / `alchemy deploy` generate, so
+// vite always runs THROUGH those commands (the package scripts do).
 export default defineConfig({
   plugins: [
     viteTsConfigPaths({ projects: ["./tsconfig.json"] }),
+    alchemy() as PluginOption,
     tanstackStart(),
     viteReact({
       babel: { plugins: ["babel-plugin-react-compiler"] },

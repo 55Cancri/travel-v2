@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TripTripIdRouteImport } from './routes/trip.$tripId'
+import { Route as ApiPlacesRouteImport } from './routes/api.places'
+import { Route as ApiCurateRouteImport } from './routes/api.curate'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,30 +24,48 @@ const TripTripIdRoute = TripTripIdRouteImport.update({
   path: '/trip/$tripId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPlacesRoute = ApiPlacesRouteImport.update({
+  id: '/api/places',
+  path: '/api/places',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCurateRoute = ApiCurateRouteImport.update({
+  id: '/api/curate',
+  path: '/api/curate',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/curate': typeof ApiCurateRoute
+  '/api/places': typeof ApiPlacesRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/curate': typeof ApiCurateRoute
+  '/api/places': typeof ApiPlacesRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/curate': typeof ApiCurateRoute
+  '/api/places': typeof ApiPlacesRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/trip/$tripId'
+  fullPaths: '/' | '/api/curate' | '/api/places' | '/trip/$tripId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/trip/$tripId'
-  id: '__root__' | '/' | '/trip/$tripId'
+  to: '/' | '/api/curate' | '/api/places' | '/trip/$tripId'
+  id: '__root__' | '/' | '/api/curate' | '/api/places' | '/trip/$tripId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiCurateRoute: typeof ApiCurateRoute
+  ApiPlacesRoute: typeof ApiPlacesRoute
   TripTripIdRoute: typeof TripTripIdRoute
 }
 
@@ -65,11 +85,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TripTripIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/places': {
+      id: '/api/places'
+      path: '/api/places'
+      fullPath: '/api/places'
+      preLoaderRoute: typeof ApiPlacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/curate': {
+      id: '/api/curate'
+      path: '/api/curate'
+      fullPath: '/api/curate'
+      preLoaderRoute: typeof ApiCurateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiCurateRoute: ApiCurateRoute,
+  ApiPlacesRoute: ApiPlacesRoute,
   TripTripIdRoute: TripTripIdRoute,
 }
 export const routeTree = rootRouteImport

@@ -17,4 +17,4 @@ export {
   type BusStopPoint,
 } from "./fetch-stop-board";
 export { formatHours, isOpenAt, parseOpeningHours } from "./opening-hours";
-export { suggestPicks } from "./suggest";
+export { curatePicks, suggestPicks } from "./suggest";
