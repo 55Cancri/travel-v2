@@ -50,6 +50,11 @@ latest code regardless of merge status.
 3. Merge the PR branches back into `bleeding-edge` (merge, never rebase;
    same for `main` whenever it moves), then push `bleeding-edge` (only
    after the PRs exist, never before).
+4. The working tree lives on `bleeding-edge`: the owner tests the running
+   app from it continuously, so a tree parked on a slice branch is an app
+   silently missing features. Slicing and PR fixes are one tight
+   excursion (switch, commit, push, merge back, return), never a place to
+   develop or verify.
 
 ## Slicing discipline
 

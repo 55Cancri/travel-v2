@@ -558,6 +558,13 @@ rules bind the moment it is:
      rebase, same for open PR tips and `main` whenever they move), so it
      always carries the latest code regardless of merge status, and push it
      (only after the PRs exist, never before).
+  4. **The working tree LIVES on `bleeding-edge`** (owner directive,
+     2026-07-06). The owner tests the running app from this tree
+     continuously, so any minute it sits on another branch is a minute his
+     app is silently missing features. Branch work (slicing, PR fixes) is
+     one tight excursion: switch, commit, push, merge back into
+     `bleeding-edge`, return. Never develop, verify, or pause on a slice
+     branch.
 - **PRs are plain `git` + `gh`, honestly based** (the owner's BetterGit app
   is the only merge path: it reviews, squash-merges, restacks, retargets,
   and heals). A PR's GitHub base must be the branch it was actually built
