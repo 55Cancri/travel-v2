@@ -7,6 +7,7 @@ import {
   buildWaypoints,
   fetchRoadRoute,
   legAt,
+  nearestPointOnLine,
   straightRoute,
   type RoadRoute,
   type RouteWaypoint,
@@ -212,10 +213,35 @@ export function MapPane(props: {
       map.on("mouseenter", "day-route-hit", () => {
         map.getCanvas().style.cursor = "grab";
       });
+      // The grab affordance: a handle dot rides the line under the cursor
+      // (snapped onto the route, not floating beside it).
+      const handleEl = document.createElement("div");
+      handleEl.classList.add("travel-route-handle");
+      const handleMarker = new maplibregl.Marker({ element: handleEl });
+      let handleShown = false;
+      const hideHandle = () => {
+        if (!handleShown) return;
+        handleMarker.remove();
+        handleShown = false;
+      };
+      map.on("mousemove", "day-route-hit", (event) => {
+        const { road } = routeEditRef.current;
+        const snapped = nearestPointOnLine(road.line, event.lngLat.lng, event.lngLat.lat);
+        if (!snapped) return;
+        // Position before the first addTo: adding an unpositioned marker
+        // throws inside maplibre and strands the element at the origin.
+        handleMarker.setLngLat(snapped);
+        if (!handleShown) {
+          handleMarker.addTo(map);
+          handleShown = true;
+        }
+      });
       map.on("mouseleave", "day-route-hit", () => {
         map.getCanvas().style.cursor = "";
+        hideHandle();
       });
       map.on("mousedown", "day-route-hit", (event) => {
+        hideHandle();
         const { dayId, waypoints, road } = routeEditRef.current;
         if (!dayId || waypoints.length < 2) return;
         const grabbed = legAt(road, waypoints, event.lngLat.lng, event.lngLat.lat);
@@ -602,16 +628,19 @@ export function MapPane(props: {
     const map = mapRef.current;
     if (!ready || !map) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const dashSeq = [
-      [0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1],
-      [2.5, 4, 0.5], [3, 4, 0], [0, 0.5, 3, 3.5], [0, 1, 3, 3],
-      [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1],
-      [0, 3.5, 3, 0.5],
-    ];
+    // Small dashes and fine 0.1-unit phase steps: the coarse classic table
+    // reads as a strobe, this reads as a crawl. Dash units multiply by the
+    // line width, so DASH 1.4 is a ~3.5px dot at the 2.5px line.
+    const DASH = 1.4;
+    const GAP = 2.2;
+    const PHASE_STEP = 0.1;
+    const dashSeq: number[][] = [];
+    for (let x = 0; x < DASH; x += PHASE_STEP) dashSeq.push([x, GAP, DASH - x]);
+    for (let y = 0; y < GAP; y += PHASE_STEP) dashSeq.push([0, y, DASH, GAP - y]);
     let step = -1;
     let frame = 0;
     const tick = (timestamp: number) => {
-      const next = Math.floor(timestamp / 70) % dashSeq.length;
+      const next = Math.floor(timestamp / 35) % dashSeq.length;
       if (next !== step && map.getLayer("day-route-line")) {
         step = next;
         map.setPaintProperty("day-route-line", "line-dasharray", dashSeq[next]);

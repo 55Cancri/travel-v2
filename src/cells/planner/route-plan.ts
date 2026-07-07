@@ -75,6 +75,37 @@ export const nearestVertex = (
   return best;
 };
 
+// The closest point ON the line (projected onto its segments, not just the
+// nearest vertex, so it stays glued to straight fallback lines too): where
+// the hover grab-handle rides.
+export const nearestPointOnLine = (line: number[][], lng: number, lat: number) => {
+  if (line.length === 0) return null;
+  const scale = Math.cos((lat * Math.PI) / 180);
+  let best: [number, number] = [line[0][0], line[0][1]];
+  let bestD = Infinity;
+  for (let i = 0; i < line.length - 1; i++) {
+    const [ax, ay] = line[i];
+    const [bx, by] = line[i + 1];
+    const dx = (bx - ax) * scale;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    const t =
+      lenSq === 0
+        ? 0
+        : Math.min(1, Math.max(0, (((lng - ax) * scale) * dx + (lat - ay) * dy) / lenSq));
+    const cx = ax + (bx - ax) * t;
+    const cy = ay + (by - ay) * t;
+    const ddx = (lng - cx) * scale;
+    const ddy = lat - cy;
+    const d = ddx * ddx + ddy * ddy;
+    if (d < bestD) {
+      bestD = d;
+      best = [cx, cy];
+    }
+  }
+  return best;
+};
+
 export const fetchRoadRoute = async (
   waypoints: RouteWaypoint[],
   signal: AbortSignal,

@@ -52,6 +52,18 @@
   opacity: 0.75;
   pointer-events: none;
 }
+/* The grab handle that rides the route under the cursor: the "you can drag
+   this line" affordance. pointer-events none keeps it from stealing the
+   hit layer's events mid-hover. */
+.travel-route-handle {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--colors-surface-page);
+  border: 2.5px solid var(--colors-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
 
 /* Map popups are inverted tooltips (dark-on-light page gets a dark tip,
    dark mode gets a light one) via the surface-strong pair. The shadow rides
