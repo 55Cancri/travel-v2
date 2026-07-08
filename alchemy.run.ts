@@ -21,7 +21,7 @@ const req = (name: string) => {
   return value;
 };
 
-for (const name of ["SESSION_SECRET"]) {
+for (const name of ["SESSION_SECRET", "ALLOWED_EMAILS", "APP_PASSWORD"]) {
   req(name);
 }
 
@@ -75,6 +75,8 @@ export const website = await TanStackStart("website", {
     PLACE_CACHE: placeCache,
     SESSION_SECRET: alchemy.secret.env.SESSION_SECRET,
     GOOGLE_PLACES_API_KEY: alchemy.secret.env.GOOGLE_PLACES_API_KEY,
+    ALLOWED_EMAILS: alchemy.secret.env.ALLOWED_EMAILS,
+    APP_PASSWORD: alchemy.secret.env.APP_PASSWORD,
   },
   adopt: true,
   // Persist request logs + exceptions to Cloudflare Workers Logs so a prod 500

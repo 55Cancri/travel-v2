@@ -9,11 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TripTripIdRouteImport } from './routes/trip.$tripId'
+import { Route as ApiSessionRouteImport } from './routes/api.session'
 import { Route as ApiPlacesRouteImport } from './routes/api.places'
 import { Route as ApiCurateRouteImport } from './routes/api.curate'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -22,6 +29,11 @@ const IndexRoute = IndexRouteImport.update({
 const TripTripIdRoute = TripTripIdRouteImport.update({
   id: '/trip/$tripId',
   path: '/trip/$tripId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSessionRoute = ApiSessionRouteImport.update({
+  id: '/api/session',
+  path: '/api/session',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPlacesRoute = ApiPlacesRouteImport.update({
@@ -37,40 +49,74 @@ const ApiCurateRoute = ApiCurateRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/api/curate': typeof ApiCurateRoute
   '/api/places': typeof ApiPlacesRoute
+  '/api/session': typeof ApiSessionRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/api/curate': typeof ApiCurateRoute
   '/api/places': typeof ApiPlacesRoute
+  '/api/session': typeof ApiSessionRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/api/curate': typeof ApiCurateRoute
   '/api/places': typeof ApiPlacesRoute
+  '/api/session': typeof ApiSessionRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/curate' | '/api/places' | '/trip/$tripId'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/api/curate'
+    | '/api/places'
+    | '/api/session'
+    | '/trip/$tripId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/curate' | '/api/places' | '/trip/$tripId'
-  id: '__root__' | '/' | '/api/curate' | '/api/places' | '/trip/$tripId'
+  to:
+    | '/'
+    | '/login'
+    | '/api/curate'
+    | '/api/places'
+    | '/api/session'
+    | '/trip/$tripId'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/api/curate'
+    | '/api/places'
+    | '/api/session'
+    | '/trip/$tripId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   ApiCurateRoute: typeof ApiCurateRoute
   ApiPlacesRoute: typeof ApiPlacesRoute
+  ApiSessionRoute: typeof ApiSessionRoute
   TripTripIdRoute: typeof TripTripIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -83,6 +129,13 @@ declare module '@tanstack/react-router' {
       path: '/trip/$tripId'
       fullPath: '/trip/$tripId'
       preLoaderRoute: typeof TripTripIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/session': {
+      id: '/api/session'
+      path: '/api/session'
+      fullPath: '/api/session'
+      preLoaderRoute: typeof ApiSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/places': {
@@ -104,8 +157,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   ApiCurateRoute: ApiCurateRoute,
   ApiPlacesRoute: ApiPlacesRoute,
+  ApiSessionRoute: ApiSessionRoute,
   TripTripIdRoute: TripTripIdRoute,
 }
 export const routeTree = rootRouteImport
