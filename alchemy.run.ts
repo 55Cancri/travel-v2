@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import alchemy from "alchemy";
 import { Ai, D1Database, KVNamespace, TanStackStart } from "alchemy/cloudflare";
 
@@ -10,9 +11,10 @@ import { Ai, D1Database, KVNamespace, TanStackStart } from "alchemy/cloudflare";
 // previous bundle. Secrets and auth live in .env (.env.example documents
 // them).
 
-// stage drives resource names and the public workers.dev URL. Pin it to "prod"
-// (override with STAGE=beta etc.) — never Alchemy's fallback (the OS username).
-// password encrypts secret bindings in Alchemy state; must stay stable.
+// stage drives resource names and the public workers.dev URL. Pin it to
+// "prod" (override with STAGE=beta etc.), never Alchemy's fallback (the OS
+// username). password encrypts secret bindings in Alchemy state; must stay
+// stable.
 const req = (name: string) => {
   const value = process.env[name];
   if (!value) {
@@ -25,16 +27,23 @@ for (const name of ["SESSION_SECRET", "ALLOWED_EMAILS", "APP_PASSWORD"]) {
   req(name);
 }
 
+const stage = process.env.STAGE ?? "prod";
+
 const app = await alchemy("travel2", {
-  stage: process.env.STAGE ?? "prod",
+  stage,
   password: req("ALCHEMY_PASSWORD"),
+  // Stage-private state tree: alchemy's finalize orphan-destroys any sibling
+  // scope it can see in a shared state store, so a dev-stage run against a
+  // shared .alchemy/ could delete the prod worker. The option is honored at
+  // runtime but missing from the public options type, hence the cast.
+  ...({ dotAlchemy: path.resolve(import.meta.dirname, ".alchemy", stage) } as object),
 });
 
 export const db = await D1Database("db", {
   name: `${app.name}-${app.stage}-db`,
   migrationsDir: "migrations",
-  // adopt: take over an existing resource of this name instead of erroring —
-  // keeps redeploys idempotent
+  // adopt: take over an existing resource of this name instead of erroring,
+  // which keeps redeploys idempotent
   adopt: true,
 });
 
@@ -48,7 +57,7 @@ export const db = await D1Database("db", {
 //   sqlite: true,
 // });
 
-// R2 (offline map tiles now, voice-diary audio later) — enable with:
+// R2 (offline map tiles now, voice-diary audio later), enable with:
 // export const tiles = await R2Bucket("tiles", {
 //   name: `${app.name}-${app.stage}-tiles`,
 //   adopt: true,
@@ -59,16 +68,18 @@ export const db = await D1Database("db", {
 export const ai = Ai();
 
 // Response cache for external place providers (Yelp, Foursquare, Google
-// Places, TripAdvisor): identical viewport queries answer from KV instead
-// of burning each provider's small free quota.
+// Places): identical viewport queries answer from KV instead of burning
+// each provider's small free quota.
 export const placeCache = await KVNamespace("place-cache", {
   title: `${app.name}-${app.stage}-place-cache`,
   adopt: true,
 });
 
 export const website = await TanStackStart("website", {
-  // worker name = public URL host: travel-v2.<subdomain>.workers.dev
-  name: "travel-v2",
+  // worker name = public URL host: travel-v2.<subdomain>.workers.dev. Only
+  // stage prod owns the bare name; other stages get their own worker so a
+  // non-prod run can never adopt or delete the live one.
+  name: app.stage === "prod" ? "travel-v2" : `travel-v2-${app.stage}`,
   bindings: {
     DB: db,
     AI: ai,
