@@ -14,6 +14,7 @@ import {
   type DayRoutePart,
 } from "./route-plan";
 import {
+  curatePicks,
   fetchBusNetwork,
   fetchBusStops,
   fetchOverlayPlaces,
@@ -865,24 +866,79 @@ export function MapPane(props: {
           offset: 10,
           maxWidth: "300px",
         });
-        popup.setDOMContent(
-          placeCard(place, () =>
-            onAddPlaceRef.current(
-              {
-                name: String(place.name),
-                lng: at[0],
-                lat: at[1],
-                address: place.address ? String(place.address) : undefined,
-              },
-              itemKind,
-            ),
+        const card = placeCard(place, () =>
+          onAddPlaceRef.current(
+            {
+              name: String(place.name),
+              lng: at[0],
+              lat: at[1],
+              address: place.address ? String(place.address) : undefined,
+            },
+            itemKind,
           ),
         );
+        popup.setDOMContent(card);
         popup.setLngLat(at).addTo(map);
+        const ratingAbort = new AbortController();
         popup.on("close", () => {
+          ratingAbort.abort();
           if (pinnedPlacePopup === popup) pinnedPlacePopup = null;
         });
         pinnedPlacePopup = popup;
+        // The Google rating fills in when the server answers; a place
+        // Google doesn't know (or a spent monthly budget) just shows no
+        // rating line. Food cards also hunt the reviews for a vegan
+        // mention: firsthand crowd evidence, quoted with its date.
+        const query = new URLSearchParams({
+          lat: String(at[1]),
+          lng: String(at[0]),
+          name: String(place.name),
+        });
+        if (place.kind === "vegan") query.set("mention", "vegan");
+        fetch(`/api/places?${query}`, { signal: ratingAbort.signal })
+          .then((res) =>
+            res.ok ? res.json() : Promise.reject(new Error(`places responded ${res.status}`)),
+          )
+          .then(
+            (answer: {
+              rating: number | null;
+              count?: number;
+              mapsUri?: string;
+              mention?: { snippet: string; dateIso?: string };
+            }) => {
+              if (answer.rating === null || !card.isConnected) return;
+              const anchorButton = card.querySelector("button");
+              const line = document.createElement(answer.mapsUri ? "a" : "div");
+              line.textContent = `★ ${answer.rating.toFixed(1)}${
+                answer.count ? ` (${answer.count.toLocaleString("en-US")})` : ""
+              } · Google`;
+              line.style.cssText = "font-size:0.85em;color:var(--tooltip-subtext)";
+              if (line instanceof HTMLAnchorElement && answer.mapsUri) {
+                line.href = answer.mapsUri;
+                line.target = "_blank";
+                line.rel = "noreferrer";
+                line.style.textDecoration = "underline";
+              }
+              card.insertBefore(line, anchorButton);
+              if (answer.mention) {
+                const quote = document.createElement("div");
+                const when = answer.mention.dateIso
+                  ? ` · ${Temporal.Instant.from(answer.mention.dateIso)
+                      .toZonedDateTimeISO("UTC")
+                      .toPlainDate()
+                      .toLocaleString("en-US", { month: "short", year: "numeric" })}`
+                  : "";
+                quote.textContent = `“${answer.mention.snippet}”${when}`;
+                quote.style.cssText =
+                  "font-size:0.8em;color:var(--tooltip-subtext);font-style:italic;margin-top:2px";
+                card.insertBefore(quote, anchorButton);
+              }
+            },
+          )
+          .catch((error) => {
+            if (ratingAbort.signal.aborted) return;
+            console.warn("[overlays] rating lookup failed:", error);
+          });
       });
       map.on("mouseleave", "overlay-places-hit", (event) => {
         if (
@@ -1398,6 +1454,9 @@ export function MapPane(props: {
   );
   const busNetworkRef = React.useRef<{ view: ViewBounds; routes: BusRoute[] } | null>(null);
   const busStopsRef = React.useRef<{ view: ViewBounds; stops: BusStopPoint[] } | null>(null);
+  // The sights-view + plan combination the model already curated, so
+  // repaint-only effect runs don't re-ask it.
+  const curatedKeyRef = React.useRef("");
   const toggleOverlay = (kind: OverlayKind) =>
     storeOverlayKinds((active) =>
       active.includes(kind) ? active.filter((entry) => entry !== kind) : active.concat(kind),
@@ -1792,16 +1851,43 @@ export function MapPane(props: {
     };
     // Suggested derives from the sights data (fetched even when the
     // Sights chip itself is off) plus what the plan already talks about.
+    // The heuristic paints immediately; the server's model then upgrades
+    // the same cache when it answers, keyed so each sights view and plan
+    // combination asks the model once.
+    const planTexts = props.items.map((entry) => entry.text);
     const refreshPicks = () => {
       if (!overlayKinds.includes("picks")) return;
       const sightsCache = overlayPlacesRef.current.get("sights");
       if (!sightsCache) return;
-      const picks = suggestPicks(
-        sightsCache.places,
-        props.items.map((entry) => entry.text),
-      );
-      overlayPlacesRef.current.set("picks", { view: sightsCache.view, places: picks });
+      const view = sightsCache.view;
+      const curateKey = `${view.south},${view.west},${view.north},${view.east}#${planTexts.join("|")}`;
+      if (curatedKeyRef.current === curateKey) {
+        // This combination already curated (or is in flight); repainting
+        // with the heuristic would clobber the model's answer.
+        setHint("picks", String(overlayPlacesRef.current.get("picks")?.places.length ?? 0));
+        return;
+      }
+      const picks = suggestPicks(sightsCache.places, planTexts);
+      overlayPlacesRef.current.set("picks", { view, places: picks });
       setHint("picks", String(picks.length));
+      curatedKeyRef.current = curateKey;
+      curatePicks(sightsCache.places, planTexts, controller.signal)
+        .then((curated) => {
+          // The answer stays valid for this key even if the effect re-ran;
+          // only the painting belongs to the live effect.
+          overlayPlacesRef.current.set("picks", { view, places: curated });
+          if (controller.signal.aborted) return;
+          setHint("picks", String(curated.length));
+          paintPlaces();
+        })
+        .catch((error) => {
+          // An abort just means the effect re-ran; let the next run retry.
+          if (controller.signal.aborted) {
+            curatedKeyRef.current = "";
+            return;
+          }
+          console.warn("[overlays] curation fell back to the heuristic:", error);
+        });
     };
     const paintBuses = () => {
       const on = overlayKinds.includes("buses");

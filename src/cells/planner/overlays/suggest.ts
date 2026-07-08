@@ -1,9 +1,41 @@
-// The Suggested overlay: a curated slice of the sights data. What the
-// plan already contains hints at taste (museum names, park strolls), and
-// a wikipedia/wikidata tag separates landmarks from lawn fixtures. When
-// the plan gives no usable hints, notability alone curates.
+// The Suggested overlay: a curated slice of the sights data. The real
+// curator is the server's model (/api/curate); the local heuristic paints
+// first and stands in whenever the server can't answer. For the
+// heuristic: what the plan already contains hints at taste (museum names,
+// park strolls), and a wikipedia/wikidata tag separates landmarks from
+// lawn fixtures.
 
 import type { OverlayPlace } from "./fetch-places";
+
+export const curatePicks = async (
+  sights: OverlayPlace[],
+  planTexts: string[],
+  signal: AbortSignal,
+) => {
+  const res = await fetch("/api/curate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      plan: planTexts.filter(Boolean).slice(0, 100),
+      candidates: sights.slice(0, 120).map((place) => ({
+        id: place.id,
+        name: place.name,
+        category: place.category,
+        notable: place.notable,
+      })),
+    }),
+    signal,
+  });
+  if (!res.ok) throw new Error(`curate responded ${res.status}`);
+  const body = (await res.json()) as { picks?: string[] };
+  const byId = new Map(sights.map((place) => [place.id, place]));
+  const picks = (body.picks ?? []).flatMap((id) => {
+    const place = byId.get(id);
+    return place ? [{ ...place, kind: "picks" as const }] : [];
+  });
+  if (!picks.length) throw new Error("curate answered with no usable picks");
+  return picks;
+};
 
 const PICK_CAP = 25;
 

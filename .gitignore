@@ -8,13 +8,16 @@ dist/
 .nitro/
 .tanstack/
 
-# cloudflare / alchemy (dormant for now)
+# cloudflare / alchemy (generated per deploy; wrangler.jsonc carries the
+# resolved secret values, so it must never land in git)
 .alchemy/
 .wrangler/
+wrangler.jsonc
 
-# env + os
+# env + os (the example ships as the template for real .env files)
 .env
 .env.*
+!.env.example
 .DS_Store
 *.log
 
