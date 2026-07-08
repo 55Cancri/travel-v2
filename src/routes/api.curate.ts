@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
+import { sessionFromRequest } from "./-door";
 
 // The Suggested overlay's curator: given the plan's own item texts and
 // the viewport's candidate sights, the model picks what this traveler
@@ -51,6 +52,9 @@ export const Route = createFileRoute("/api/curate")({
         // Everything surfaces as JSON with the real reason: the framework's
         // bare fallback for an uncaught throw is an opaque 500.
         try {
+          if ((await sessionFromRequest(request)) === null) {
+            return jsonBody({ error: "signed out" }, 401);
+          }
           return await curate(request);
         } catch (error) {
           console.error("[curate] failed:", error);
