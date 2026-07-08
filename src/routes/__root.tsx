@@ -1,10 +1,28 @@
 import * as React from "react";
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import { HeadContent, Scripts, createRootRoute, redirect } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
 import "@fontsource-variable/instrument-sans";
 import { toggleTheme, THEME_KEY } from "entities/theme";
 import appCss from "../styles.css?url";
 
+// Who holds a valid session cookie, judged on the server (the seal and
+// the allowlist live in worker bindings). Dynamic imports keep the
+// server-only door module out of the client bundle.
+const sessionHolder = createServerFn({ method: "GET" }).handler(async () => {
+  const [{ getCookie }, { openSession, SESSION_COOKIE }] = await Promise.all([
+    import("@tanstack/react-start/server"),
+    import("./-door"),
+  ]);
+  return await openSession(getCookie(SESSION_COOKIE));
+});
+
 export const Route = createRootRoute({
+  // The whole site sits behind the door; only the door itself is open.
+  beforeLoad: async ({ location }) => {
+    if (location.pathname === "/login") return;
+    const email = await sessionHolder();
+    if (!email) throw redirect({ to: "/login" });
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },

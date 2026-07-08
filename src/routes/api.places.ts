@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { env } from "cloudflare:workers";
+import { sessionFromRequest } from "./-door";
 
 // One place's Google rating, budget-guarded, with an optional hunt
 // through its reviews. The client asks per pinned card (name +
@@ -90,6 +91,12 @@ export const Route = createFileRoute("/api/places")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        if ((await sessionFromRequest(request)) === null) {
+          return new Response(JSON.stringify({ error: "signed out" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
         const key = env.GOOGLE_PLACES_API_KEY;
         if (!key) return jsonBody({ rating: null, reason: "no key" });
         const url = new URL(request.url);
