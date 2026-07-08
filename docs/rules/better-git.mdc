@@ -37,24 +37,32 @@ and re-reviews. Honest bases cost nothing.
 ## The bleeding-edge cycle
 
 `bleeding-edge` is the standing integration branch (main + every open PR
-branch + work in progress), so the owner's running app always has the
-latest code regardless of merge status.
+branch + uncommitted work in progress), so the owner's running app always
+has the latest code regardless of merge status. It is a MERGE SURFACE:
+feature commits never live on it directly, they live on PR branches and
+reach bleeding-edge by merging those branches in (owner directive
+2026-07-07).
 
-1. Work happens in the working tree on `bleeding-edge`.
-2. When a coherent chunk lands (a feature, a review round's fixes), slice
-   it into PRs without waiting to be asked (standing order, 2026-07-05):
-   update the existing PR in place when the work belongs to one, open a
-   new PR when it does not. Each independent slice branches from
-   `origin/main`; each dependent slice branches from its parent slice's
-   branch, with the PR base set to match.
-3. Merge the PR branches back into `bleeding-edge` (merge, never rebase;
-   same for `main` whenever it moves), then push `bleeding-edge` (only
-   after the PRs exist, never before).
+1. Day-to-day work happens in the working tree on `bleeding-edge`,
+   uncommitted while it is still taking shape.
+2. The moment a self-contained piece is done (a feature, a fix round),
+   commit it to a slice branch and open the PR, without being asked.
+   Independent slice: branch from `origin/main`. Dependent slice: branch
+   from its parent slice, PR base set to match. Follow-up work on an
+   already-sliced feature is a commit on that open PR's branch, not a new
+   slice. The owner expects to SEE a stack of small open PRs at all
+   times; a run of feature commits that exists only on bleeding-edge is
+   the failure this rule exists to prevent.
+3. Merge each PR branch back into `bleeding-edge` right after pushing it
+   (merge, never rebase; same for open PR tips and `main` whenever they
+   move), then push `bleeding-edge`.
 4. The working tree lives on `bleeding-edge`: the owner tests the running
    app from it continuously, so a tree parked on a slice branch is an app
    silently missing features. Slicing and PR fixes are one tight
    excursion (switch, commit, push, merge back, return), never a place to
    develop or verify.
+5. Redeploy prod after every completed work round so the owner can test
+   the live app immediately.
 
 ## Slicing discipline
 
