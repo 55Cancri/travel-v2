@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Block, Input } from "atoms";
-import { ErrorNote, PrimaryButton, Subtext, Title } from "alloys";
+import { Block, Eye, EyeOff, Input } from "atoms";
+import { ErrorNote, IconButton, PrimaryButton, Subtext, Title } from "alloys";
 
 // The site's front door: an allowed email plus the shared password. The
 // failure line stays identical for an unknown email and a wrong password,
@@ -13,6 +13,7 @@ function Login() {
   const navigate = useNavigate();
   const [email, storeEmail] = React.useState("");
   const [password, storePassword] = React.useState("");
+  const [passwordShown, storePasswordShown] = React.useState(false);
   const [phase, storePhase] = React.useState<"idle" | "checking" | "failed">("idle");
 
   const enter = async () => {
@@ -62,12 +63,23 @@ function Login() {
           onChange={(event) => storeEmail(event.currentTarget.value)}
         />
         <Input
-          type="password"
+          type={passwordShown ? "text" : "password"}
           value={password}
           placeholder="Password"
           aria-label="Password"
           autoComplete="current-password"
           onChange={(event) => storePassword(event.currentTarget.value)}
+          end={
+            <IconButton
+              type="button"
+              aria-label={passwordShown ? "Hide password" : "Show password"}
+              onPress={() => storePasswordShown((shown) => !shown)}
+              size="1.75rem"
+              color="text-muted"
+            >
+              {passwordShown ? <EyeOff size={16} /> : <Eye size={16} />}
+            </IconButton>
+          }
         />
         {/* onPress covers clicks and taps (react-aria buttons re-route
             native clicks through press events); the form's onSubmit covers
