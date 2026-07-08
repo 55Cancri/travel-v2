@@ -84,6 +84,12 @@ owner decide. Ask usage questions when the answer would change a design. The
 standing mantra: as few data structures as possible, flexible enough for
 everything (see `OVERVIEW.md`).
 
+**Every round report ends with "what's left" (owner directive 2026-07-06).**
+After any batch of changes, state explicitly what remains open (features,
+fixes, queued feedback items) so the owner always sees the gap list. He
+feeds new breakages in each round; those get fixed first, then the backlog
+continues. Never end a work summary without the remaining-work list.
+
 ## Peer models (codex, gemini): second opinions, never the driver
 
 I remain the primary driver. Peer models run in parallel with my own
@@ -527,6 +533,22 @@ sync Durable Object waits on the sync feature). These rules bind:
   website-build resource and would otherwise ship the previous bundle.
   The generated `wrangler.jsonc` holds resolved secrets and stays
   gitignored. Prod: https://travel-v2.leaftime.workers.dev
+- **Alchemy owns migration application.** Never apply a migration file
+  manually (`wrangler d1 execute --file`): alchemy tracks applied files in
+  `d1_migrations` and replays anything unrecorded on the next deploy,
+  which then fails on duplicate columns. Ship the file in `migrations/`
+  and let the deploy apply it. If a manual apply already happened, insert
+  the file's row into `d1_migrations` before deploying. One-off queries
+  and seeds via `wrangler d1 execute` stay fine.
+- **Alchemy stage isolation is load-bearing (HARD RULE).** Alchemy's
+  finalize orphan-destroys ANY sibling scope it can see in a shared state
+  store: a dev run under another stage can delete the deployed prod worker.
+  Two guards in `alchemy.run.ts` must never be removed: the stage-private
+  `dotAlchemy: .alchemy/<stage>` state tree and the stage-scoped worker
+  name (only stage prod owns the bare `travel-v2`). If any alchemy run
+  prints `[deleting]` lines for resources the program still declares (or
+  any prod-named resource during a non-prod run), kill it immediately and
+  investigate before rerunning.
 - **Server code never reaches the client bundle.** TanStack Start colocates
   server functions with UI, so guard the boundary deliberately. Full rule:
   `docs/rules/server-client-boundary.mdc`.
@@ -554,17 +576,23 @@ sync Durable Object waits on the sync feature). These rules bind:
 
 - **`bleeding-edge` is the standing integration branch** (a universal
   convention across the owner's projects: every repo has `main` plus
-  `bleeding-edge`). It always carries main + every open PR branch + feature
-  work in progress. The cycle, in order:
-  1. Work happens in the working tree on `bleeding-edge`.
-  2. When a coherent chunk lands (a feature, a review round's fixes), slice
-     it into PRs without waiting to be asked (standing order, 2026-07-05):
-     update the existing PR in place when the work belongs to one, open a
-     new PR when it does not.
-  3. Merge those PR branches back into `bleeding-edge` (merge, never
-     rebase, same for open PR tips and `main` whenever they move), so it
-     always carries the latest code regardless of merge status, and push it
-     (only after the PRs exist, never before).
+  `bleeding-edge`). It is a MERGE SURFACE, never the home of feature
+  commits: it carries main + every open PR branch + uncommitted work in
+  progress, and nothing else. The cycle, in order (owner directive
+  2026-07-07):
+  1. Work happens in the working tree on `bleeding-edge`, uncommitted
+     while still taking shape.
+  2. The moment a self-contained piece is done, commit it to a slice
+     branch and open the PR without being asked: from `origin/main` when
+     independent, from the parent slice (PR base to match) when dependent.
+     Follow-ups to sliced work are commits on that open PR's branch. The
+     owner expects to SEE a stack of open PRs at all times; feature
+     commits that exist only on bleeding-edge are the failure this rule
+     exists to prevent.
+  3. Merge each PR branch back into `bleeding-edge` right after pushing it
+     (merge, never rebase, same for open PR tips and `main` whenever they
+     move), so it always carries the latest code regardless of merge
+     status, and push it.
   4. **The working tree LIVES on `bleeding-edge`** (owner directive,
      2026-07-06). The owner tests the running app from this tree
      continuously, so any minute it sits on another branch is a minute his
@@ -572,6 +600,8 @@ sync Durable Object waits on the sync feature). These rules bind:
      one tight excursion: switch, commit, push, merge back into
      `bleeding-edge`, return. Never develop, verify, or pause on a slice
      branch.
+  5. Redeploy prod (`bun run deploy`) after every completed work round so
+     the owner can test the live app immediately.
 - **PRs are plain `git` + `gh`, honestly based** (the owner's BetterGit app
   is the only merge path: it reviews, squash-merges, restacks, retargets,
   and heals). A PR's GitHub base must be the branch it was actually built
