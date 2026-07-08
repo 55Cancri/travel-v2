@@ -71,8 +71,16 @@ function Login() {
         />
         {/* onPress covers clicks and taps (react-aria buttons re-route
             native clicks through press events); the form's onSubmit covers
-            the Enter key from either field. */}
-        <PrimaryButton type="submit" onPress={enter} isLoading={phase === "checking"} mt="xs">
+            the Enter key from either field. Sized up to the fields' own
+            type and height so the trio reads as one unit. */}
+        <PrimaryButton
+          type="submit"
+          onPress={enter}
+          isLoading={phase === "checking"}
+          mt="xs"
+          fontSize="md"
+          paddingBlock="0.75rem"
+        >
           Enter
         </PrimaryButton>
         {phase === "failed" ? <ErrorNote>That didn't match. Try again.</ErrorNote> : null}
