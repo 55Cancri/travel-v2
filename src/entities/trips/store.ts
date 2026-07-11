@@ -66,22 +66,22 @@ const newId = () => crypto.randomUUID();
 
 // ---- container helpers ----------------------------------------------------
 
-export const containerItemIds = (data: Db, ref: ContainerRef): string[] =>
+export const containerItemIds = (snapshot: Db, ref: ContainerRef): string[] =>
   ref.type === "day"
-    ? (data.days[ref.id]?.itemIds ?? [])
-    : (data.segments[ref.id]?.poolItemIds ?? []);
+    ? (snapshot.days[ref.id]?.itemIds ?? [])
+    : (snapshot.segments[ref.id]?.poolItemIds ?? []);
 
-const withContainerItems = (data: Db, ref: ContainerRef, itemIds: string[]): Db => {
+const withContainerItems = (snapshot: Db, ref: ContainerRef, itemIds: string[]): Db => {
   if (ref.type === "day") {
-    const day = data.days[ref.id];
-    if (!day) return data;
-    return { ...data, days: { ...data.days, [ref.id]: { ...day, itemIds } } };
+    const day = snapshot.days[ref.id];
+    if (!day) return snapshot;
+    return { ...snapshot, days: { ...snapshot.days, [ref.id]: { ...day, itemIds } } };
   }
-  const segment = data.segments[ref.id];
-  if (!segment) return data;
+  const segment = snapshot.segments[ref.id];
+  if (!segment) return snapshot;
   return {
-    ...data,
-    segments: { ...data.segments, [ref.id]: { ...segment, poolItemIds: itemIds } },
+    ...snapshot,
+    segments: { ...snapshot.segments, [ref.id]: { ...segment, poolItemIds: itemIds } },
   };
 };
 
@@ -146,19 +146,19 @@ export const addDay = (segmentId: string, date: string) => {
 
 // ---- item mutations --------------------------------------------------------
 
-export const insertItemAfter = (ref: ContainerRef, index: number, kind: ItemKind = "activity") => {
+export const insertItemAfter = (ref: ContainerRef, afterIdx: number, kind: ItemKind = "activity") => {
   const id = newId();
   const created: Item = { id, text: "", kind, status: "planned" };
   const ids = Array.from(containerItemIds(db, ref));
-  ids.splice(index + 1, 0, id);
+  ids.splice(afterIdx + 1, 0, id);
   db = withContainerItems({ ...db, items: { ...db.items, [id]: created } }, ref, ids);
   emit();
   return created;
 };
 
-// Multiline paste: each line becomes its own item, spliced in after `index` in
+// Multiline paste: each line becomes its own item, spliced in after `afterIdx` in
 // one emit. Returns the created items (last one gets focus).
-export const insertLines = (ref: ContainerRef, index: number, lines: string[]) => {
+export const insertLines = (ref: ContainerRef, afterIdx: number, lines: string[]) => {
   const created: Item[] = lines.map((text) => ({
     id: newId(),
     text,
@@ -166,7 +166,7 @@ export const insertLines = (ref: ContainerRef, index: number, lines: string[]) =
     status: "planned",
   }));
   const ids = Array.from(containerItemIds(db, ref));
-  ids.splice(index + 1, 0, ...created.map((entry) => entry.id));
+  ids.splice(afterIdx + 1, 0, ...created.map((entry) => entry.id));
   const items = { ...db.items };
   for (const entry of created) items[entry.id] = entry;
   db = withContainerItems({ ...db, items }, ref, ids);

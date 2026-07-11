@@ -87,7 +87,7 @@ export const Button = function <T extends _t.As = "button">(
   const {
     ref: consumerRef,
     disabled,
-    type,
+    type: buttonKind,
     href,
     ...elementProps
   } = splitElementProps as {
@@ -109,7 +109,7 @@ export const Button = function <T extends _t.As = "button">(
       isDisabled,
       onPress,
       href,
-      type: elementType === "button" ? (type ?? "button") : undefined,
+      type: elementType === "button" ? (buttonKind ?? "button") : undefined,
     },
     domRef as React.RefObject<HTMLElement>,
   );
