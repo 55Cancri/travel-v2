@@ -12,6 +12,18 @@
       "runtimeExecutable": "bunx",
       "runtimeArgs": ["vite", "dev", "--port", "5006"],
       "port": 5006
+    },
+    {
+      "name": "travel-2-agent-door",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ALLOWED_EMAILS=agent@local",
+        "APP_PASSWORD=fixture-door-not-a-secret",
+        "bun",
+        "run",
+        "dev"
+      ],
+      "port": 5006
     }
   ]
 }

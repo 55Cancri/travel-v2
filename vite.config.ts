@@ -13,6 +13,13 @@ import viteTsConfigPaths from "vite-tsconfig-paths";
 // a credential-less machine may serve `vite dev` directly against that
 // config (the travel-2-local launch entry).
 export default defineConfig({
+  // The compiler runtime is only discovered once a compiled component
+  // loads, and a late second optimizer pass gives it its own React copy
+  // (null useMemoCache / invalid-hook crashes). Pre-declaring the trio
+  // bundles them in one pass around the one shared React.
+  optimizeDeps: {
+    include: ["react", "react-dom", "react/compiler-runtime"],
+  },
   plugins: [
     viteTsConfigPaths({ projects: ["./tsconfig.json"] }),
     alchemy() as PluginOption,
