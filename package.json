@@ -36,7 +36,7 @@
     "alchemy": "^0.93.12",
     "babel-plugin-react-compiler": "^1.0.0",
     "drizzle-kit": "^0.31.10",
-    "typescript": "^5.7.3",
+    "typescript": "^7.0.2",
     "vite": "^7.0.0",
     "wrangler": "^4.106.0"
   }
