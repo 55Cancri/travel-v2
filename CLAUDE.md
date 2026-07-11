@@ -709,7 +709,10 @@ sync Durable Object waits on the sync feature). These rules bind:
      `bleeding-edge`, return. Never develop, verify, or pause on a slice
      branch.
   5. Redeploy prod (`bun run deploy`) after every completed work round so
-     the owner can test the live app immediately.
+     the owner can test the live app immediately. Deploying to prod is
+     STANDING-APPROVED (owner directive 2026-07-11: "you can always
+     deploy to prod, you should be deploying prod frequently"); never
+     treat a deploy as needing fresh authorization.
 - **PRs are plain `git` + `gh`, honestly based** (the owner's BetterGit app
   is the only merge path: it reviews, squash-merges, restacks, retargets,
   and heals). A PR's GitHub base must be the branch it was actually built
