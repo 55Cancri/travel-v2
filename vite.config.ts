@@ -8,8 +8,18 @@ import viteTsConfigPaths from "vite-tsconfig-paths";
 // plugin here. The alchemy() plugin targets the server build at the
 // Cloudflare worker runtime and hands dev the emulated bindings; it needs
 // the wrangler config that `alchemy dev` / `alchemy deploy` generate, so
-// vite always runs THROUGH those commands (the package scripts do).
+// vite runs THROUGH those commands (the package scripts do). The one
+// exception: once a dev run has generated .alchemy/local/wrangler.jsonc,
+// a credential-less machine may serve `vite dev` directly against that
+// config (the travel-2-local launch entry).
 export default defineConfig({
+  // The compiler runtime is only discovered once a compiled component
+  // loads, and a late second optimizer pass gives it its own React copy
+  // (null useMemoCache / invalid-hook crashes). Pre-declaring the trio
+  // bundles them in one pass around the one shared React.
+  optimizeDeps: {
+    include: ["react", "react-dom", "react/compiler-runtime"],
+  },
   plugins: [
     viteTsConfigPaths({ projects: ["./tsconfig.json"] }),
     alchemy() as PluginOption,
