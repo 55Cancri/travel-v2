@@ -32,6 +32,45 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: generation v2 opens as a blank canvas (2026-07-11, later)
+
+The owner is starting the v2 UI design. DONE:
+
+- `src/versions/v2/`: blank trips shelf + blank planner, both carrying
+  the picker, the planner linking back to the shelf. Catalog gained the
+  entry plus a `draft` flag: the picker reaches a draft, but fresh
+  devices land on the newest SHIPPED generation (v1) until the flag is
+  dropped. Verified locally: fresh device lands on v1, the pill flips
+  both screens to v2 and back in place. PR #29 (stacked on #25).
+- **Dual-React crash fixed** (would have hit any dev machine): the dep
+  optimizer discovered `react/compiler-runtime` in a late second pass
+  after the TS7 lockfile change and handed it its own React copy, so
+  every route crashed with "null useMemoCache" / invalid-hook errors.
+  vite.config.ts now pre-declares react, react-dom, and
+  react/compiler-runtime so one optimizer pass shares one React. If it
+  ever recurs: `rm -rf node_modules/.vite` and restart.
+- **The agent door**: agents may not type the owner's real door
+  password, so `.claude/launch.json` gained `travel-2-agent-door` (the
+  full dev server with ALLOWED_EMAILS/APP_PASSWORD overridden to
+  fixture values `agent@local` / `fixture-door-not-a-secret`). Agent
+  sessions drive the app through it; `travel-2` keeps the real door.
+  Both fixes rode slice/27 (PR #27).
+- Real `.env` landed, prod deployed and redeployed (v2 + picker live).
+  TypeScript 7 done earlier in the day (see previous round).
+- KNOWN ALCHEMY CHURN, looks scary but is benign in exactly this
+  shape: because dev and deploy share stage "prod", a `bun run dev`
+  after a deploy prints `[updating] website` and `[deleting]
+  website-build` (state bookkeeping only; the deployed worker keeps
+  serving, verified live both times). A `[deleting]` line for anything
+  OTHER than website-build, or any prod-named resource during a
+  non-prod-stage run, is still the kill-it-immediately case.
+
+NEXT (the v2 design itself): the blank canvas awaits the owner's
+direction. When real v2 work starts, revisit whether map-pane internals
+(dark style table, overlays) become version-shared entities, and give
+the routes' Suspense a small skeleton fallback (a generation flip
+blanks briefly during the chunk fetch).
+
 ## Round: UI versioning, house-rules port, keyless-machine dev (2026-07-11)
 
 Context: this machine pulled 115 commits of other-agent work (Cloudflare
