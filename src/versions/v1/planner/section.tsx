@@ -60,22 +60,22 @@ export function Section(props: {
     }
   }, [itemIds.join("|")]);
 
-  const addAfter = (index: number) => {
-    const created = insertItemAfter(props.containerRef, index);
+  const addAfter = (idx: number) => {
+    const created = insertItemAfter(props.containerRef, idx);
     pendingFocus.current = created.id;
   };
 
-  const keyHandler =
-    (item: Item, index: number) =>
+  const rowKeyDown =
+    (item: Item, idx: number) =>
     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === "Enter") {
         event.preventDefault();
-        addAfter(index);
+        addAfter(idx);
         return;
       }
       if (event.key === "Backspace" && item.text === "") {
         event.preventDefault();
-        const prevId = index > 0 ? items[index - 1]?.id : null;
+        const prevId = idx > 0 ? items[idx - 1]?.id : null;
         if (prevId) pendingFocus.current = prevId;
         removeItem(props.containerRef, item.id);
         return;
@@ -106,8 +106,8 @@ export function Section(props: {
 
   // Multiline paste → one item per line. A row that already has text keeps it
   // and the lines land below; an empty row absorbs the first line.
-  const pasteHandler =
-    (item: Item, index: number) =>
+  const rowPaste =
+    (item: Item, idx: number) =>
     (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const text = event.clipboardData.getData("text");
       if (!text.includes("\n")) return;
@@ -123,12 +123,12 @@ export function Section(props: {
         rest = lines.slice(1);
       }
       if (rest.length) {
-        const created = insertLines(props.containerRef, index, rest);
+        const created = insertLines(props.containerRef, idx, rest);
         pendingFocus.current = created.at(-1)?.id ?? null;
       }
     };
 
-  const blurHandler = (item: Item) => () => {
+  const rowBlur = (item: Item) => () => {
     if (item.text.trim() === "") {
       removeItem(props.containerRef, item.id);
     } else if (item.text !== item.text.trim()) {
@@ -192,7 +192,7 @@ export function Section(props: {
       </Button>
 
       <Block grid>
-        {items.map((entry, index) => (
+        {items.map((entry, idx) => (
           <ItemRow
             key={entry.id}
             item={entry}
@@ -211,19 +211,19 @@ export function Section(props: {
               });
             }}
             onChange={(text) => setItemText(entry.id, text)}
-            onPaste={pasteHandler(entry, index)}
+            onPaste={rowPaste(entry, idx)}
             onToggle={() => {
               haptics.tap();
               toggleItemDone(entry.id);
             }}
             onEdit={() => props.onEdit(entry, props.containerRef)}
-            onBlur={blurHandler(entry)}
-            onKeyDown={keyHandler(entry, index)}
+            onBlur={rowBlur(entry)}
+            onKeyDown={rowKeyDown(entry, idx)}
             onGrip={(event) => {
               event.preventDefault();
               reorder.startDrag(
                 { point: event.clientY, target: event.currentTarget as HTMLElement },
-                index,
+                idx,
                 entry.id,
               );
             }}

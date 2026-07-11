@@ -29,7 +29,7 @@
     "paths": {
       "atoms": ["./src/atoms/index.ts"],
       "alloys": ["./src/alloys/index.ts"],
-      "cells/*": ["./src/cells/*"],
+      "versions": ["./src/versions/index.ts"],
       "entities/*": ["./src/entities/*"],
       "panda/*": ["./styled-system/*"]
     }

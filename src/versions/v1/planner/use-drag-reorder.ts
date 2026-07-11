@@ -55,24 +55,24 @@ const slotForOffset = (d: Drag, dy: number) => {
   const { heights, fromIndex } = d;
   if (dy > 0) {
     let acc = 0;
-    let index = fromIndex;
+    let idx = fromIndex;
     for (let k = fromIndex + 1; k < heights.length; k++) {
       if (dy > acc + heights[k] / 2) {
         acc += heights[k];
-        index = k;
+        idx = k;
       } else break;
     }
-    return index;
+    return idx;
   }
   let acc = 0;
-  let index = fromIndex;
+  let idx = fromIndex;
   for (let k = fromIndex - 1; k >= 0; k--) {
     if (-dy > acc + heights[k] / 2) {
       acc += heights[k];
-      index = k;
+      idx = k;
     } else break;
   }
-  return index;
+  return idx;
 };
 
 const defaultMeasure = (target: HTMLElement) => {
@@ -147,12 +147,12 @@ export function useDragReorder(opts: {
   };
 
   // Siblings the lifted row has passed shift by the LIFTED row's height.
-  const siblingTarget = (d: Drag, index: number) => {
+  const siblingTarget = (d: Drag, idx: number) => {
     const liftedHeight = d.heights[d.fromIndex];
-    if (d.fromIndex < d.toIndex && index > d.fromIndex && index <= d.toIndex) {
+    if (d.fromIndex < d.toIndex && idx > d.fromIndex && idx <= d.toIndex) {
       return -liftedHeight;
     }
-    if (d.fromIndex > d.toIndex && index >= d.toIndex && index < d.fromIndex) {
+    if (d.fromIndex > d.toIndex && idx >= d.toIndex && idx < d.fromIndex) {
       return liftedHeight;
     }
     return 0;
@@ -165,10 +165,10 @@ export function useDragReorder(opts: {
   ) => {
     const ids = idsRef.current;
     const completions: Promise<void>[] = [];
-    for (let index = 0; index < ids.length; index++) {
-      const id = ids[index];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
       if (id === d.activeId) continue;
-      const pending = springRow(id, siblingTarget(d, index), transition, force);
+      const pending = springRow(id, siblingTarget(d, i), transition, force);
       if (pending) completions.push(pending);
     }
     return completions;
