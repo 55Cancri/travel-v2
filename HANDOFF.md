@@ -116,30 +116,27 @@ DONE:
 
 FOR THE OWNER (verify / decide):
 
-- [ ] **FIRE ALARM: this machine has no real `.env`.** The prod deploy
-      credentials (ALCHEMY_PASSWORD, CLOUDFLARE_API_TOKEN, the Google
-      Places key, the door password) live only wherever the 2026-07-07
-      infra work ran. Copy that `.env` here. Until then this machine
-      cannot deploy and its dev door uses placeholder credentials
-      (email `gUmijQUL@protonmail.com`, password `local-dev`, written
-      into the local `.env`, which is gitignored).
+- [x] **RESOLVED: the real `.env` landed on this machine** (owner copied
+      it 2026-07-11). Prod deployed from here the same day:
+      https://travel-v2.leaftime.workers.dev serves, root redirects
+      logged-out visitors to the door. Owner login on prod still
+      unverified by owner's own hands.
+- [x] **TypeScript 7 upgrade** (owner ask 2026-07-11): typescript
+      ^7.0.2, the native compiler. Whole tree typechecks unchanged.
 - [ ] Review the versioning design: the picker is a cycling pill on the
       trip shelf header. Fine for 2-3 generations, becomes a menu if the
       catalog grows. Placement and the pill treatment are open to taste.
 - [ ] The dark map theme and blue focus rings remain visually
       unconfirmed by the owner (carried from the pre-pull handoff).
-- [ ] **PR bases need your call.** All 24 open slices are unmerged, and
-      this round's work builds on their INTEGRATION (the planner move
-      touches files owned by four different slices at once), so no
-      single open slice is an honest PR base, and basing on
-      bleeding-edge is impossible (it absorbs each slice on merge, so
-      GitHub sees no commits between them). The four branches are
-      pushed (slice/25-ui-versioning, slice/26-banned-names-check,
-      slice/27-keyless-dev, plus follow-up commits on
-      slice/10-house-rules-refresh which its open PR already shows).
-      Once the current stack merges to main, PRs for 25/26/27 against
-      main become clean one-commit diffs; or BetterGit can adopt the
-      branches now.
+- [x] **PR stack created** (owner said create them, 2026-07-11): PRs
+      #25 (UI versioning), #26 (banned-names scanner), #27 (keyless
+      dev), #28 (TypeScript 7), based in review order on the snapshot
+      branch `stack-base-2026-07-11` (bleeding-edge as of the round's
+      start), since this work builds on the whole open stack's
+      integration and no single open slice is an honest base. Each PR
+      diff shows exactly its own files. Retarget to main as the earlier
+      stack merges; the snapshot branch is deletable once #25 retargets.
+      Docs follow-ups ride the existing slice/10-house-rules-refresh PR.
 
 QUEUED BY THIS ROUND:
 
