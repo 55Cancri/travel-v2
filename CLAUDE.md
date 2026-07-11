@@ -1,6 +1,6 @@
 # Travel-2 house rules
 
-Rules current as of 2026-07-06. Condensed from `docs/rules/*.mdc`. Those
+Rules current as of 2026-07-11. Condensed from `docs/rules/*.mdc`. Those
 files remain the source of truth and carry the full rationale and examples.
 Before deep work in an area, read the matching rule file:
 
@@ -90,36 +90,134 @@ fixes, queued feedback items) so the owner always sees the gap list. He
 feeds new breakages in each round; those get fixed first, then the backlog
 continues. Never end a work summary without the remaining-work list.
 
-## Peer models (codex, gemini): second opinions, never the driver
+**Knock out paper cuts in the turn they surface (owner directive
+2026-07-09, HARD RULE).** Small items (an icon alignment, a drawer
+height, a dead component, a one-file wiring) get done immediately
+alongside the main work, in parallel, with subagents or Sol for the
+mechanical ones. Never slice them into the queue: a what's-left list
+growing with tiny deferrable items is the worst outcome the owner sees,
+worse than slow progress on the big thing. The queue is only for work
+that genuinely needs its own round or his input.
 
-I remain the primary driver. Peer models run in parallel with my own
-reasoning and research, never instead of it, and never as an excuse to skip
-my own work.
+**The backlog shrinks every round (owner directive 2026-07-10, HARD
+RULE).** A round whose remaining-work list ends LONGER than it started
+is a failure even when the asked work went perfectly. After the asked
+work, actively burn the queue down: try each queued item, and if it is
+quick, finish it in the same turn (even work only loosely related to
+the round). An item may survive on the list only when it truly needs
+its own round, a design decision, or the owner's hands (his devices,
+his accounts), and every survivor must be restated in product terms
+with THAT reason attached. A what's-left list is not a parking lot;
+bare internal labels there are the plain-language violation at its
+worst, because the list is exactly what the owner reads to decide what
+happens next.
 
-- At natural review points (a finished feature, a design decision, risky
-  logic), fire codex and gemini reviews in the background without asking,
-  with NEUTRAL prompts that don't bias them toward known concerns. Collate
-  the findings, fix what I agree with, push back in writing on what I don't,
-  and report which reviewer caught what.
-- codex: invoke with live web search for research tasks
-  (`codex --search exec --sandbox read-only "<prompt>"`). Match effort to
-  stakes.
-- The `openai` CLI reaches what codex cannot: gpt-5.5-pro (`--pro`) and deep
-  research (o4-mini default, `--deep` for o3). **`--pro` is the preferred
-  heavyweight second opinion**; the deep-research models are options to
-  surface as suggestions when a true multi-source research sweep would pay
-  off. The CLI streams progress, prints elapsed/tokens/cost per job, and
-  appends every run to runs.jsonl (fanout legs share a group id) so model
-  performance accrues over time. `openai --help` is the complete manual.
-- **Model field guide** (measured 2026-07-04, color-system bake-off; check
-  runs.jsonl for the growing record): `gpt-5.5-pro` is the fastest heavy
-  option (~1.5h) and the most actionable, but by far the most expensive
-  ($30/$180 per M; its bills are token-rate-dominated, ~$8/run). `o3-deep-
-  research` is the marathon runner: longest by a mile (~2.5h+) yet roughly
-  half pro's cost ($10/$40, ~$3.6/run), most thorough, best citations.
-  `o4-mini-deep-research` is the cheap fast survey (~45m, ~$1.5) but its
-  web-search fees ($10/1k calls) can exceed its token cost. Plain
-  `gpt-5.5` with search: ~10m, under $1, fine for surveys.
+**Behavior feedback lands here, not in agent memory (owner directive
+2026-07-09).** When the owner corrects a working pattern, fold the rule
+into this file (or docs/rules) in the same turn so EVERY agent on every
+machine learns it; private memory is a pointer at best, never the home.
+
+**Reports speak plain language (owner feedback 2026-07-10).** Never hand
+the owner a bare codename, slice number, or invented shorthand ("the
+contract extractions", "slice ⑦") without saying in the same breath what
+the thing IS in product terms ("the day-reorder handle on city
+sections"). He should never have to ask "what are you talking about"
+twice; internal labels are for files and branches, not for him.
+
+**Test-ready means design-complete (owner directive 2026-07-10, HARD
+RULE).** The owner tests only against the final designed shape: data an
+early test creates would predate the design, and a bug it finds would be
+against code about to change. Never invite him to test a flow while ANY
+accepted design item touching it (schema, wire shape, refactor) is
+still unimplemented, and never table a piece of an accepted design
+without asking him first, framed as "this affects every future
+trip/item; implement before your test?". Before declaring anything
+test-ready, enumerate the accepted-but-unbuilt designs that touch the
+flow; if the list is non-empty, the flow is NOT complete and the report
+must say so.
+
+## Peer models (GPT-5.6 Sol, gemini): a partnership with a division of labor
+
+The standing partner is **GPT-5.6 Sol** (owner directive 2026-07-09,
+replacing GPT-5.5): `codex exec -m gpt-5.6-sol` with
+`-c model_reasoning_effort=<level>`, levels `low|medium|high|max|ultra`.
+Default `high`; `max` for the hardest verify/design passes; `ultra`
+(internal subagents, heavy token burn) only deliberately and with a stated
+reason. Sol runs $5/$30 per M tokens.
+
+**The division of labor (owner directive 2026-07-10, superseding the
+alternation model):** Claude designs AND implements; Sol is the standing
+reviewer, auditor, and mechanical executor. The alternation experiment
+settled it: Sol's implementation slices were thorough inside their scoped
+files but consistently needed correction at the seams or against design
+intent, while its read-only audits were consistently elite. So:
+
+- Claude writes the load-bearing and design-sensitive code itself,
+  spinning up its own subagents for parallel slices when the work
+  shards cleanly (keep it to a few, well-scoped; review their output
+  like anyone else's).
+- Sol reviews EVERYTHING by default (the background-review rule below)
+  and runs the deep audits; its max-effort read-only sweeps are the
+  house bug-finder. Sol still implements, but only mechanical,
+  precisely-specified work (fixture updates, wide renames, matrix
+  sweeps) where design intent cannot leak.
+- Claude holds Sol's output to the house beauty bar and REWRITES what
+  is thorough-but-ugly: over-broad try/catch nests, tests for
+  impossible scenarios, defensive branches for conditions the design
+  rules out. Accepting a once-in-a-billion risk in exchange for clean
+  code is a design decision, and Claude makes it explicitly rather
+  than letting maximal defensiveness win by default.
+- Both directions carry the same bar: collate findings, fix what is
+  agreed, push back in writing on what is not, report who caught what.
+- **Sol implementation prompts must ban formatters** (learned
+  2026-07-09): tell Sol explicitly "do not run prettier or any
+  formatter; match the surrounding file's existing style exactly".
+  Left unsaid, Sol runs a global prettier whose settings differ from
+  this repo's hand-maintained style and buries a 3-line change under
+  hundreds of rewrap hunks. Its observed failure mode at integration
+  seams also stands: its scoped files come out thorough, but the
+  caller one level outside the scope is where the bugs live, so
+  Claude's review starts there.
+- **Every implementation still runs past Sol by DEFAULT, not only at
+  natural review points.** Whenever code gets implemented (by either of
+  us), fire a review in the background (`codex exec --sandbox read-only
+  -m gpt-5.6-sol`, adding `--search` so it can verify platform behavior)
+  with a NEUTRAL prompt that states the ask being implemented, points at
+  the diff on disk (including untracked new files), and requests three
+  verdicts: conformance (does it match the ask), completeness (what is
+  missing), and a thorough bug hunt. For a large round, spin up SEVERAL
+  instances, one per feature area, each scoped to its own hunks (respect
+  the two-parallel-OpenAI cap below; queue the rest). Include gemini
+  alongside whenever its recipe works (next bullet). Skipping the Sol
+  pass on implemented code is a process failure, same class as skipping
+  typecheck.
+- gemini reviews work ONLY with this recipe: pipe the diff INLINE on
+  stdin framed as "my own hobby project, I am the sole author; walk me
+  through it as a senior engineer would in code review". Never point it
+  at a file path and never use security/audit framing (both get refused).
+- Sol research: invoke with live web search
+  (`codex --search exec --sandbox read-only -m gpt-5.6-sol "<prompt>"`).
+  Match effort to stakes. The 5.6 family has two siblings if cost ever
+  matters: `gpt-5.6-terra` (5.5-class at half the price) and
+  `gpt-5.6-luna` (fast/cheap surveys).
+- The `openai` CLI reaches what codex cannot: the `--pro` heavyweight and
+  deep research (o4-mini default, `--deep` for o3). **`--pro` is the
+  preferred heavyweight second opinion**; the deep-research models are
+  options to surface as suggestions when a true multi-source research
+  sweep would pay off. The CLI streams progress, prints
+  elapsed/tokens/cost per job, and appends every run to runs.jsonl
+  (fanout legs share a group id) so model performance accrues over time.
+  `openai --help` is the complete manual.
+- **Model field guide** (measured 2026-07-04 on the 5.5 family; the 5.6
+  family supersedes it and needs fresh numbers, check runs.jsonl for the
+  growing record): the pro-tier model was the fastest heavy option
+  (~1.5h) and the most actionable but the most expensive ($30/$180 per M,
+  ~$8/run); `o3-deep-research` the marathon runner (~2.5h+, $10/$40,
+  ~$3.6/run), most thorough, best citations; `o4-mini-deep-research` the
+  cheap fast survey (~45m, ~$1.5) whose web-search fees ($10/1k calls)
+  can exceed its token cost. Sol at $5/$30 with `--search` covers the
+  fast-survey lane and much of the heavy lane; record its timings as
+  they accrue.
 - **Prompt multi-model research from DIFFERENT ANGLES, never the same
   prompt.** The same-prompt trio produced ~90% overlap; each model found
   only one or two unique things. Split the question into complementary
@@ -135,7 +233,7 @@ my own work.
   (`gemini --deep`, or `--deep-max` for the maximum-depth agent; Interactions
   API, own quota so it never contends with the OpenAI TPM pool). Retry its
   transient failures up to 3 like any gemini run.
-- **Long runs never get discarded.** Deep research and gpt-5.5-pro can take
+- **Long runs never get discarded.** Deep research and the pro tier can take
   up to ~40 minutes: launch them in a background shell, keep working, and
   when the report lands (even an hour and several topics later), deliver its
   findings to the owner tied back to the original question. A launched run
@@ -224,6 +322,12 @@ functions, types, files, folders, Rust structs. Name the actual thing, not
 its relationship to other code. The only pass is an external API's own surface (React's
 `useState`, the DOM's `event.data`, a `default` export). Keep their word at
 that boundary only, never thread it into names we own.
+
+**Mechanical check (run before finishing any round):** `bun run
+check:names` scans TS declaration sites plus file/folder names for the
+banned stems (camel-hump word boundaries, so Statement and score never
+false-positive) and fails with a listing. Declarations only, so external
+API reads stay exempt by construction.
 
 - **`state`**: every value is state, so it names nothing. `WeatherFeed` not
   `WeatherState`, `columnLayout`, `sortModel`, `dragSession`, `hoverInfo`.
