@@ -72,12 +72,20 @@ export const db = await D1Database("db", {
 // prior `wrangler login`). A credential-less machine still serves local
 // dev with the binding left out; /api/curate then fails and the client's
 // notability heuristic answers instead, the endpoint's designed
-// degradation.
+// degradation. Deploys NEVER stand the binding down: the probe below is
+// a heuristic, and a deploy authenticated some way it cannot see must
+// fail loudly rather than silently ship prod without AI.
 const wranglerLoginOnDisk = [
+  path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"), ".wrangler", "config", "default.toml"),
   path.join(os.homedir(), ".wrangler", "config", "default.toml"),
   path.join(os.homedir(), "Library", "Preferences", ".wrangler", "config", "default.toml"),
 ].some((file) => fs.existsSync(file));
-const aiReachable = Boolean(process.env.CLOUDFLARE_API_TOKEN) || wranglerLoginOnDisk;
+const devRun = process.argv.includes("--dev");
+const aiReachable =
+  !devRun ||
+  Boolean(process.env.CLOUDFLARE_API_TOKEN) ||
+  Boolean(process.env.CLOUDFLARE_API_KEY) ||
+  wranglerLoginOnDisk;
 if (!aiReachable) {
   console.warn("[alchemy] no Cloudflare credentials: serving dev without the Workers AI binding");
 }

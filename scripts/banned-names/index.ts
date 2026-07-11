@@ -1,10 +1,14 @@
 // Deterministic guard for the banned-word naming rules: scans TypeScript
 // DECLARATION sites (plus file and folder names) for identifiers built on
 // the banned stems, and fails with a file:line listing when any slip in.
-// Word boundaries are camel humps and underscores, so Statement, score,
-// and translate never false-positive. External API surfaces are exempt by
-// construction: only names introduced by a declaration keyword are
-// checked, never property reads or imported names we do not own.
+// Word boundaries are camel humps, underscores, and hyphens, so Statement,
+// score, and translate never false-positive. External API surfaces are
+// exempt by construction: only names introduced by a declaration keyword
+// are checked, never property reads or imported names we do not own.
+//
+// A tripwire, not a proof: regex sees keyword-led declarations and
+// destructuring, but not function parameters, type fields, or names
+// inside multiline block comments. Full conformance needs an AST walk.
 //
 // Run from the repo root: bun scripts/banned-names/index.ts [paths...]
 // No paths means the standard sweep (src).
@@ -33,7 +37,7 @@ const stemHits = (name: string) => {
   const words = name
     .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replaceAll(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .split(/[_\s$]+/)
+    .split(/[_\s$-]+/)
     .filter(Boolean)
     .map((word) => word.toLowerCase());
   const found = words.filter((word) => STEMS.includes(word));
@@ -65,30 +69,43 @@ for (const root of targets) {
       const hits = stemHits(bare);
       if (hits.length > 0) faults.push(`${file}: path piece "${piece}" carries: ${hits.join(", ")}`);
     }
-    const lines = readFileSync(file, "utf8").split("\n");
-    lines.forEach((line, i) => {
-      // Comments and strings are prose, not identifiers.
-      const code = line.replace(/\/\/.*$/, "").replace(/"[^"]*"/g, '""').replace(/'[^']*'/g, "''");
-      const names: string[] = [];
+    // Comments and strings are prose, not identifiers. Stripping runs per
+    // line (backticks included, so single-line templates never false-
+    // positive), then the stripped lines rejoin so destructuring patterns
+    // that span lines still match.
+    const stripped = readFileSync(file, "utf8")
+      .split("\n")
+      .map((line) =>
+        line
+          .replace(/\/\/.*$/, "")
+          .replace(/"[^"]*"/g, '""')
+          .replace(/'[^']*'/g, "''")
+          .replace(/`[^`]*`/g, '""'),
+      );
+    const lineAt = (text: string, at: number) => text.slice(0, at).split("\n").length;
+    const joined = stripped.join("\n");
+    const flag = (name: string, line: number) => {
+      const hits = stemHits(name);
+      if (hits.length > 0) faults.push(`${file}:${line}: "${name}" carries: ${hits.join(", ")}`);
+    };
+    stripped.forEach((code, i) => {
       for (const decl of [TS_DECL, TS_TYPE_DECL]) {
         decl.lastIndex = 0;
-        for (let hit = decl.exec(code); hit !== null; hit = decl.exec(code)) names.push(hit[1]!);
-      }
-      TS_PATTERN_DECL.lastIndex = 0;
-      for (let hit = TS_PATTERN_DECL.exec(code); hit !== null; hit = TS_PATTERN_DECL.exec(code)) {
-        // In object patterns only the LOCAL side is ours: `{ data: rows }`
-        // declares rows, not data.
-        for (const part of hit[1]!.slice(1, -1).split(",")) {
-          const local = (part.includes(":") ? part.split(":").at(-1)! : part).trim();
-          const name = /^([A-Za-z_$][\w$]*)/.exec(local)?.[1];
-          if (name) names.push(name);
-        }
-      }
-      for (const name of names) {
-        const hits = stemHits(name);
-        if (hits.length > 0) faults.push(`${file}:${i + 1}: "${name}" carries: ${hits.join(", ")}`);
+        for (let hit = decl.exec(code); hit !== null; hit = decl.exec(code)) flag(hit[1]!, i + 1);
       }
     });
+    TS_PATTERN_DECL.lastIndex = 0;
+    for (let hit = TS_PATTERN_DECL.exec(joined); hit !== null; hit = TS_PATTERN_DECL.exec(joined)) {
+      // In object patterns only the LOCAL side is ours: `{ data: rows }`
+      // declares rows, not data. A rest element's dots are not part of
+      // the name it declares.
+      for (const part of hit[1]!.slice(1, -1).split(",")) {
+        const bare = part.replace(/^\s*\.\.\./, "");
+        const local = (bare.includes(":") ? bare.split(":").at(-1)! : bare).trim();
+        const name = /^([A-Za-z_$][\w$]*)/.exec(local)?.[1];
+        if (name) flag(name, lineAt(joined, hit.index));
+      }
+    }
   }
 }
 

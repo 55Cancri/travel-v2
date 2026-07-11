@@ -26,6 +26,17 @@ const subscribe = (onFlip: () => void) => {
 
 const activeId = () => chosenId ?? storedId() ?? latestUiVersion.id;
 
+// A flip in one tab reaches the app's other tabs through the storage
+// event (the browser fires it only in the tabs that did not write).
+// Clearing chosenId hands precedence back to the stored value.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== UI_VERSION_KEY) return;
+    chosenId = null;
+    for (const onFlip of watchers) onFlip();
+  });
+}
+
 export const chooseUiVersion = (id: string) => {
   chosenId = id;
   try {

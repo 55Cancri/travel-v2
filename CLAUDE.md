@@ -637,6 +637,10 @@ sync Durable Object waits on the sync feature). These rules bind:
   website-build resource and would otherwise ship the previous bundle.
   The generated `wrangler.jsonc` holds resolved secrets and stays
   gitignored. Prod: https://travel-v2.leaftime.workers.dev
+  On a machine without Cloudflare credentials, dev stands the Workers AI
+  binding down (deploys never do), and the `travel-2-local` launch entry
+  serves plain vite against the generated `.alchemy/local/wrangler.jsonc`
+  once a dev run has produced it.
 - **Alchemy owns migration application.** Never apply a migration file
   manually (`wrangler d1 execute --file`): alchemy tracks applied files in
   `d1_migrations` and replays anything unrecorded on the next deploy,

@@ -1,4 +1,4 @@
-# Agent handoff — travel-2
+# Agent handoff: travel-2
 
 _Updated 2026-07-11 after the UI-versioning + house-rules round._
 
@@ -96,6 +96,23 @@ DONE:
   `bun run dev` cannot run.
 - Empty catches in `entities/theme` got their required
   expected-error comments in passing (sealed-storage setItem).
+- **Peer review round applied** (GPT-5.6 Sol high-effort audit + gemini
+  inline-diff review, both on the full diff). Fixed from their findings:
+  the AI-binding conditional is now DEV-ONLY (Sol caught that a deploy
+  authenticated a way the probe cannot see would silently ship prod
+  without AI), the credential probe also accepts CLOUDFLARE_API_KEY and
+  the XDG wrangler path, `src/versions/rescue.tsx` is a version-neutral
+  error boundary in both routes so a crashed generation really can be
+  escaped (both reviewers caught that the picker inside a crashed lazy
+  screen never renders; the boundary is keyed by generation id so
+  flipping away clears it), the choice store now hears the cross-tab
+  `storage` event and clears its in-memory override, the scanner
+  handles multiline destructuring, rest elements, template literals,
+  and kebab-case file names, and store.ts param renames (`data` to
+  `snapshot`, `index` to `afterIdx`) plus the Button atom's `type` local
+  (now `buttonKind`) cleared the violations Sol found beyond the
+  scanner's reach. Pushed back on: gemini's `versions/*` wildcard alias
+  suggestion (door-only imports are deliberate house discipline).
 
 FOR THE OWNER (verify / decide):
 
@@ -111,14 +128,45 @@ FOR THE OWNER (verify / decide):
       catalog grows. Placement and the pill treatment are open to taste.
 - [ ] The dark map theme and blue focus rings remain visually
       unconfirmed by the owner (carried from the pre-pull handoff).
+- [ ] **PR bases need your call.** All 24 open slices are unmerged, and
+      this round's work builds on their INTEGRATION (the planner move
+      touches files owned by four different slices at once), so no
+      single open slice is an honest PR base, and basing on
+      bleeding-edge is impossible (it absorbs each slice on merge, so
+      GitHub sees no commits between them). The four branches are
+      pushed (slice/25-ui-versioning, slice/26-banned-names-check,
+      slice/27-keyless-dev, plus follow-up commits on
+      slice/10-house-rules-refresh which its open PR already shows).
+      Once the current stack merges to main, PRs for 25/26/27 against
+      main become clean one-commit diffs; or BetterGit can adopt the
+      branches now.
 
 QUEUED BY THIS ROUND:
 
-- [ ] Slice this round into PRs (in flight as this entry is written).
-- [ ] GPT-5.6 Sol background review of the round's diff (in flight).
+- [x] Slice this round into PRs (four slice branches pushed; PR
+      creation blocked on the base problem, see the round report).
+- [x] GPT-5.6 Sol background review of the round's diff (findings
+      applied, see above).
 - [ ] When a second UI generation starts: copy v1, then consider
       whether map-pane internals (dark style table, overlays) should
-      become version-shared entities instead of duplicating.
+      become version-shared entities instead of duplicating. Give the
+      routes' Suspense a small skeleton fallback at the same time (a
+      generation flip currently blanks for the chunk fetch; moot with
+      one generation).
+- [ ] Rename `ContainerRef.type` to `kind` (its own tiny round: the
+      sweep crosses files owned by several open slices, so it must
+      land after the current PR stack merges; ContainerRef is
+      ephemeral, no data migration needed).
+- [ ] The banned-names scanner is a tripwire, not a proof (Sol):
+      params, type fields, and the Use/T prefixes escape regex. An
+      AST-based rewrite (ts-morph or the TS compiler API) would close
+      it; needs a decision on adding the dependency.
+- [ ] No test infra exists yet (no vitest/test script). Sol flags the
+      scanner and the version-choice store as the surfaces that most
+      earn tests; needs the test-framework decision first.
+- [ ] The rescue boundary is code-reviewed but not exercised (crashing
+      a generation on purpose needs a throwaway broken catalog entry;
+      cheap to do when v2 scaffolding exists).
 
 ## Queue (owner asks, carried from before the pull; TODO.md is authoritative)
 
