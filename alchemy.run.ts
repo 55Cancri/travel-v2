@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import alchemy from "alchemy";
 import { Ai, D1Database, KVNamespace, TanStackStart } from "alchemy/cloudflare";
@@ -65,6 +67,20 @@ export const db = await D1Database("db", {
 
 // Workers AI: the curation model behind /api/curate (ranking map sights
 // against the plan's own taste). Rides the free plan's daily allocation.
+// It is the one binding with no local emulation: dev proxies it to the
+// real service, which needs Cloudflare credentials (an API token or a
+// prior `wrangler login`). A credential-less machine still serves local
+// dev with the binding left out; /api/curate then fails and the client's
+// notability heuristic answers instead, the endpoint's designed
+// degradation.
+const wranglerLoginOnDisk = [
+  path.join(os.homedir(), ".wrangler", "config", "default.toml"),
+  path.join(os.homedir(), "Library", "Preferences", ".wrangler", "config", "default.toml"),
+].some((file) => fs.existsSync(file));
+const aiReachable = Boolean(process.env.CLOUDFLARE_API_TOKEN) || wranglerLoginOnDisk;
+if (!aiReachable) {
+  console.warn("[alchemy] no Cloudflare credentials: serving dev without the Workers AI binding");
+}
 export const ai = Ai();
 
 // Response cache for external place providers (Yelp, Foursquare, Google
@@ -82,7 +98,7 @@ export const website = await TanStackStart("website", {
   name: app.stage === "prod" ? "travel-v2" : `travel-v2-${app.stage}`,
   bindings: {
     DB: db,
-    AI: ai,
+    ...(aiReachable ? { AI: ai } : {}),
     PLACE_CACHE: placeCache,
     SESSION_SECRET: alchemy.secret.env.SESSION_SECRET,
     GOOGLE_PLACES_API_KEY: alchemy.secret.env.GOOGLE_PLACES_API_KEY,

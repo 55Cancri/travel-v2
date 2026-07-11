@@ -6,6 +6,12 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "dev"],
       "port": 5006
+    },
+    {
+      "name": "travel-2-local",
+      "runtimeExecutable": "bunx",
+      "runtimeArgs": ["vite", "dev", "--port", "5006"],
+      "port": 5006
     }
   ]
 }
