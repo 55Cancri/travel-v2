@@ -38,6 +38,63 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: haptics on the edit bar, redesigned from the v6 story (planned 2026-07-12)
+
+Owner ask: pressing the edit-bar buttons (checkbox, numbered, indent,
+outdent, and the rest) must vibrate; stockpile-v6's haptics module is
+the reference. DESIGN DECIDED BEFORE IMPLEMENTATION (adoption is design
+work, per-item verdicts in the round report):
+
+- The haptics module is REDESIGNED on the v6 story (pattern vocabulary,
+  per-name rate caps, visibility + reduced-motion gates, crisp 8-25ms
+  pulses) and RELOCATED from entities/haptics to src/atoms/haptics.ts,
+  because haptics is interaction wiring and atoms may not reach into
+  entities. API becomes haptic("tap" | "grab"); the old
+  haptics.tap()/grab() object dies. v6's tick/confirm/warn/reject
+  patterns and its localStorage kill switch are NOT ported (no
+  consumers, no settings UI yet; each is a one-line add later).
+- The Button ATOM fires haptic("tap") on every press by default, with
+  a `haptic` prop (name to change the cue, false to silence), so no
+  feature code ever sprinkles vibration calls on buttons again. Link
+  gets the same default on click (it has no press wiring to hook).
+- All 12 manual call sites sweep away: calls inside Button/Checkbox/
+  IconButton presses are deleted (the atom covers them), the
+  drag-reorder grab converts to haptic("grab"), and the city chip
+  keeps a manual tap under haptic={false} because its press handler
+  suppresses the action after a drag and the buzz must not lie.
+
+- [x] atoms/haptics.ts + atoms door export; delete entities/haptics.
+- [x] Button default-tap + haptic prop; Link click tap.
+- [x] Sweep the 12 call sites (picker, trips-shelf x2, item-editor x2,
+      planner index x5, use-drag-reorder, section).
+- [x] Verify in browser by instrumenting navigator.vibrate: checkbox,
+      numbered, indent, outdent each fired exactly one [10] tap while
+      the action applied and focus held; the version pill and a trip
+      Link buzz and still navigate; the visibility gate proven live
+      (the pane reports hidden, zero calls until the state is shimmed
+      visible).
+- [x] slice/32-haptics off slice/31-rich-text: commit e2bc91e, PR #32
+      (base slice/31), merged to bleeding-edge, deployed, fresh asset
+      probed 200 on prod. Sol review verdict recorded below when it
+      lands.
+
+SOL VERDICT (post-deploy): conformance pass, sweep complete, SSR safe,
+the Link wrap keeps router navigation. Accepted its hardening nit
+(vibrate probed as a function, 1bde00e, redeployed). PUSHED BACK on
+its one P2 (the delete-city button buzzes at press even if the
+confirm dialog is then cancelled): under the shipped model the buzz
+acknowledges the PRESS (input received), like Android system touch
+feedback, not the outcome; the chip is the only exception because its
+"press" can be the ghost tail of a drag, not a real tap. If the owner
+feels a cancelled delete should not have buzzed, the fix is one line
+(haptic={false} on that button plus a manual tap after confirm).
+
+BONUS PROOF: a stale-HMR module mid-edit crashed Canvas once in dev,
+and the UiVersionRescue boundary caught it and recovered the app,
+which was the queued "rescue boundary never exercised" item. The
+crash was HMR ghosting (it referenced an identifier that no longer
+exists in any file), gone after reload, current code verified clean.
+
 ## Round: verify italics + contextual bar end to end (planned 2026-07-12)
 
 Owner reports italics STILL not visible on his device and asked to
