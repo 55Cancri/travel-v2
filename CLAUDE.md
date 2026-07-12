@@ -1,13 +1,14 @@
 # Travel-2 house rules
 
-Rules current as of 2026-07-04. Condensed from `docs/rules/*.mdc`. Those
+Rules current as of 2026-07-11. Condensed from `docs/rules/*.mdc`. Those
 files remain the source of truth and carry the full rationale and examples.
 Before deep work in an area, read the matching rule file:
 
 | Area | Full rule |
 | --- | --- |
 | **Redesign for the ideal (Phoenix rule, rule zero)** | `docs/rules/redesign-for-the-ideal.mdc` |
-| Naming + TS style | `docs/rules/typescript-style.mdc` |
+| Naming + TS style (also applies to Rust names) | `docs/rules/typescript-style.mdc` |
+| Rust style (errors, lints, module shape, async) | `docs/rules/rust-style.mdc` |
 | Files, folders, module shape | `docs/rules/code-organization.mdc` |
 | Panda styling / atoms | `docs/rules/panda-style-reuse.mdc` |
 | Layout | `docs/rules/prefer-grid-over-flex.mdc` |
@@ -20,7 +21,7 @@ Before deep work in an area, read the matching rule file:
 | Server code never in the client bundle | `docs/rules/server-client-boundary.mdc` |
 | Auth never leaks account existence | `docs/rules/no-account-enumeration.mdc` |
 | Minimize D1/Workers read cost | `docs/rules/minimize-read-cost.mdc` |
-| Git / PR workflow | `docs/rules/stacked-diffs.mdc` |
+| Git / PR workflow | `docs/rules/better-git.mdc` |
 | Code-health tooling | `docs/rules/fallow-quality-analysis.mdc` |
 | Tests (placement, what earns one, Playwright) | `docs/rules/testing.mdc` |
 
@@ -28,9 +29,13 @@ Before deep work in an area, read the matching rule file:
 
 A single bun root: a TanStack Start + Vite 7 + Panda CSS trip planner and
 offline travel companion (see `OVERVIEW.md` for the vision, `TODO.md` for
-the phased checklist, `HANDOFF.md` for agent handoff context). Cloudflare
-infra (Alchemy config + Drizzle sync schema) exists but is dormant, not yet
-wired to the running app. Local data lives in localStorage until sync lands.
+the phased checklist, `HANDOFF.md` for agent handoff context; write the
+round's plan into HANDOFF.md BEFORE implementing, owner directive
+2026-07-11, so an interrupted round leaves a resumable checklist). The
+Cloudflare infra is live: the app deploys to
+https://travel-v2.leaftime.workers.dev with Workers AI (/api/curate),
+Google Places (/api/places), and a KV place cache. Trip data still lives
+in localStorage until the D1 + Durable Object sync lands.
 
 ## Redesign for the ideal (the Phoenix rule, rule zero)
 
@@ -44,6 +49,17 @@ something in place, never quietly design around the old thing: name the
 conflict, propose the redesign, let the owner decide. "We already wrote it
 this way" is never a reason. Full rule:
 `docs/rules/redesign-for-the-ideal.mdc`.
+
+**Adoption is design work, never transcription (the most-violated form of
+this rule).** Mined and ported material from other projects is inspiration,
+not a source to copy. Every adopted utility, condition, pattern, or snippet
+must pass through the same scrutiny as new code and end with an explicit
+per-item verdict delivered to the owner: "improved: <what changed and why>"
+or "kept as-is: <why it is already ideal>". No third option. Copying
+verbatim without that verdict is a rule-zero violation even when the
+copied code works. (The scrutiny pays: a verbatim port once carried a
+redundant triple-alternative :active selector and a floating-label
+condition whose sibling combinator could not match the new DOM at all.)
 
 ## Communication: push back, surface, propose (HARD RULES)
 
@@ -70,30 +86,156 @@ owner decide. Ask usage questions when the answer would change a design. The
 standing mantra: as few data structures as possible, flexible enough for
 everything (see `OVERVIEW.md`).
 
-## Peer models (codex, gemini): second opinions, never the driver
+**Every round report ends with "what's left" (owner directive 2026-07-06).**
+After any batch of changes, state explicitly what remains open (features,
+fixes, queued feedback items) so the owner always sees the gap list. He
+feeds new breakages in each round; those get fixed first, then the backlog
+continues. Never end a work summary without the remaining-work list.
 
-I remain the primary driver. Peer models run in parallel with my own
-reasoning and research, never instead of it, and never as an excuse to skip
-my own work.
+**Knock out paper cuts in the turn they surface (owner directive
+2026-07-09, HARD RULE).** Small items (an icon alignment, a drawer
+height, a dead component, a one-file wiring) get done immediately
+alongside the main work, in parallel, with subagents or Sol for the
+mechanical ones. Never slice them into the queue: a what's-left list
+growing with tiny deferrable items is the worst outcome the owner sees,
+worse than slow progress on the big thing. The queue is only for work
+that genuinely needs its own round or his input.
 
-- At natural review points (a finished feature, a design decision, risky
-  logic), fire codex and gemini reviews in the background without asking,
-  with NEUTRAL prompts that don't bias them toward known concerns. Collate
-  the findings, fix what I agree with, push back in writing on what I don't,
-  and report which reviewer caught what.
-- codex: invoke with live web search for research tasks
-  (`codex --search exec --sandbox read-only "<prompt>"`). Match effort to
-  stakes.
-- The `openai` CLI reaches what codex cannot: gpt-5.5-pro (`--pro`) and deep
-  research (o4-mini default, `--deep` for o3). **`--pro` is the preferred
-  heavyweight second opinion**; the deep-research models are options to
-  surface as suggestions when a true multi-source research sweep would pay
-  off. Never run two deep jobs in parallel by default: they share the org
-  TPM budget and rate-limit each other (a fanout leg died this way
-  2026-07-04). `--fanout` remains for deliberate bake-offs; otherwise
-  sequence deep runs one at a time. The CLI prints elapsed time, token
-  usage, and estimated cost per job. `openai --help` is the complete manual.
-- **Long runs never get discarded.** Deep research and gpt-5.5-pro can take
+**The backlog shrinks every round (owner directive 2026-07-10, HARD
+RULE).** A round whose remaining-work list ends LONGER than it started
+is a failure even when the asked work went perfectly. After the asked
+work, actively burn the queue down: try each queued item, and if it is
+quick, finish it in the same turn (even work only loosely related to
+the round). An item may survive on the list only when it truly needs
+its own round, a design decision, or the owner's hands (his devices,
+his accounts), and every survivor must be restated in product terms
+with THAT reason attached. A what's-left list is not a parking lot;
+bare internal labels there are the plain-language violation at its
+worst, because the list is exactly what the owner reads to decide what
+happens next.
+
+**Behavior feedback lands here, not in agent memory (owner directive
+2026-07-09).** When the owner corrects a working pattern, fold the rule
+into this file (or docs/rules) in the same turn so EVERY agent on every
+machine learns it; private memory is a pointer at best, never the home.
+
+**Reports speak plain language (owner feedback 2026-07-10).** Never hand
+the owner a bare codename, slice number, or invented shorthand ("the
+contract extractions", "slice ⑦") without saying in the same breath what
+the thing IS in product terms ("the day-reorder handle on city
+sections"). He should never have to ask "what are you talking about"
+twice; internal labels are for files and branches, not for him.
+
+**Test-ready means design-complete (owner directive 2026-07-10, HARD
+RULE).** The owner tests only against the final designed shape: data an
+early test creates would predate the design, and a bug it finds would be
+against code about to change. Never invite him to test a flow while ANY
+accepted design item touching it (schema, wire shape, refactor) is
+still unimplemented, and never table a piece of an accepted design
+without asking him first, framed as "this affects every future
+trip/item; implement before your test?". Before declaring anything
+test-ready, enumerate the accepted-but-unbuilt designs that touch the
+flow; if the list is non-empty, the flow is NOT complete and the report
+must say so.
+
+## Peer models (GPT-5.6 Sol, gemini): a partnership with a division of labor
+
+The standing partner is **GPT-5.6 Sol** (owner directive 2026-07-09,
+replacing GPT-5.5): `codex exec -m gpt-5.6-sol` with
+`-c model_reasoning_effort=<level>`, levels `low|medium|high|max|ultra`.
+Default `high`; `max` for the hardest verify/design passes; `ultra`
+(internal subagents, heavy token burn) only deliberately and with a stated
+reason. Sol runs $5/$30 per M tokens.
+
+**The division of labor (owner directive 2026-07-10, superseding the
+alternation model):** Claude designs AND implements; Sol is the standing
+reviewer, auditor, and mechanical executor. The alternation experiment
+settled it: Sol's implementation slices were thorough inside their scoped
+files but consistently needed correction at the seams or against design
+intent, while its read-only audits were consistently elite. So:
+
+- Claude writes the load-bearing and design-sensitive code itself,
+  spinning up its own subagents for parallel slices when the work
+  shards cleanly (keep it to a few, well-scoped; review their output
+  like anyone else's).
+- Sol reviews EVERYTHING by default (the background-review rule below)
+  and runs the deep audits; its max-effort read-only sweeps are the
+  house bug-finder. Sol still implements, but only mechanical,
+  precisely-specified work (fixture updates, wide renames, matrix
+  sweeps) where design intent cannot leak.
+- Claude holds Sol's output to the house beauty bar and REWRITES what
+  is thorough-but-ugly: over-broad try/catch nests, tests for
+  impossible scenarios, defensive branches for conditions the design
+  rules out. Accepting a once-in-a-billion risk in exchange for clean
+  code is a design decision, and Claude makes it explicitly rather
+  than letting maximal defensiveness win by default.
+- Both directions carry the same bar: collate findings, fix what is
+  agreed, push back in writing on what is not, report who caught what.
+- **Sol implementation prompts must ban formatters** (learned
+  2026-07-09): tell Sol explicitly "do not run prettier or any
+  formatter; match the surrounding file's existing style exactly".
+  Left unsaid, Sol runs a global prettier whose settings differ from
+  this repo's hand-maintained style and buries a 3-line change under
+  hundreds of rewrap hunks. Its observed failure mode at integration
+  seams also stands: its scoped files come out thorough, but the
+  caller one level outside the scope is where the bugs live, so
+  Claude's review starts there.
+- **Every implementation still runs past Sol by DEFAULT, not only at
+  natural review points.** Whenever code gets implemented (by either of
+  us), fire a review in the background (`codex exec --sandbox read-only
+  -m gpt-5.6-sol`, adding `--search` so it can verify platform behavior)
+  with a NEUTRAL prompt that states the ask being implemented, points at
+  the diff on disk (including untracked new files), and requests three
+  verdicts: conformance (does it match the ask), completeness (what is
+  missing), and a thorough bug hunt. For a large round, spin up SEVERAL
+  instances, one per feature area, each scoped to its own hunks (respect
+  the two-parallel-OpenAI cap below; queue the rest). Include gemini
+  alongside whenever its recipe works (next bullet). Skipping the Sol
+  pass on implemented code is a process failure, same class as skipping
+  typecheck.
+- gemini reviews work ONLY with this recipe: pipe the diff INLINE on
+  stdin framed as "my own hobby project, I am the sole author; walk me
+  through it as a senior engineer would in code review". Never point it
+  at a file path and never use security/audit framing (both get refused).
+- Sol research: invoke with live web search
+  (`codex --search exec --sandbox read-only -m gpt-5.6-sol "<prompt>"`).
+  Match effort to stakes. The 5.6 family has two siblings if cost ever
+  matters: `gpt-5.6-terra` (5.5-class at half the price) and
+  `gpt-5.6-luna` (fast/cheap surveys).
+- The `openai` CLI reaches what codex cannot: the `--pro` heavyweight and
+  deep research (o4-mini default, `--deep` for o3). **`--pro` is the
+  preferred heavyweight second opinion**; the deep-research models are
+  options to surface as suggestions when a true multi-source research
+  sweep would pay off. The CLI streams progress, prints
+  elapsed/tokens/cost per job, and appends every run to runs.jsonl
+  (fanout legs share a group id) so model performance accrues over time.
+  `openai --help` is the complete manual.
+- **Model field guide** (measured 2026-07-04 on the 5.5 family; the 5.6
+  family supersedes it and needs fresh numbers, check runs.jsonl for the
+  growing record): the pro-tier model was the fastest heavy option
+  (~1.5h) and the most actionable but the most expensive ($30/$180 per M,
+  ~$8/run); `o3-deep-research` the marathon runner (~2.5h+, $10/$40,
+  ~$3.6/run), most thorough, best citations; `o4-mini-deep-research` the
+  cheap fast survey (~45m, ~$1.5) whose web-search fees ($10/1k calls)
+  can exceed its token cost. Sol at $5/$30 with `--search` covers the
+  fast-survey lane and much of the heavy lane; record its timings as
+  they accrue.
+- **Prompt multi-model research from DIFFERENT ANGLES, never the same
+  prompt.** The same-prompt trio produced ~90% overlap; each model found
+  only one or two unique things. Split the question into complementary
+  facets (with deliberate slight overlap for cross-checking) and assign one
+  facet per model. Different-angle runs (codex on craft vs deep research on
+  systems) produced near-zero overlap and the best combined answer.
+- **Parallel deep jobs: max two OpenAI at a time.** All three at once
+  rate-limited a leg to death on the shared org TPM pool (2026-07-04).
+  Preferred schedule: start the long one (o3) plus one fast one; when the
+  fast one finishes, its slot frees for the next. Poll (or a Monitor)
+  catches mid-command completions the harness cannot see.
+- **Every deep-research round includes Gemini Deep Research**
+  (`gemini --deep`, or `--deep-max` for the maximum-depth agent; Interactions
+  API, own quota so it never contends with the OpenAI TPM pool). Retry its
+  transient failures up to 3 like any gemini run.
+- **Long runs never get discarded.** Deep research and the pro tier can take
   up to ~40 minutes: launch them in a background shell, keep working, and
   when the report lands (even an hour and several topics later), deliver its
   findings to the owner tied back to the original question. A launched run
@@ -103,8 +245,11 @@ my own work.
   streams progress instead of showing "no output yet". While actively
   working, poll at every natural pause: confirm liveness, catch failed legs
   early (a transient rate limit gets a retry, up to 3), and give the owner a
-  brief status line with elapsed time. When a run lands, report its total
-  duration, tokens, and cost alongside its findings.
+  brief status line with elapsed time. **Every deep-research or pro report
+  ends with its metrics line: total duration, tokens, and dollar cost.
+  Findings without the metrics line are an incomplete delivery, every time,
+  no exceptions** (runs.jsonl has the numbers if the CLI output scrolled
+  away).
 - **A dormant agent cannot poll.** Between turns nothing runs, and the
   harness only notifies when a whole background command exits, so a
   multi-job command (fanout) reports nothing until its LAST leg ends. Before
@@ -175,10 +320,16 @@ quality or speed beats hand-rolling.
 ## Banned words in identifiers (HARD BANS, most-missed rules)
 
 These words may not appear in any name you define: variables, params, fields,
-functions, types, files, folders. Name the actual thing, not its relationship
-to other code. The only pass is an external API's own surface (React's
+functions, types, files, folders, Rust structs. Name the actual thing, not
+its relationship to other code. The only pass is an external API's own surface (React's
 `useState`, the DOM's `event.data`, a `default` export). Keep their word at
 that boundary only, never thread it into names we own.
+
+**Mechanical check (run before finishing any round):** `bun run
+check:names` scans TS declaration sites plus file/folder names for the
+banned stems (camel-hump word boundaries, so Statement and score never
+false-positive) and fails with a listing. Declarations only, so external
+API reads stay exempt by construction.
 
 - **`state`**: every value is state, so it names nothing. `WeatherFeed` not
   `WeatherState`, `columnLayout`, `sortModel`, `dragSession`, `hoverInfo`.
@@ -242,7 +393,8 @@ that boundary only, never thread it into names we own.
   retries, parsing, and math live in named step files, not inline in the
   orchestrator.
 - **Boundary types are deliberate.** Where two languages or processes meet
-  (client/worker, NDJSON on stdout), name the wire shapes on both sides (a
+  (TS/Rust, client/worker, NDJSON on stdout), name the wire shapes on both
+  sides (a
   `Wire*` prefix is fine, it makes schema drift greppable) and update both
   ends plus fixtures in the same change.
 - Inline SVG components are icons: `atoms/icons/<name>/index.tsx`, exported
@@ -282,9 +434,9 @@ that boundary only, never thread it into names we own.
 ## Dates: `Temporal`, never `Date` (HARD BAN)
 
 No `new Date`, `Date.now()`, or `Date` methods in code we own. The polyfill
-is `temporal-polyfill/global`, imported first at the entry. It is NOT
-installed in this repo yet: the first change that touches date logic
-installs it and adds that entry import in the same PR.
+is `temporal-polyfill/global`, imported first in `src/router.tsx` (both
+runtimes reach every route module through it). Its global TYPES ship
+separately: `temporal-polyfill/types/global` in the tsconfig `types` array.
 `Temporal.Now.instant().epochMilliseconds` for a clock read;
 `Temporal.Instant.fromEpochMilliseconds(ms)
 .toZonedDateTimeISO(Temporal.Now.timeZoneId())` to display. Databases store
@@ -305,9 +457,21 @@ Know the modern primitives: `useSyncExternalStore`, `useEffectEvent`,
 
 ## UI: atoms + Panda props
 
-- Build from the wrapped atoms (`Block`, `Text`, `Button`, `Input`, ...),
-  never raw `<div>`/`<span>`/`<button>` with inline styles or CSS modules in
+- Build from the wrapped atoms (`Block`, `Text`, `Button`, `Input`, `Link`,
+  imported from the `atoms` door) and the pre-styled alloys (`alloys` door:
+  `PrimaryButton`, `IconButton`, `Eyebrow`, `Title`, `Subtext`, ...), never
+  raw `<div>`/`<span>`/`<button>` with inline styles or CSS modules in
   feature code. Atoms carry motion wiring, tokens, and the typed prop API.
+  Alloys carry defaults, not closed APIs: every style prop passes through
+  and consumer props win, so call-site nudges never need new props.
+- **Interaction behavior comes from react-aria HOOKS, wrapped invisibly
+  inside the atoms** (`useButton` + `useLongPress` in Button: unified
+  press for pointer/touch/keyboard/virtual clicks with drag-off cancel,
+  plus the WKWebView/VoiceOver quirks catalog we ship on). Import subpaths
+  from the `react-aria` monopackage (`react-aria/useButton`), never the
+  frozen `@react-aria/*` scoped packages and never `react-aria-components`.
+  Consumers see our prop API only (`onPress`, `onLongPress`, `isLoading`);
+  the rendered element stays a native `button`/`a`/`input`.
 - Style atoms with **props**, not `className={css(...)}` (that loses the
   cascade race, see "The cascade contract" in `panda-style-reuse.mdc`).
   Conditions are props (`_hover`, `_focusVisible`, `_disabled`, `_dark`,
@@ -324,6 +488,25 @@ Know the modern primitives: `useSyncExternalStore`, `useEffectEvent`,
   silently emits nothing. Enumerable values get inline literals in both
   ternary branches; open-ended/computed values use raw `style={{...}}` (or
   `_motion.style`).
+- **Run the design-principles catalog before presenting any screen.** The
+  skill at `.claude/skills/design-principles` is a PORTABLE design canon
+  (type, spacing, iconography, motion) distilled from real lessons and
+  written to apply to any project. Apply its checklist to every screen
+  touched. When the owner flags a design issue, fix it, and if the lesson
+  generalizes beyond the component it appeared in, distill the principle
+  (stripped of project specifics: no exact sizes, no component names, no
+  screen layouts) and add it in the same turn. Not every flag becomes an
+  entry: project-specific prescriptions stay out.
+- **Type discipline (HARD RULE, owner directive 2026-07-05).** A screen
+  carries at most four type roles: one heading (`2xl`/`3xl`), body (`md`),
+  support (`sm`), and one micro label (`xs`, the only xs on a page).
+  Weights stay at three. The canonical trio is 400/500/600, but this app's
+  variable font reads light, so the whole ladder sits +50: 450 body (set
+  globally), 550 controls and labels, 650 headings and titles. Never
+  sprinkle per-element `fontSize`/`fontWeight` nudges in feature code: a
+  recurring treatment becomes an alloy, and a size that seems needed
+  outside the four roles means stop and ask. The owner is sick of pages
+  with a different size on every element.
 - Spacing/sizes/radii ride the lh rhythm tokens (`xs`...`2xl`). Colors come
   from semantic tokens (`surface-*`, `text-*`, `border-*`).
 - **`neutral.100` is banned as a surface/fill (HARD BAN).** The light-mode
@@ -368,13 +551,34 @@ called, that an implementation used to be wrong, that a migration
 happened). That story lives in commits and PRs. Headers are 1-3 sentences,
 and narrative goes inline next to the lines it explains.
 
+**No provenance in comments (HARD BAN, the most-violated rule here).**
+A comment may never say where code came from or what motivated its
+existence: not the app, repo, or project it was ported or mined from, not
+occurrence counts from analysis ("used 37 times in ..."), not the research
+round or document that inspired it, not "see docs/<file>" pointers outside
+the module. All of that is evidence for the PR body and commit message,
+never the source. A rationale that leans on history rots the moment the
+history is inaccessible, and it tells the reader nothing about what the
+code DOES. Rewrite the motivation as a timeless design fact ("pins one
+letter-spacing value so every section label matches"), or delete it.
+
+**The copy-paste litmus (apply to every comment before writing it).** Read
+the comment as if the file were copied alone into a stranger's repo. If any
+part becomes false, dangling, or meaningless there (project names, doc
+paths, counts from a codebase the stranger doesn't have), the comment fails
+and must be rewritten. In-repo files get no exemption, because files move.
+The only sanctioned cross-references are relative pointers within the same
+module and names of code the file actually coordinates with.
+
 **No em dashes (HARD BAN, zero exceptions).** No em dash character and no
 double-hyphen `--` standing in for one, anywhere we write: comments, docs,
 commit messages, PR bodies, UI strings, chat replies. Use a comma, colon,
 period, or parentheses. When editing a file that already contains one,
-proactively rewrite it out in passing (no repo-wide sweeps). Also avoid
-semicolons in prose (comments, docs, chat): prefer a period and a new
-sentence.
+proactively rewrite it out in passing (no repo-wide sweeps). Before
+finishing any round of edits, mechanically grep the touched files for the
+character (it keeps slipping into comments unnoticed, and a written check
+catches what intention does not). Also avoid semicolons in prose (comments,
+docs, chat): prefer a period and a new sentence.
 
 ## No quiet failure paths (HARD BANS)
 
@@ -413,10 +617,10 @@ scope, and ask. Never ship "a future worker handles this" when no such
 worker exists. Trace flows end-to-end (UI to server to durable effect to
 projection to UI) before claiming done.
 
-## Backend (Cloudflare, currently dormant)
+## Backend (Cloudflare, live)
 
-The Alchemy + Drizzle infra exists but is not wired to the app yet. These
-rules bind the moment it is:
+The Alchemy infra deploys the app (D1 + KV + Workers AI bound; the trip
+sync Durable Object waits on the sync feature). These rules bind:
 
 - **Fight read/write cost on every feature.** We run on Cloudflare's free
   plan. D1 bills rows SCANNED, not returned, so design the schema for the
@@ -426,13 +630,45 @@ rules bind the moment it is:
   when new features land. Never sacrifice a feature to save reads when a
   redesign can save them instead. Full rule:
   `docs/rules/minimize-read-cost.mdc`.
-- **Builds run through `alchemy dev` / `alchemy deploy`, never raw
-  `vite build`** (the Alchemy Vite plugin needs the generated wrangler
-  config first). Until the infra is wired, `bun run dev` / `bun run build`
-  remain the entry points.
+- **The infra is live (2026-07-07): `bun run dev` and `bun run deploy` are
+  the only entry points**, and both execute `alchemy.run.ts` directly
+  under NODE, never the alchemy CLI (the CLI picks bun from the lockfile
+  and bun 1.3.14 segfaults on the entrypoint). Never raw `vite build`
+  (the Alchemy Vite plugin needs the generated wrangler config). Deploys
+  keep `--force`: a code-only change does not invalidate the
+  website-build resource and would otherwise ship the previous bundle.
+  The generated `wrangler.jsonc` holds resolved secrets and stays
+  gitignored. Prod: https://travel-v2.leaftime.workers.dev
+  On a machine without Cloudflare credentials, dev stands the Workers AI
+  binding down (deploys never do), and the `travel-2-local` launch entry
+  serves plain vite against the generated `.alchemy/local/wrangler.jsonc`
+  once a dev run has produced it.
+- **Alchemy owns migration application.** Never apply a migration file
+  manually (`wrangler d1 execute --file`): alchemy tracks applied files in
+  `d1_migrations` and replays anything unrecorded on the next deploy,
+  which then fails on duplicate columns. Ship the file in `migrations/`
+  and let the deploy apply it. If a manual apply already happened, insert
+  the file's row into `d1_migrations` before deploying. One-off queries
+  and seeds via `wrangler d1 execute` stay fine.
+- **Alchemy stage isolation is load-bearing (HARD RULE).** Alchemy's
+  finalize orphan-destroys ANY sibling scope it can see in a shared state
+  store: a dev run under another stage can delete the deployed prod worker.
+  Two guards in `alchemy.run.ts` must never be removed: the stage-private
+  `dotAlchemy: .alchemy/<stage>` state tree and the stage-scoped worker
+  name (only stage prod owns the bare `travel-v2`). If any alchemy run
+  prints `[deleting]` lines for resources the program still declares (or
+  any prod-named resource during a non-prod run), kill it immediately and
+  investigate before rerunning.
 - **Server code never reaches the client bundle.** TanStack Start colocates
   server functions with UI, so guard the boundary deliberately. Full rule:
   `docs/rules/server-client-boundary.mdc`.
+- **The boundary cuts the other way too, and this rule is live already:
+  route loaders run ON THE SERVER during document requests** (a hard
+  refresh renders the route on the dev server today, in the worker later).
+  A loader that touches a browser-only API (IndexedDB, localStorage,
+  `window`) crashes exactly and only on refresh, the easiest bug to miss in
+  SPA-feeling dev. Any route whose loader needs client-local facts sets
+  `ssr: false` with a comment naming the API that forces it.
 - **Auth never leaks account existence** (register and login give uniform
   responses whether or not the email exists). Full rule:
   `docs/rules/no-account-enumeration.mdc`.
@@ -450,25 +686,47 @@ rules bind the moment it is:
 
 - **`bleeding-edge` is the standing integration branch** (a universal
   convention across the owner's projects: every repo has `main` plus
-  `bleeding-edge`). It always carries main + every open PR branch + feature
-  work in progress. The cycle, in order:
-  1. Day-to-day work accumulates **uncommitted** in the working tree on
-     `bleeding-edge`. Do NOT commit or push it, not after a feature, not
-     after a review round.
-  2. The owner tests the feature and iterates through feedback rounds,
-     still uncommitted.
-  3. Only when he says to slice: cut the work into PRs targeting `main`.
-  4. Then merge those PR branches back into `bleeding-edge` (merge, never
-     rebase, same for open PR tips and `main` whenever they move), so it
-     always has the latest code regardless of merge status. Pushing
-     `bleeding-edge` is fine at this point, after the PRs exist, never
-     before.
-- **PRs are plain `git` + `gh`** (the owner's BetterGit app manages stacks
-  and merges on his side). Never commit on `main`. Commit message = PR body
-  (motivation, `## Changes`, `## Test plan`). 150-400 LOC per PR grouping
-  related work. Fix review feedback in place on the PR branch, don't stack
-  fixup PRs. Expect the owner to merge PRs on GitHub within minutes and in
-  any order: fetch and reconcile before mutating branches.
+  `bleeding-edge`). It is a MERGE SURFACE, never the home of feature
+  commits: it carries main + every open PR branch + uncommitted work in
+  progress, and nothing else. The cycle, in order (owner directive
+  2026-07-07):
+  1. Work happens in the working tree on `bleeding-edge`, uncommitted
+     while still taking shape.
+  2. The moment a self-contained piece is done, commit it to a slice
+     branch and open the PR without being asked: from `origin/main` when
+     independent, from the parent slice (PR base to match) when dependent.
+     Follow-ups to sliced work are commits on that open PR's branch. The
+     owner expects to SEE a stack of open PRs at all times; feature
+     commits that exist only on bleeding-edge are the failure this rule
+     exists to prevent.
+  3. Merge each PR branch back into `bleeding-edge` right after pushing it
+     (merge, never rebase, same for open PR tips and `main` whenever they
+     move), so it always carries the latest code regardless of merge
+     status, and push it.
+  4. **The working tree LIVES on `bleeding-edge`** (owner directive,
+     2026-07-06). The owner tests the running app from this tree
+     continuously, so any minute it sits on another branch is a minute his
+     app is silently missing features. Branch work (slicing, PR fixes) is
+     one tight excursion: switch, commit, push, merge back into
+     `bleeding-edge`, return. Never develop, verify, or pause on a slice
+     branch.
+  5. Redeploy prod (`bun run deploy`) after every completed work round so
+     the owner can test the live app immediately. Deploying to prod is
+     STANDING-APPROVED (owner directive 2026-07-11: "you can always
+     deploy to prod, you should be deploying prod frequently"); never
+     treat a deploy as needing fresh authorization.
+- **PRs are plain `git` + `gh`, honestly based** (the owner's BetterGit app
+  is the only merge path: it reviews, squash-merges, restacks, retargets,
+  and heals). A PR's GitHub base must be the branch it was actually built
+  on: an independent slice branches from `origin/main` with base `main`, a
+  dependent slice branches from its parent slice's branch with the base set
+  to match. Never commit on `main`. Commit message = PR body (motivation,
+  `## Changes`, `## Test plan`). 150-400 LOC per PR grouping related work.
+  Fix review feedback in place on the PR branch, don't stack fixup PRs.
+  After the owner merges (fast, out of order, often mid-slicing): hands
+  off. Never rebuild, rebase, or force-push open slice branches; fetch,
+  read the new state, fast-forward `main`, re-merge into `bleeding-edge`,
+  and continue. Full rule: `docs/rules/better-git.mdc`.
 - **Code-health tooling:** Fallow is not wired into this repo yet. When it
   is, run `bun run fallow:audit -- --changed-since main` after substantial
   JS/TS changes (see `fallow-quality-analysis.mdc`).
