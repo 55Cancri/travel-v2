@@ -3,6 +3,7 @@
 // wrapped inside. Pre-styled compositions live one layer up in `alloys`.
 export { Block, type Props as BlockProps } from "./block";
 export { Button, type Props as ButtonProps } from "./button";
+export { haptic, type HapticName } from "./haptics";
 export { Input, type Props as InputProps } from "./input";
 export { Link, type Props as LinkProps } from "./link";
 export { Text, type Props as TextProps } from "./text";

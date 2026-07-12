@@ -7,7 +7,7 @@ import {
   type MotionValue,
 } from "framer-motion";
 import { flushSync } from "react-dom";
-import { haptics } from "entities/haptics";
+import { haptic } from "atoms";
 
 // Hand-rolled drag-to-reorder, extended for VARIABLE-HEIGHT rows (detail cards,
 // note lines). Every row's `y` is a MotionValue WE own, keyed by ROW ID — the
@@ -230,7 +230,7 @@ export function useDragReorder(opts: {
     fromIndex: number,
     id: string,
   ) => {
-    haptics.grab();
+    haptic("grab");
     // Measure every item at grab time; the list can't change mid-drag, so a
     // one-shot snapshot is enough for variable sizes.
     const heights = measure(start.target);

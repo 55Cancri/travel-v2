@@ -1,5 +1,4 @@
 import { GhostButton } from "alloys";
-import { haptics } from "entities/haptics";
 import { UI_VERSIONS } from "./catalog";
 import { chooseUiVersion, useUiVersion } from "./choice";
 
@@ -11,7 +10,6 @@ import { chooseUiVersion, useUiVersion } from "./choice";
 export function UiVersionPicker() {
   const active = useUiVersion();
   const flip = () => {
-    haptics.tap();
     const at = UI_VERSIONS.findIndex((entry) => entry.id === active.id);
     const next = UI_VERSIONS[(at + 1) % UI_VERSIONS.length];
     chooseUiVersion(next.id);
