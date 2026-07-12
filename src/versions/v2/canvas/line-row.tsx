@@ -14,40 +14,44 @@ type Props = {
   inputRef: (el: HTMLTextAreaElement | null) => void;
 };
 
-// One canvas line: a marker gutter and an auto-growing textarea sharing a
-// baseline. The gutter is always reserved so every line's text sits on
-// the same column regardless of kind.
+// One canvas line. Plain text spans the full width so it sits on the
+// page's left edge; marker lines carry a gutter, giving lists their
+// natural indent. The canvas reads in Inter, chosen over the app face
+// for crispness at dense list sizes.
 export function LineRow(props: Props) {
   const { line } = props;
+  const plain = line.kind === "text";
   const done = line.kind === "checkbox" && line.done;
   return (
     <Block
       grid
-      cols="1.6rem 1fr"
-      columnGap="xs"
+      cols={plain ? "1fr" : "1.6rem 1fr"}
+      columnGap={plain ? undefined : "xs"}
       alignItems="start"
       // Indentation is a per-line runtime value, so it rides a raw style.
       style={{ paddingLeft: `${line.indent * 1.5}rem` }}
     >
-      <Block grid placeItems="center" h="1.5lh">
-        {line.kind === "bullet" ? (
-          <Block w="0.32rem" h="0.32rem" borderRadius="9999px" bg="text-muted" />
-        ) : null}
-        {line.kind === "checkbox" ? (
-          <Checkbox
-            checked={line.done}
-            muted={line.text.trim() === ""}
-            onToggle={props.onToggle}
-            label="Done"
-            preservesFocus
-          />
-        ) : null}
-        {line.kind === "numbered" ? (
-          <Numeric fontSize="md" color="text-muted">
-            {props.ordinal}.
-          </Numeric>
-        ) : null}
-      </Block>
+      {plain ? null : (
+        <Block grid placeItems="center" h="1.5lh">
+          {line.kind === "bullet" ? (
+            <Block w="0.32rem" h="0.32rem" borderRadius="9999px" bg="text-primary" />
+          ) : null}
+          {line.kind === "checkbox" ? (
+            <Checkbox
+              checked={line.done}
+              muted={line.text.trim() === ""}
+              onToggle={props.onToggle}
+              label="Done"
+              preservesFocus
+            />
+          ) : null}
+          {line.kind === "numbered" ? (
+            <Numeric fontSize="md" fontFamily="'Inter Variable', sans-serif" color="text-primary">
+              {props.ordinal}.
+            </Numeric>
+          ) : null}
+        </Block>
+      )}
       <Block
         as="textarea"
         data-canvas-line=""
@@ -66,7 +70,7 @@ export function LineRow(props: Props) {
         padding="0"
         paddingBlock="0.25lh"
         margin="0"
-        fontFamily="inherit"
+        fontFamily="'Inter Variable', sans-serif"
         fontSize="md"
         fontWeight={450}
         lineHeight="1.5"

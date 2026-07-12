@@ -1,8 +1,10 @@
 import * as React from "react";
-import { Block, CaretLeft, CaretRight } from "atoms";
-import { GhostButton } from "alloys";
+import { Block, Indent, ListBullets, ListChecks, ListNumbers, Outdent } from "atoms";
+import { IconButton } from "alloys";
+import type { LineKind } from "./lines";
 
 type Props = {
+  onMark: (kind: Exclude<LineKind, "text">) => void;
   onOutdent: () => void;
   onIndent: () => void;
 };
@@ -34,8 +36,8 @@ export function EditBar(props: Props) {
       gridAutoFlow="column"
       justifyContent="start"
       gap="xs"
-      px="md"
-      py="xs"
+      px="sm"
+      py="2px"
       bg="surface-panel"
       borderTopWidth="1px"
       borderTopStyle="solid"
@@ -43,20 +45,44 @@ export function EditBar(props: Props) {
       boxShadow="0 -1px 8px rgba(28, 25, 23, 0.06)"
       style={{ transform: `translateY(-${lift}px)` }}
     >
-      {/* py="sm" lifts these to fingertip height: they are the primary
-          controls while the phone keyboard is up. */}
-      <GhostButton
-        type="button"
+      {/* 2rlh keeps every control at fingertip size: these are the
+          primary surface while the phone keyboard is up. */}
+      <IconButton
         preservesFocus
-        onPress={props.onOutdent}
-        py="sm"
-        start={<CaretLeft />}
+        size="2rlh"
+        aria-label="Bulleted list"
+        onPress={() => props.onMark("bullet")}
       >
-        Outdent
-      </GhostButton>
-      <GhostButton type="button" preservesFocus onPress={props.onIndent} py="sm" end={<CaretRight />}>
-        Indent
-      </GhostButton>
+        <ListBullets size={20} />
+      </IconButton>
+      <IconButton
+        preservesFocus
+        size="2rlh"
+        aria-label="Checkbox"
+        onPress={() => props.onMark("checkbox")}
+      >
+        <ListChecks size={20} />
+      </IconButton>
+      <IconButton
+        preservesFocus
+        size="2rlh"
+        aria-label="Numbered list"
+        onPress={() => props.onMark("numbered")}
+      >
+        <ListNumbers size={20} />
+      </IconButton>
+      <IconButton
+        preservesFocus
+        size="2rlh"
+        aria-label="Outdent"
+        onPress={props.onOutdent}
+        ml="sm"
+      >
+        <Outdent size={20} />
+      </IconButton>
+      <IconButton preservesFocus size="2rlh" aria-label="Indent" onPress={props.onIndent}>
+        <Indent size={20} />
+      </IconButton>
     </Block>
   );
 }

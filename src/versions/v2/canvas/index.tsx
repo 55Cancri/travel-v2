@@ -1,9 +1,18 @@
+import "@fontsource-variable/inter/index.css";
 import * as React from "react";
 import { Block } from "atoms";
 import { caretLine } from "./caret-line";
 import { EditBar } from "./edit-bar";
 import { LineRow } from "./line-row";
-import { type Line, claimMarker, clampIndent, isLine, newLine, numberFor } from "./lines";
+import {
+  type Line,
+  type LineKind,
+  claimMarker,
+  clampIndent,
+  isLine,
+  newLine,
+  numberFor,
+} from "./lines";
 
 const CANVAS_KEY = "travel2:v2:canvas";
 
@@ -172,6 +181,19 @@ export function Canvas() {
     );
   };
 
+  // The bar's marker buttons: press converts the focused line, pressing
+  // its current kind again strips it back to plain text.
+  const markLine = (id: string | null, kind: Exclude<LineKind, "text">) => {
+    if (!id) return;
+    commit(
+      linesRef.current.map((line) => {
+        if (line.id !== id) return line;
+        if (line.kind === kind) return { ...line, kind: "text" as const, done: false };
+        return { ...line, kind, done: false };
+      }),
+    );
+  };
+
   // Mobile IMEs (Android GBoard especially) fire keydown with unusable
   // keys, so Enter and backspace-at-start also answer through NATIVE
   // beforeinput, delegated from the shell (React's onBeforeInput is a
@@ -315,6 +337,7 @@ export function Canvas() {
       <Block h="8rem" onClick={focusTail} />
       {editing ? (
         <EditBar
+          onMark={(kind) => markLine(activeId.current, kind)}
           onOutdent={() => shiftIndent(activeId.current, -1)}
           onIndent={() => shiftIndent(activeId.current, 1)}
         />

@@ -1,5 +1,5 @@
 import { Block } from "atoms";
-import { Subtext, Title } from "alloys";
+import { Title } from "alloys";
 import { Canvas } from "../canvas";
 import { UiVersionPicker } from "../../picker";
 
@@ -15,7 +15,6 @@ export function TripsShelf() {
         </Title>
         <UiVersionPicker />
       </Block>
-      <Subtext as="p">Markers as you type: "- " bullets, "[] " checkboxes, "1. " numbers.</Subtext>
       <Canvas />
     </Block>
   );
