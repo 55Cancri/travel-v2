@@ -124,13 +124,7 @@ export function EditBar(props: Props) {
           >
             <ListNumbers size={20} />
           </IconButton>
-          <IconButton
-            preservesFocus
-            size="2rlh"
-            aria-label="Outdent"
-            onPress={props.onOutdent}
-            ml="xs"
-          >
+          <IconButton preservesFocus size="2rlh" aria-label="Outdent" onPress={props.onOutdent}>
             <Outdent size={20} />
           </IconButton>
           <IconButton preservesFocus size="2rlh" aria-label="Indent" onPress={props.onIndent}>

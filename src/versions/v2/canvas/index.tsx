@@ -376,19 +376,19 @@ export function Canvas() {
   }, []);
 
   // The bar swaps between line controls and format controls based on
-  // whether real text is selected in the active line.
+  // whether real text is selected in the active line. Recomputed on
+  // every selection event AND whenever the active line changes, since a
+  // programmatic focus does not always fire selectionchange.
+  const syncTextSelected = () => {
+    const id = activeId.current;
+    const el = id ? inputs.current.get(id) : null;
+    const offsets = el ? selectionOffsets(el) : null;
+    setTextSelected(Boolean(offsets && offsets.start !== offsets.end));
+  };
+
   React.useEffect(() => {
     const abort = new AbortController();
-    document.addEventListener(
-      "selectionchange",
-      () => {
-        const id = activeId.current;
-        const el = id ? inputs.current.get(id) : null;
-        const offsets = el ? selectionOffsets(el) : null;
-        setTextSelected(Boolean(offsets && offsets.start !== offsets.end));
-      },
-      { signal: abort.signal },
-    );
+    document.addEventListener("selectionchange", syncTextSelected, { signal: abort.signal });
     return () => abort.abort();
   }, []);
 
@@ -465,6 +465,7 @@ export function Canvas() {
           break;
         }
       }
+      syncTextSelected();
       setEditing(true);
       return;
     }
@@ -473,6 +474,7 @@ export function Canvas() {
 
   const releaseFocus = (event: React.FocusEvent<HTMLDivElement>) => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setTextSelected(false);
     setEditing(false);
   };
 
