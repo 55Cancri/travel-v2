@@ -1,7 +1,6 @@
 import * as React from "react";
 import { Block, Button, Input } from "atoms";
 import { Eyebrow, FieldLabel, PrimaryButton, Subtext } from "alloys";
-import { haptics } from "entities/haptics";
 import { removeItem, updateItem, useDb } from "entities/trips/store";
 import { KIND_META, type ContainerRef, type ItemDetails, type ItemKind } from "entities/trips/types";
 
@@ -125,7 +124,6 @@ export function ItemEditor(props: {
                 key={kind}
                 type="button"
                 onPress={() => {
-                  haptics.tap();
                   updateItem(item.id, { kind });
                 }}
                 px="sm"
@@ -195,7 +193,6 @@ export function ItemEditor(props: {
           <Button
             type="button"
             onPress={() => {
-              haptics.tap();
               updateItem(item.id, { status: cancelled ? "planned" : "cancelled" });
             }}
             px="sm"

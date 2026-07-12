@@ -6,6 +6,7 @@ import { useButton } from "react-aria/useButton";
 import { useLongPress } from "react-aria/useLongPress";
 
 import { attachRefs } from "../attach-refs";
+import { haptic as fireHaptic } from "../haptics";
 import { Spinner } from "../icons";
 import { splitAtomProps } from "../split-atom-props";
 import type { PrimitiveProps } from "../types";
@@ -80,6 +81,7 @@ export const Button = function <T extends _t.As = "button">(
     onPress,
     onLongPress,
     preservesFocus,
+    haptic = "tap",
     _motion,
     ...restProps
   } = props;
@@ -108,7 +110,12 @@ export const Button = function <T extends _t.As = "button">(
     {
       elementType,
       isDisabled,
-      onPress,
+      // The buzz belongs to the press itself, so it fires even for
+      // buttons whose work happens elsewhere (form submits, links).
+      onPress: (event) => {
+        if (haptic !== false) fireHaptic(haptic);
+        onPress?.(event);
+      },
       href,
       preventFocusOnPress: preservesFocus,
       type: elementType === "button" ? (buttonKind ?? "button") : undefined,

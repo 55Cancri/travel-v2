@@ -2,6 +2,7 @@ import type { MotionProps } from "framer-motion";
 import type { LongPressEvent, PressEvent } from "react-aria";
 import type * as React from "react";
 
+import type { HapticName } from "../haptics";
 import type * as _tt from "../types";
 
 export type As = _tt.ButtonElement;
@@ -36,5 +37,11 @@ export type Props<T extends _tt.ButtonElement = "button"> = _tt.PolymorphicProps
      * toolbar buttons that act on a focused input.
      */
     preservesFocus?: boolean;
+    /**
+     * The tactile cue a press fires. Every press taps unless a call site
+     * names a different cue or silences it with false (for a handler
+     * that sometimes suppresses its own action, where a buzz would lie).
+     */
+    haptic?: HapticName | false;
   }
 >;

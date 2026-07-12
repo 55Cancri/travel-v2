@@ -1,7 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Block, Button, Link, Text } from "atoms";
 import { Numeric, PrimaryButton, Subtext, Title } from "alloys";
-import { haptics } from "entities/haptics";
 import { createTrip, resetToSeed, useDb } from "entities/trips/store";
 import { UiVersionPicker } from "../../picker";
 
@@ -11,7 +10,6 @@ export function TripsShelf() {
   const navigate = useNavigate();
 
   const newTrip = () => {
-    haptics.tap();
     const id = createTrip("Untitled trip");
     navigate({ to: "/trip/$tripId", params: { tripId: id } });
   };
@@ -48,7 +46,6 @@ export function TripsShelf() {
               key={trip.id}
               to="/trip/$tripId"
               params={{ tripId: trip.id }}
-              onClick={() => haptics.tap()}
               display="block"
               p="md"
               bg="surface-panel"
