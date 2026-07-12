@@ -25,7 +25,7 @@ export function LineRow(props: Props) {
   return (
     <Block
       grid
-      cols={plain ? "1fr" : "1.6rem 1fr"}
+      cols={plain ? "1fr" : "minmax(1.6rem, max-content) 1fr"}
       columnGap={plain ? undefined : "xs"}
       alignItems="start"
       // Indentation is a per-line runtime value, so it rides a raw style.
