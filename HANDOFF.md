@@ -38,6 +38,66 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: verify italics + contextual bar end to end (planned 2026-07-12)
+
+Owner reports italics STILL not visible on his device and asked to
+confirm the contextual bar (selection = B/I/U/S, bare caret = line
+controls) is implemented, deployed, and working. Found on arrival:
+commit 4b34c2a carries the italic face + contextual bar, but the
+working tree holds an UNCOMMITTED follow-up (syncTextSelected recompute
+on focus, bar spacing tweak) that never shipped. PLAN:
+
+- [x] Read the rich-text render path (rich-dom.ts) and confirm the
+      italic mark actually maps to font-style italic with the Inter
+      italic face loaded. (Yes: italic renders as <i>, computed
+      font-style italic, family Inter Variable.)
+- [x] Run the local dev server, apply italic to selected text, verify
+      the slant VISUALLY (screenshot), and verify the bar swaps
+      between format buttons (selection) and line controls (caret).
+      (All verified: real slant on screen, bar swaps both directions,
+      marks stack (i+b), storage records spans correctly, focus stays
+      on the line through bar presses.)
+- [x] Commit the follow-up to slice/31 (PR #31): 1b6f7ea, pushed,
+      merged to bleeding-edge (646d9d3), pushed.
+- [x] Deploy, verify on prod: deployed clean (no [deleting] lines);
+      prod serves the new build's hashed CSS with the italic
+      @font-face and the inter-latin-wght-italic woff2 (both 200).
+- [x] Sol background review of the follow-up diff: conformance pass,
+      no blocking defect. Its two accepted findings (the selection
+      probe ran before the programmatic selection landed; a
+      selectionchange straggling in after blur could re-show the
+      format bar) are FIXED in 39e5f64. Its stale-closure concern was
+      checked against the real compiler output and is not a bug; the
+      identity contract is now named in a comment on syncTextSelected.
+- [x] BONUS, queue burn-down: the format buttons now show PRESSED for
+      the marks the whole selection carries (the aria-pressed nit
+      queued by the rich-text audit): marksOver in lines.ts (tested,
+      including agreement with applyMark's toggle threshold),
+      selectedMarks replaces the textSelected boolean, edit-bar
+      renders the four buttons from one FORMATS table with
+      aria-pressed + a surface-muted fill. Commit 39e5f64 on
+      slice/31 (PR #31), merged to bleeding-edge (8a6d6b6), deployed,
+      browser-verified (Italic pressed on italic text, Bold
+      press/unpress live-updates, caret returns line controls). Sol
+      review of this commit: pass on all three verdicts, zero defects;
+      its one note (no DOM-level component tests for the bar) joins
+      the standing test-infra gap, which now needs a happy-dom vs
+      Playwright decision before bar behavior can get automated
+      coverage.
+
+VERIFICATION GOTCHA (cost an hour, do not relearn): the in-app browser
+automation CANNOT create native text selections (double-click,
+drag-select, and shift+arrow all fail silently in the contenteditable),
+and its screenshot-coordinate clicks mismap near the bottom bar. Use
+getSelection().setBaseAndExtent(...) in page JS to build the selection
+(it fires the same selectionchange the app listens to) and click bar
+buttons by read_page REFS, never by screenshot coordinates. Ref clicks
+exercise the full react-aria press path and preservesFocus correctly.
+
+If the owner STILL sees no italics on his phone after this deploy, the
+remaining suspects are his browser cache (hard refresh) or the phone
+sitting on UI v1 rather than v2.
+
 ## Round: bar polish and a real italic face (planned 2026-07-12)
 
 Owner feedback after phone testing rich text. PLAN, before the work:
