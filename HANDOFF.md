@@ -42,18 +42,18 @@ alongside it. Maintain it like this:
 
 Owner feedback after phone testing rich text. PLAN, before the work:
 
-- [ ] **Italics render for real.** Inter Variable's default fontsource
+- [x] **Italics render for real.** Inter Variable's default fontsource
       file is upright-only (font-style: normal), so <i> had no italic
       face to match and the browser did not synthesize one. Import
       @fontsource-variable/inter/wght-italic.css alongside, verify the
       slant VISUALLY (screenshot), not just by computed style.
-- [ ] **Compact bar**: shrink the gap between icon buttons (2px) and
+- [x] **Compact bar**: shrink the gap between icon buttons (2px) and
       the group separators (xs), buttons keep their 2rlh hit size.
-- [ ] **Contextual bar**: a document selectionchange listener tracks
+- [x] **Contextual bar**: a document selectionchange listener tracks
       whether the active line carries a non-collapsed selection; with a
       selection the bar shows ONLY the format buttons (B I U S), else
       ONLY the line controls (lists + indent/outdent).
-- [ ] Verify, test, follow-up commit on slice/31 (PR #31), merge,
+- [x] Verify, test, follow-up commit on slice/31 (PR #31), merge,
       deploy.
 
 ## Round: rich text on the canvas (planned 2026-07-12)
