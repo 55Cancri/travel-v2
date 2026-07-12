@@ -32,6 +32,45 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: the v2 canvas editor (2026-07-11, night)
+
+The owner's design brief for v2's start: an editable canvas with typed
+markers, indents, vertical rhythm, and indent/outdent buttons riding
+above the phone keyboard that never close it. DONE, deployed to prod
+(PR #30, stacked on #29):
+
+- `src/versions/v2/canvas/`: `lines.ts` (Line record: id/text/indent/
+  kind/done; marker claiming; the numbering walk), `line-row.tsx`
+  (marker gutter + auto-growing textarea, one shared text column),
+  `edit-bar.tsx` (fixed bottom bar, visualViewport-lifted above the
+  Android keyboard), `caret-line.ts` (wrapped-line caret math),
+  `index.tsx` (state, localStorage persistence under
+  `travel2:v2:canvas`, the key engine).
+- Markers: "- " bullet, "[] "/"[ ] " checkbox (tap to toggle, strikes
+  through), "N. " numbered with automatic renumbering per indent run.
+  Enter splits and inherits; Enter on an empty marker line demotes it;
+  Backspace at start climbs marker -> indent -> merge. Tab/Shift-Tab
+  and the edit-bar buttons indent/outdent.
+- The Button atom gained `preservesFocus` (react-aria's
+  preventFocusOnPress): edit-bar presses never move focus, so the
+  keyboard stays open. Verified: the bar (which hides on blur) stays up
+  through a press that applies its action.
+- **Android IME hard-won lesson**: keydown on mobile IMEs (and the
+  browser automation driver, which is how it surfaced) can carry
+  unusable key values, so Enter and backspace-at-start ALSO answer
+  through a DELEGATED NATIVE beforeinput listener on the canvas shell
+  (insertLineBreak / deleteContentBackward). React's onBeforeInput is
+  a synthetic that does NOT see native beforeinput, so the listener is
+  imperative (AbortController). A handled keydown cancels its
+  beforeinput, so desktop never double-fires. Both paths are exercised
+  in the test plan.
+- Canvas content is per device and NOT synced or tied to trips yet
+  (deliberate: it is a feel prototype for the editor).
+
+AWAITING: owner's phone test (markers, keyboard bar, focus retention on
+his Galaxy). A Sol background review of the canvas was in flight as this
+entry was written; its findings land in the next round entry if any.
+
 ## Round: generation v2 opens as a blank canvas (2026-07-11, later)
 
 The owner is starting the v2 UI design. DONE:
