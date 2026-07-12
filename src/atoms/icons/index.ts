@@ -27,3 +27,7 @@ export { Outdent } from "./outdent";
 export { ListBullets } from "./list-bullets";
 export { ListChecks } from "./list-checks";
 export { ListNumbers } from "./list-numbers";
+export { TextB } from "./text-b";
+export { TextItalic } from "./text-italic";
+export { TextUnderline } from "./text-underline";
+export { TextStrikethrough } from "./text-strikethrough";
