@@ -1,4 +1,7 @@
+// The default Inter file is upright-only; without the italic face, <i>
+// has nothing to match and renders unslanted.
 import "@fontsource-variable/inter/index.css";
+import "@fontsource-variable/inter/wght-italic.css";
 import * as React from "react";
 import { Block } from "atoms";
 import { EditBar } from "./edit-bar";
@@ -63,6 +66,7 @@ const loadLines = (): Line[] => {
 export function Canvas() {
   const [lines, setLines] = React.useState<Line[]>(loadLines);
   const [editing, setEditing] = React.useState(false);
+  const [textSelected, setTextSelected] = React.useState(false);
   const linesRef = React.useRef(lines);
   const inputs = React.useRef(new Map<string, HTMLElement>());
   const pendingFocus = React.useRef<{ id: string; start: number; end: number } | null>(null);
@@ -371,6 +375,23 @@ export function Canvas() {
     return () => abort.abort();
   }, []);
 
+  // The bar swaps between line controls and format controls based on
+  // whether real text is selected in the active line.
+  React.useEffect(() => {
+    const abort = new AbortController();
+    document.addEventListener(
+      "selectionchange",
+      () => {
+        const id = activeId.current;
+        const el = id ? inputs.current.get(id) : null;
+        const offsets = el ? selectionOffsets(el) : null;
+        setTextSelected(Boolean(offsets && offsets.start !== offsets.end));
+      },
+      { signal: abort.signal },
+    );
+    return () => abort.abort();
+  }, []);
+
   // Up/down hop lines editor-style, keeping the caret's character column.
   // Wrapped lines keep native caret movement inside themselves; only the
   // edge row leaves the line.
@@ -485,6 +506,7 @@ export function Canvas() {
       <Block h="8rem" onClick={focusTail} />
       {editing ? (
         <EditBar
+          formatting={textSelected}
           onMark={(kind) => markLine(activeId.current, kind)}
           onFormat={(mark) => formatSelection(activeId.current, mark)}
           onOutdent={() => shiftIndent(activeId.current, -1)}

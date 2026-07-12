@@ -15,6 +15,9 @@ import { IconButton } from "alloys";
 import type { LineKind, Mark } from "./lines";
 
 type Props = {
+  // With text selected the bar is about the SELECTION (format buttons);
+  // with a bare caret it is about the LINE (lists, indentation).
+  formatting: boolean;
   onMark: (kind: Exclude<LineKind, "text">) => void;
   onFormat: (mark: Mark) => void;
   onOutdent: () => void;
@@ -25,8 +28,7 @@ type Props = {
 // bottom of the LAYOUT viewport, then lifted by however much the keyboard
 // shrinks the VISUAL viewport (Android Chrome keeps fixed elements under
 // the keyboard by default). Buttons preserve focus so pressing them never
-// closes the keyboard; the row scrolls sideways on screens narrower than
-// its buttons.
+// closes the keyboard.
 export function EditBar(props: Props) {
   const [lift, setLift] = React.useState(0);
   React.useEffect(() => {
@@ -48,7 +50,7 @@ export function EditBar(props: Props) {
       grid
       gridAutoFlow="column"
       justifyContent="start"
-      gap="xs"
+      gap="2px"
       px="sm"
       py="2px"
       overflowX="auto"
@@ -61,75 +63,81 @@ export function EditBar(props: Props) {
     >
       {/* 2rlh keeps every control at fingertip size: these are the
           primary surface while the phone keyboard is up. */}
-      <IconButton
-        preservesFocus
-        size="2rlh"
-        aria-label="Bulleted list"
-        onPress={() => props.onMark("bullet")}
-      >
-        <ListBullets size={20} />
-      </IconButton>
-      <IconButton
-        preservesFocus
-        size="2rlh"
-        aria-label="Checkbox"
-        onPress={() => props.onMark("checkbox")}
-      >
-        <ListChecks size={20} />
-      </IconButton>
-      <IconButton
-        preservesFocus
-        size="2rlh"
-        aria-label="Numbered list"
-        onPress={() => props.onMark("numbered")}
-      >
-        <ListNumbers size={20} />
-      </IconButton>
-      <IconButton
-        preservesFocus
-        size="2rlh"
-        aria-label="Outdent"
-        onPress={props.onOutdent}
-        ml="sm"
-      >
-        <Outdent size={20} />
-      </IconButton>
-      <IconButton preservesFocus size="2rlh" aria-label="Indent" onPress={props.onIndent}>
-        <Indent size={20} />
-      </IconButton>
-      <IconButton
-        preservesFocus
-        size="2rlh"
-        aria-label="Bold"
-        onPress={() => props.onFormat("bold")}
-        ml="sm"
-      >
-        <TextB size={20} />
-      </IconButton>
-      <IconButton
-        preservesFocus
-        size="2rlh"
-        aria-label="Italic"
-        onPress={() => props.onFormat("italic")}
-      >
-        <TextItalic size={20} />
-      </IconButton>
-      <IconButton
-        preservesFocus
-        size="2rlh"
-        aria-label="Underline"
-        onPress={() => props.onFormat("underline")}
-      >
-        <TextUnderline size={20} />
-      </IconButton>
-      <IconButton
-        preservesFocus
-        size="2rlh"
-        aria-label="Strikethrough"
-        onPress={() => props.onFormat("strike")}
-      >
-        <TextStrikethrough size={20} />
-      </IconButton>
+      {props.formatting ? (
+        <>
+          <IconButton
+            preservesFocus
+            size="2rlh"
+            aria-label="Bold"
+            onPress={() => props.onFormat("bold")}
+          >
+            <TextB size={20} />
+          </IconButton>
+          <IconButton
+            preservesFocus
+            size="2rlh"
+            aria-label="Italic"
+            onPress={() => props.onFormat("italic")}
+          >
+            <TextItalic size={20} />
+          </IconButton>
+          <IconButton
+            preservesFocus
+            size="2rlh"
+            aria-label="Underline"
+            onPress={() => props.onFormat("underline")}
+          >
+            <TextUnderline size={20} />
+          </IconButton>
+          <IconButton
+            preservesFocus
+            size="2rlh"
+            aria-label="Strikethrough"
+            onPress={() => props.onFormat("strike")}
+          >
+            <TextStrikethrough size={20} />
+          </IconButton>
+        </>
+      ) : (
+        <>
+          <IconButton
+            preservesFocus
+            size="2rlh"
+            aria-label="Bulleted list"
+            onPress={() => props.onMark("bullet")}
+          >
+            <ListBullets size={20} />
+          </IconButton>
+          <IconButton
+            preservesFocus
+            size="2rlh"
+            aria-label="Checkbox"
+            onPress={() => props.onMark("checkbox")}
+          >
+            <ListChecks size={20} />
+          </IconButton>
+          <IconButton
+            preservesFocus
+            size="2rlh"
+            aria-label="Numbered list"
+            onPress={() => props.onMark("numbered")}
+          >
+            <ListNumbers size={20} />
+          </IconButton>
+          <IconButton
+            preservesFocus
+            size="2rlh"
+            aria-label="Outdent"
+            onPress={props.onOutdent}
+            ml="xs"
+          >
+            <Outdent size={20} />
+          </IconButton>
+          <IconButton preservesFocus size="2rlh" aria-label="Indent" onPress={props.onIndent}>
+            <Indent size={20} />
+          </IconButton>
+        </>
+      )}
     </Block>
   );
 }
