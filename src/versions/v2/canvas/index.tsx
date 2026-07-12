@@ -3,7 +3,7 @@ import { Block } from "atoms";
 import { caretLine } from "./caret-line";
 import { EditBar } from "./edit-bar";
 import { LineRow } from "./line-row";
-import { type Line, claimMarker, clampIndent, newLine, numberFor } from "./lines";
+import { type Line, claimMarker, clampIndent, isLine, newLine, numberFor } from "./lines";
 
 const CANVAS_KEY = "travel2:v2:canvas";
 
@@ -11,8 +11,18 @@ const loadLines = (): Line[] => {
   try {
     const raw = localStorage.getItem(CANVAS_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Line[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const sound = parsed
+          .filter(isLine)
+          .map((line) => ({ ...line, indent: clampIndent(line.indent) }));
+        if (sound.length < parsed.length) {
+          console.warn(
+            `[canvas] dropped ${parsed.length - sound.length} malformed stored line(s)`,
+          );
+        }
+        if (sound.length > 0) return sound;
+      }
     }
   } catch (error) {
     console.warn("[canvas] stored canvas unreadable, starting fresh:", error);
@@ -24,13 +34,23 @@ const loadLines = (): Line[] => {
 // and numbered items as you type their markers, indent with Tab or the
 // edit bar, and persist per device. Renders client-only (the route's
 // mount gate), so localStorage is safe here.
+//
+// Mutations compute the next document AT EVENT TIME from linesRef and
+// hand setState a plain value: React may replay updater functions, so
+// nothing that mints ids or writes refs may live inside one.
 export function Canvas() {
   const [lines, setLines] = React.useState<Line[]>(loadLines);
   const [editing, setEditing] = React.useState(false);
+  const linesRef = React.useRef(lines);
   const inputs = React.useRef(new Map<string, HTMLTextAreaElement>());
   const pendingFocus = React.useRef<{ id: string; at: number } | null>(null);
   const activeId = React.useRef<string | null>(null);
   const shellRef = React.useRef<HTMLDivElement | null>(null);
+
+  const commit = (next: Line[]) => {
+    linesRef.current = next;
+    setLines(next);
+  };
 
   React.useEffect(() => {
     try {
@@ -54,8 +74,8 @@ export function Canvas() {
   });
 
   const editText = (id: string, value: string, caret: number) => {
-    setLines((prev) =>
-      prev.map((line) => {
+    commit(
+      linesRef.current.map((line) => {
         if (line.id !== id) return line;
         if (line.kind === "text") {
           const claimed = claimMarker(value);
@@ -71,91 +91,85 @@ export function Canvas() {
   };
 
   const splitAt = (id: string) => {
-    const caret = inputs.current.get(id)?.selectionStart ?? 0;
-    setLines((prev) => {
-      const at = prev.findIndex((line) => line.id === id);
-      if (at < 0) return prev;
-      const line = prev[at];
-      // Enter on an empty marker line demotes it to plain text instead
-      // of spawning another empty item.
-      if (line.kind !== "text" && line.text === "") {
-        pendingFocus.current = { id, at: 0 };
-        return prev.map((entry) =>
+    const prev = linesRef.current;
+    const at = prev.findIndex((line) => line.id === id);
+    if (at < 0) return;
+    const line = prev[at];
+    // Enter on an empty marker line demotes it to plain text instead
+    // of spawning another empty item.
+    if (line.kind !== "text" && line.text === "") {
+      pendingFocus.current = { id, at: 0 };
+      commit(
+        prev.map((entry) =>
           entry.id === id ? { ...entry, kind: "text" as const, done: false } : entry,
-        );
-      }
-      const spawned = newLine({
-        text: line.text.slice(caret),
-        indent: line.indent,
-        kind: line.kind,
-      });
-      pendingFocus.current = { id: spawned.id, at: 0 };
-      return prev
-        .slice(0, at)
-        .concat([{ ...line, text: line.text.slice(0, caret) }, spawned], prev.slice(at + 1));
+        ),
+      );
+      return;
+    }
+    // Enter over a selection replaces it: the head keeps what precedes
+    // the selection, the spawned line gets what follows it.
+    const el = inputs.current.get(id);
+    const start = el?.selectionStart ?? line.text.length;
+    const end = el?.selectionEnd ?? start;
+    const spawned = newLine({
+      text: line.text.slice(end),
+      indent: line.indent,
+      kind: line.kind,
     });
+    pendingFocus.current = { id: spawned.id, at: 0 };
+    commit(
+      prev
+        .slice(0, at)
+        .concat([{ ...line, text: line.text.slice(0, start) }, spawned], prev.slice(at + 1)),
+    );
   };
 
   const backspaceAtStart = (id: string) => {
-    setLines((prev) => {
-      const at = prev.findIndex((line) => line.id === id);
-      if (at < 0) return prev;
-      const line = prev[at];
-      // The undo ladder: marker first, then one indent step, then merge
-      // into the line above.
-      if (line.kind !== "text") {
-        pendingFocus.current = { id, at: 0 };
-        return prev.map((entry) =>
+    const prev = linesRef.current;
+    const at = prev.findIndex((line) => line.id === id);
+    if (at < 0) return;
+    const line = prev[at];
+    // The undo ladder: marker first, then one indent step, then merge
+    // into the line above.
+    if (line.kind !== "text") {
+      pendingFocus.current = { id, at: 0 };
+      commit(
+        prev.map((entry) =>
           entry.id === id ? { ...entry, kind: "text" as const, done: false } : entry,
-        );
-      }
-      if (line.indent > 0) {
-        pendingFocus.current = { id, at: 0 };
-        return prev.map((entry) =>
-          entry.id === id ? { ...entry, indent: entry.indent - 1 } : entry,
-        );
-      }
-      if (at === 0) return prev;
-      const above = prev[at - 1];
-      pendingFocus.current = { id: above.id, at: above.text.length };
-      return prev
+        ),
+      );
+      return;
+    }
+    if (line.indent > 0) {
+      pendingFocus.current = { id, at: 0 };
+      commit(
+        prev.map((entry) => (entry.id === id ? { ...entry, indent: entry.indent - 1 } : entry)),
+      );
+      return;
+    }
+    if (at === 0) return;
+    const above = prev[at - 1];
+    pendingFocus.current = { id: above.id, at: above.text.length };
+    commit(
+      prev
         .slice(0, at - 1)
-        .concat([{ ...above, text: above.text + line.text }], prev.slice(at + 1));
-    });
+        .concat([{ ...above, text: above.text + line.text }], prev.slice(at + 1)),
+    );
   };
 
   const shiftIndent = (id: string | null, delta: number) => {
     if (!id) return;
-    setLines((prev) =>
-      prev.map((line) =>
+    commit(
+      linesRef.current.map((line) =>
         line.id === id ? { ...line, indent: clampIndent(line.indent + delta) } : line,
       ),
     );
   };
 
   const toggleDone = (id: string) => {
-    setLines((prev) =>
-      prev.map((line) => (line.id === id ? { ...line, done: !line.done } : line)),
+    commit(
+      linesRef.current.map((line) => (line.id === id ? { ...line, done: !line.done } : line)),
     );
-  };
-
-  // Up/down hop lines editor-style, keeping the caret's character column.
-  // Wrapped lines keep native caret movement inside themselves; only the
-  // edge row leaves the line.
-  const hop = (event: React.KeyboardEvent<HTMLTextAreaElement>, up: boolean) => {
-    const el = event.currentTarget;
-    const { line, lineCount } = caretLine(el);
-    if (up ? line > 0 : line < lineCount - 1) return;
-    const rows = Array.from(
-      document.querySelectorAll<HTMLTextAreaElement>("textarea[data-canvas-line]"),
-    );
-    const neighbor = rows[rows.indexOf(el) + (up ? -1 : 1)];
-    if (!neighbor) return;
-    event.preventDefault();
-    const column = el.selectionStart ?? 0;
-    const at = Math.min(column, neighbor.value.length);
-    neighbor.focus();
-    neighbor.setSelectionRange(at, at);
   };
 
   // Mobile IMEs (Android GBoard especially) fire keydown with unusable
@@ -163,8 +177,7 @@ export function Canvas() {
   // beforeinput, delegated from the shell (React's onBeforeInput is a
   // synthetic that misses it). A handled keydown cancels its
   // beforeinput, so desktop never double-fires. The mutations inside
-  // only touch refs and functional setState, so the mount-once
-  // listener never sees stale state.
+  // read linesRef, so the mount-once listener never sees stale state.
   React.useEffect(() => {
     const shell = shellRef.current;
     if (!shell) return;
@@ -201,8 +214,30 @@ export function Canvas() {
     return () => abort.abort();
   }, []);
 
+  // Up/down hop lines editor-style, keeping the caret's character column.
+  // Wrapped lines keep native caret movement inside themselves; only the
+  // edge row leaves the line.
+  const hop = (event: React.KeyboardEvent<HTMLTextAreaElement>, up: boolean) => {
+    const el = event.currentTarget;
+    const { line, lineCount } = caretLine(el);
+    if (up ? line > 0 : line < lineCount - 1) return;
+    const rows = Array.from(
+      document.querySelectorAll<HTMLTextAreaElement>("textarea[data-canvas-line]"),
+    );
+    const neighbor = rows[rows.indexOf(el) + (up ? -1 : 1)];
+    if (!neighbor) return;
+    event.preventDefault();
+    const column = el.selectionStart ?? 0;
+    const at = Math.min(column, neighbor.value.length);
+    neighbor.focus();
+    neighbor.setSelectionRange(at, at);
+  };
+
   const lineKeyDown =
     (id: string) => (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // An IME mid-composition owns Enter (it confirms the composed
+      // text), and structural edits would tear the composition apart.
+      if (event.nativeEvent.isComposing) return;
       if (event.key === "Enter") {
         event.preventDefault();
         splitAt(id);
@@ -227,16 +262,23 @@ export function Canvas() {
       }
     };
 
+  // The edit bar exists for a focused LINE. Focus landing on any other
+  // control inside the shell (a checkbox, the bar itself would but its
+  // buttons preserve focus) means typing ended, so the bar goes away
+  // rather than acting on a stale line.
   const trackFocus = (event: React.FocusEvent) => {
-    const el = event.target as HTMLTextAreaElement;
-    if (el.dataset?.canvasLine === undefined) return;
-    for (const [id, node] of inputs.current) {
-      if (node === el) {
-        activeId.current = id;
-        break;
+    const el = event.target;
+    if (el instanceof HTMLTextAreaElement && el.dataset.canvasLine !== undefined) {
+      for (const [id, node] of inputs.current) {
+        if (node === el) {
+          activeId.current = id;
+          break;
+        }
       }
+      setEditing(true);
+      return;
     }
-    setEditing(true);
+    setEditing(false);
   };
 
   const releaseFocus = (event: React.FocusEvent<HTMLDivElement>) => {
@@ -245,7 +287,7 @@ export function Canvas() {
   };
 
   const focusTail = () => {
-    const tail = lines.at(-1);
+    const tail = linesRef.current.at(-1);
     if (!tail) return;
     const el = inputs.current.get(tail.id);
     el?.focus();

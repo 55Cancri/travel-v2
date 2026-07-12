@@ -12,6 +12,8 @@ export function Checkbox(props: {
   muted?: boolean;
   onToggle: () => void;
   label?: string;
+  /** Toggling never moves focus here, so an editor's caret and keyboard survive the tap. */
+  preservesFocus?: boolean;
 }) {
   return (
     <Button
@@ -20,6 +22,7 @@ export function Checkbox(props: {
       aria-checked={props.checked}
       aria-label={props.label}
       onPress={props.onToggle}
+      preservesFocus={props.preservesFocus}
       grid
       placeItems="center"
       w="1.3rem"
