@@ -96,6 +96,15 @@ export const applyMark = (spans: Span[], start: number, end: number, mark: Mark)
   return normalizeSpans(sliceSpans(spans, 0, start).concat(reworked, sliceSpans(spans, end)));
 };
 
+// The marks every character of [start, end) carries: exactly the set
+// applyMark would lift rather than add, so a format button reading this
+// as its pressed state always previews the toggle's direction.
+export const marksOver = (spans: Span[], start: number, end: number) => {
+  const covered = sliceSpans(spans, start, end);
+  if (covered.length === 0) return [] as Mark[];
+  return MARK_ORDER.filter((mark) => covered.every((span) => span.marks.includes(mark)));
+};
+
 // Typing a marker prefix at the start of a plain line converts it: "- "
 // becomes a bullet, "[] " (or "[ ] ") a checkbox, "1. " (any number) a
 // numbered item. Returns the claimed kind and the spans with the prefix

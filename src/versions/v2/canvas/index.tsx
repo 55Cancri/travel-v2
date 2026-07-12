@@ -14,6 +14,7 @@ import {
   claimMarker,
   clampIndent,
   concatSpans,
+  marksOver,
   migrateStoredLine,
   newLine,
   numberFor,
@@ -66,7 +67,7 @@ const loadLines = (): Line[] => {
 export function Canvas() {
   const [lines, setLines] = React.useState<Line[]>(loadLines);
   const [editing, setEditing] = React.useState(false);
-  const [textSelected, setTextSelected] = React.useState(false);
+  const [selectedMarks, setSelectedMarks] = React.useState<Mark[] | null>(null);
   const linesRef = React.useRef(lines);
   const inputs = React.useRef(new Map<string, HTMLElement>());
   const pendingFocus = React.useRef<{ id: string; start: number; end: number } | null>(null);
@@ -99,6 +100,10 @@ export function Canvas() {
     if (!el) return;
     el.focus();
     setSelection(el, want.start, want.end);
+    // A same-element focus fires no focus event and the programmatic
+    // selection lands after it anyway, so the bar reads the fresh
+    // selection here or not at all.
+    syncTextSelected();
   });
 
   const lineAt = (id: string) => linesRef.current.findIndex((line) => line.id === id);
@@ -376,14 +381,25 @@ export function Canvas() {
   }, []);
 
   // The bar swaps between line controls and format controls based on
-  // whether real text is selected in the active line. Recomputed on
-  // every selection event AND whenever the active line changes, since a
-  // programmatic focus does not always fire selectionchange.
+  // whether real text is selected in the active line, and the format
+  // buttons read the selection's common marks as their pressed state.
+  // Recomputed on every selection event AND whenever the active line
+  // changes, since a programmatic focus does not always fire
+  // selectionchange. The mount-time document listener keeps the first
+  // render's copy of this function, so it may read only refs and state
+  // setters, never state or props.
   const syncTextSelected = () => {
     const id = activeId.current;
     const el = id ? inputs.current.get(id) : null;
-    const offsets = el ? selectionOffsets(el) : null;
-    setTextSelected(Boolean(offsets && offsets.start !== offsets.end));
+    // The focus gate keeps a selectionchange straggling in after blur
+    // from resurrecting the format bar.
+    const offsets = el && document.activeElement === el ? selectionOffsets(el) : null;
+    if (!el || !offsets || offsets.start === offsets.end) {
+      setSelectedMarks(null);
+      return;
+    }
+    const next = marksOver(parseSpans(el), offsets.start, offsets.end);
+    setSelectedMarks((prev) => (prev && prev.join() === next.join() ? prev : next));
   };
 
   React.useEffect(() => {
@@ -474,7 +490,7 @@ export function Canvas() {
 
   const releaseFocus = (event: React.FocusEvent<HTMLDivElement>) => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-    setTextSelected(false);
+    setSelectedMarks(null);
     setEditing(false);
   };
 
@@ -508,7 +524,7 @@ export function Canvas() {
       <Block h="8rem" onClick={focusTail} />
       {editing ? (
         <EditBar
-          formatting={textSelected}
+          marks={selectedMarks}
           onMark={(kind) => markLine(activeId.current, kind)}
           onFormat={(mark) => formatSelection(activeId.current, mark)}
           onOutdent={() => shiftIndent(activeId.current, -1)}
