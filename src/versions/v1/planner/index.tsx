@@ -1,7 +1,6 @@
 import * as React from "react";
-import { ArrowLeft, Block, Button, Input, Link, Plus, Text } from "atoms";
+import { ArrowLeft, Block, Button, Input, Link, Plus, Text, haptic } from "atoms";
 import { Center, Subtext } from "alloys";
-import { haptics } from "entities/haptics";
 import {
   addDay,
   addSegment,
@@ -351,7 +350,6 @@ export function Planner(props: { tripId: string }) {
 
   const onFly = (item: Item) => {
     if (!item.place) return;
-    haptics.tap();
     mapApi.current?.focusItem(item.id, item.place, 16);
     // Flying to a place is a map moment: the sheet drops out of the way.
     storeSheetRest("peek");
@@ -414,7 +412,6 @@ export function Planner(props: { tripId: string }) {
   };
 
   const selectScope = (next: Scope) => {
-    haptics.tap();
     storeStepLeg(null);
     storeScope(next);
     storeScopeNonce((nonce) => nonce + 1);
@@ -446,7 +443,6 @@ export function Planner(props: { tripId: string }) {
     ) {
       return;
     }
-    haptics.tap();
     deleteSegment(trip.id, id);
     storeActiveSegmentId(null);
     selectScope({ type: "segment" });
@@ -517,7 +513,6 @@ export function Planner(props: { tripId: string }) {
         <Block grid cols="auto 1fr auto" gap="sm" alignItems="center" pt="md">
           <Link
             to="/"
-            onClick={() => haptics.tap()}
             color="text-muted"
             display="grid"
             placeItems="center"
@@ -571,10 +566,14 @@ export function Planner(props: { tripId: string }) {
               >
                 <Button
                   type="button"
+                  // The release after a chip drag still lands here as a
+                  // press; the manual tap under haptic={false} keeps the
+                  // buzz on real selections only.
+                  haptic={false}
                   onPointerDown={(event) => onChipPointerDown(event, index, id)}
                   onPress={() => {
                     if (chipDragged.current) return;
-                    haptics.tap();
+                    haptic("tap");
                     storeActiveSegmentId(id);
                     selectScope({ type: "segment" });
                   }}

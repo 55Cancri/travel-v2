@@ -13,7 +13,6 @@ import {
   useDb,
 } from "entities/trips/store";
 import type { ContainerRef, Item } from "entities/trips/types";
-import { haptics } from "entities/haptics";
 import { caretLine } from "./caret-line";
 import { ItemRow } from "./item-row";
 import { useDragReorder } from "./use-drag-reorder";
@@ -213,7 +212,6 @@ export function Section(props: {
             onChange={(text) => setItemText(entry.id, text)}
             onPaste={rowPaste(entry, idx)}
             onToggle={() => {
-              haptics.tap();
               toggleItemDone(entry.id);
             }}
             onEdit={() => props.onEdit(entry, props.containerRef)}
