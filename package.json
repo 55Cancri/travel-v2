@@ -7,10 +7,12 @@
     "dev": "node --env-file=.env alchemy.run.ts --dev",
     "deploy": "node --env-file=.env alchemy.run.ts --force",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:names": "bun scripts/banned-names/index.ts"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.2.5",
+    "@fontsource-variable/inter": "^5.2.8",
     "@tanstack/react-router": "^1.170.16",
     "@tanstack/react-start": "^1.168.26",
     "@tanstack/router-plugin": "^1.168.18",
@@ -36,7 +38,7 @@
     "alchemy": "^0.93.12",
     "babel-plugin-react-compiler": "^1.0.0",
     "drizzle-kit": "^0.31.10",
-    "typescript": "^5.7.3",
+    "typescript": "^7.0.2",
     "vite": "^7.0.0",
     "wrangler": "^4.106.0"
   }

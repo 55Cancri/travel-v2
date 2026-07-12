@@ -8,5 +8,9 @@ export const toggleTheme = () => {
   root.dataset.theme = next;
   try {
     localStorage.setItem(THEME_KEY, next);
-  } catch {}
+  } catch {
+    // Storage can be sealed (Safari lockdown/private mode throws on
+    // setItem). The theme already applied to the document for this
+    // session; only reload persistence is lost.
+  }
 };

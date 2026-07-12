@@ -22,3 +22,8 @@ export { X } from "./x";
 export { Pencil } from "./pencil";
 export { Plus } from "./plus";
 export { Ticket } from "./ticket";
+export { Indent } from "./indent";
+export { Outdent } from "./outdent";
+export { ListBullets } from "./list-bullets";
+export { ListChecks } from "./list-checks";
+export { ListNumbers } from "./list-numbers";

@@ -1,87 +1,342 @@
-# Agent handoff — travel-2
+# Agent handoff: travel-2
 
-This file exists so the next agent (or model) can pick up exactly where the last session left
-off. It records what's built, what's decided-but-not-built, hard-won gotchas, things the user
-still needs to verify, and the user's working preferences. Read [OVERVIEW.md](OVERVIEW.md)
-(design doc) and [TODO.md](TODO.md) (checklist, keep the `Progress: N/M` counter updated)
-alongside this.
+_Updated 2026-07-11 after the UI-versioning + house-rules round._
 
-**Context:** two users total (Eric + partner). Hard deadline: Europe trip departs
-**July 28, 2026** — Amsterdam (5 days) → Paris → Belgium (Antwerp/Ghent/Brussels). The seed
-data in `src/entities/trips/seed.ts` is the *real* trip with real coordinates.
+## How this file works (read me first)
 
----
+This file exists so a FRESH agent with zero context or memory can resume
+exactly where the last session stopped, even mid-implementation. Read
+[OVERVIEW.md](OVERVIEW.md) (design vision) and [TODO.md](TODO.md) (the
+authoritative checklist, keep its `Progress: N/M` counter accurate)
+alongside it. Maintain it like this:
 
-## 1. Where things stand
+- **Every work round appends a `## Round:` entry at the TOP** (newest
+  first) before the session ends: what shipped (with file paths), what is
+  mid-flight (the exact resume point: file, branch, next command, the
+  decision already made), what the round queued, and what the owner still
+  needs to verify or decide.
+- **Write for a stranger.** More detail than feels necessary is correct.
+  An interrupted implementation must be resumable from this file alone,
+  so record intent and next steps, not just diffs. "Half of X is in
+  file Y, the remaining half is Z, designed as W" beats "worked on X".
+- **Checklists are live.** `- [ ]` items get checked off (`- [x]`) as
+  they land, in whatever round entry they live in. The owner reads these
+  to see movement.
+- **Compact when it grows.** Past ~700 lines, fold the OLDEST rounds
+  into the `## Compacted history` section at the bottom: one short
+  paragraph per round, and promote anything still load-bearing (a
+  gotcha, a decision, a preference) into the matching standing section
+  first so it survives. Recent rounds always stay verbatim. The file
+  never grows unbounded and never loses a still-true fact.
+- **Standing sections** (gotchas, preferences, locked decisions, repo
+  mechanics) live below the rounds and get edited in place, never
+  duplicated into rounds.
 
-Phase 0–3 are largely done (46/82 on TODO.md). Working today, locally:
+## Round: generation v2 opens as a blank canvas (2026-07-11, later)
 
-- Outline editor: sections per city (idea pool "Ideas — Not yet scheduled" + days), Enter/Backspace/paste keyboard engine, drag-to-reorder within a section (variable-height rows handled), done/cancelled statuses, time chips, colored place dots, detail lines, item editor (bottom sheet on mobile / modal on desktop).
-- Map: OpenFreeMap basemap, kind-colored pins, day/pool scoping, dashed route line, fly-to from row dots, popups with name+address, hand-tuned dark style, resizable split divider, mobile map/list pill.
-- City chips: outlined, hold-drag to reorder, ✕ on active chip deletes (confirm with item count; empty city deletes instantly — uses native `window.confirm` for now, a styled dialog is fine to add later).
-- Theming: ⌘D dark mode with pre-paint script, warm stone palette, blue focus tokens, themed scrollbars/popups/pins.
-- Data: module store + `useSyncExternalStore` + localStorage (`travel2:db:v1`). Every mutation is a named function in `src/entities/trips/store.ts` — **that mutation surface is the seam where sync slots in later.** Don't add ad-hoc state writes in components.
+The owner is starting the v2 UI design. DONE:
 
-Dormant on purpose (do NOT wire up without being asked): `alchemy.run.ts` (Cloudflare app: D1, `TripRoom` Durable Object, TanStack Start website, port 5006), `src/entities/db/schema.ts` (Drizzle: trips/segments/days/places/items/legs/mutations with fractional-index `rank`, HLC column, dedupe unique index), `drizzle.config.ts`. **No deploy, no provisioning, no DB writes** — the user wants local mock data until the app shape settles.
+- `src/versions/v2/`: blank trips shelf + blank planner, both carrying
+  the picker, the planner linking back to the shelf. Catalog gained the
+  entry plus a `draft` flag: the picker reaches a draft, but fresh
+  devices land on the newest SHIPPED generation (v1) until the flag is
+  dropped. Verified locally: fresh device lands on v1, the pill flips
+  both screens to v2 and back in place. PR #29 (stacked on #25).
+- **Dual-React crash fixed** (would have hit any dev machine): the dep
+  optimizer discovered `react/compiler-runtime` in a late second pass
+  after the TS7 lockfile change and handed it its own React copy, so
+  every route crashed with "null useMemoCache" / invalid-hook errors.
+  vite.config.ts now pre-declares react, react-dom, and
+  react/compiler-runtime so one optimizer pass shares one React. If it
+  ever recurs: `rm -rf node_modules/.vite` and restart.
+- **The agent door**: agents may not type the owner's real door
+  password, so `.claude/launch.json` gained `travel-2-agent-door` (the
+  full dev server with ALLOWED_EMAILS/APP_PASSWORD overridden to
+  fixture values `agent@local` / `fixture-door-not-a-secret`). Agent
+  sessions drive the app through it; `travel-2` keeps the real door.
+  Both fixes rode slice/27 (PR #27).
+- Real `.env` landed, prod deployed and redeployed (v2 + picker live).
+  TypeScript 7 done earlier in the day (see previous round).
+- KNOWN ALCHEMY CHURN, looks scary but is benign in exactly this
+  shape: because dev and deploy share stage "prod", a `bun run dev`
+  after a deploy prints `[updating] website` and `[deleting]
+  website-build` (state bookkeeping only; the deployed worker keeps
+  serving, verified live both times). A `[deleting]` line for anything
+  OTHER than website-build, or any prod-named resource during a
+  non-prod-stage run, is still the kill-it-immediately case.
 
-## 2. Unverified / known rough edges
+NEXT (the v2 design itself): the blank canvas awaits the owner's
+direction. When real v2 work starts, revisit whether map-pane internals
+(dark style table, overlays) become version-shared entities, and give
+the routes' Suspense a small skeleton fallback (a generation flip
+blanks briefly during the chunk fetch).
 
-- **The hand-tuned dark map theme has NOT been visually confirmed by the user.** It was built blind (see gotcha #1 below), validated with `npx @maplibre/maplibre-gl-style-spec gl-style-validate`, all 38 layer-id overrides matched. If colors read wrong, `DARK_PAINT` in `src/cells/planner/map-pane.tsx` is the single tuning table.
-- Blue focus rings likewise await user eyes.
-- Debug aids left in `map-pane.tsx` **intentionally**: `window.__map` (DEV-gated) and a `map.on("error")` console logger (`[map] …`). Keep them.
-- City delete uses native `window.confirm`; replace with a styled dialog eventually (maybe with the settings work).
-- Light mode got less polish than dark; user acknowledged deferring a light-mode pass.
+## Round: UI versioning, house-rules port, keyless-machine dev (2026-07-11)
 
-## 3. Hard-won gotchas (cost real debugging time — don't relearn these)
+Context: this machine pulled 115 commits of other-agent work (Cloudflare
+server live, site door, phone bottom sheet, map overlays, route stepper)
+before starting. Three asks: port stockpile's CLAUDE.md advances, version
+the UI, and turn this file into a living handoff log.
 
-1. **Hidden browser tabs freeze `requestAnimationFrame`, and MapLibre applies styles on rAF.** If the preview tab is hidden/covered, the map NEVER initializes — no errors, no markers, `isStyleLoaded()` false forever. It looks exactly like a code bug. It isn't. Bring the window forward, reload. This burned hours.
-2. **MapLibre's stylesheet is unlayered CSS**, so it beats anything Panda emits inside `@layer`. Popup/control skins must live in `src/styles.css` as plain (unlayered) rules with enough specificity (see `.maplibregl-popup .maplibregl-popup-content`).
-3. **Sticky elements pin below the scroll container's `padding-top`.** Padding on the scroll pane made sticky headers hover ~24px down with rows visibly scrolling above them. Padding goes on the first child instead.
-4. **The map camera must NOT be an effect of store state.** It refits only on `[ready, scopeKey]` (+ `scopeNonce` so re-clicking the same day recenters). When it depended on the db, every keystroke/toggle made pins "wiggle" and pin-clicks zoom out.
-5. **Drag-to-reorder: promote ONLY the lifted row** (position/zIndex/will-change). Applying will-change to all rows exploded compositing layers and made the *map* flicker during drags.
-6. Variable-height drag needs measured heights: `measure` returns each row's height at grab time; slot = midpoint crossing over the heights array; siblings shift by the lifted row's height (see `use-drag-reorder.ts`, also supports `axis: "x"` for city chips).
-7. **OpenFreeMap's "dark" style is pure grayscale** — not one hue in it. Filters/inversions over the light style look like "the lights are off" (user rejected). The fix: fetch the dark style JSON and repaint layer-by-layer (`loadDarkStyle()` + `DARK_PAINT`, 38 layer ids → paint overrides: warm near-black base, night-teal water, dark-green parks, amber-cast motorways, labels brightened ~2 steps).
-8. Auto-growing row text is a `<textarea rows={1}>` with `field-sizing: content`; Enter never inserts a newline (the section key handler spawns a row instead). Checkbox needed a `display: grid` fixed-size wrapper — as an inline-level element it sat on the text baseline and looked lower than the grip.
-9. **React Compiler is on** — no ref writes during render (the MapPane `apiRef` bug); mutate refs in effects.
-10. Verifying via preview `eval`: focus reads race React effects, evals steal focus, and row text lives in input/textarea `.value` (not `textContent`) — query values, not text.
-11. HMR sometimes shows stale errors mid-multi-file-edit ("X is not defined", "Failed to reload"); a full reload clears them — don't chase ghosts.
+DONE:
 
-## 4. User preferences (violating these caused rework)
+- **UI versioning shipped.** The organizing idea: a UI generation is a
+  self-contained folder owning its screens, and the app renders whichever
+  generation a device chose.
+  - `src/versions/` is the new module (door: `versions` path alias, which
+    REPLACED the `cells/*` alias). `catalog.ts` lists every generation
+    (id, label, lazy `TripsShelf` + `Planner` components). `choice.ts` is
+    the per-device preference store (`travel2:ui-version` in
+    localStorage, `useSyncExternalStore`, unknown/absent id resolves to
+    the latest entry). `picker.tsx` is `UiVersionPicker`, a GhostButton
+    reading `UI v1` that cycles the catalog on press.
+  - The old `src/cells/planner` moved wholesale (git mv, history intact)
+    to `src/versions/v1/planner/`. The trip-list screen JSX moved out of
+    `src/routes/index.tsx` into `src/versions/v1/trips-shelf/index.tsx`
+    and its header now renders the picker between the Trips title and
+    "+ New trip".
+  - Routes are version-neutral shells now: they keep the mount gate,
+    read `useUiVersion()`, and render the active generation's screen in
+    a `<React.Suspense fallback={null}>` (screens are `React.lazy`, so
+    dormant generations stay out of the active bundle).
+  - Adding v2 when the time comes: copy `src/versions/v1` to `v2`,
+    evolve freely, append a catalog entry. The picker and both routes
+    pick it up with no further wiring. Every generation's trip shelf
+    must keep rendering `UiVersionPicker` so a device can climb out of
+    a broken generation.
+  - Verified in the local dev server: shelf renders with the pill, the
+    planner renders from its new home, the outline keyboard engine
+    still adds/removes rows.
+- **CLAUDE.md caught up with stockpile's newer directives** (theirs had
+  2026-07-09/10 additions ours lacked): the GPT-5.6 Sol partnership
+  section (Sol reviews everything by default, division of labor, the
+  formatter ban, the gemini inline-diff review recipe), plus five owner
+  directives (paper cuts die in the turn they surface, the backlog
+  shrinks every round, behavior feedback lands in CLAUDE.md not agent
+  memory, reports speak plain language, test-ready means
+  design-complete). Skills dirs were already in sync (only cosmetic
+  project-specific wording differs).
+- **`bun run check:names` ported from stockpile** as
+  `scripts/banned-names/index.ts` (TS-only adaptation): scans
+  declaration sites and file/folder names for the banned naming stems.
+  Running it found and fixed 6 pre-existing violations: three `index`
+  locals in `use-drag-reorder.ts` (now `idx`/`i`) and
+  `keyHandler`/`pasteHandler`/`blurHandler` in `section.tsx` (now
+  `rowKeyDown`/`rowPaste`/`rowBlur`).
+- **Keyless-machine dev unblocked** (see the fire alarm below):
+  `alchemy.run.ts` now includes the Workers AI binding only when
+  Cloudflare credentials exist (API token or a wrangler login on disk),
+  because AI is the one binding with no local emulation and its remote
+  proxy hard-fails dev without credentials. `/api/curate` degrades to
+  the client's notability heuristic, which is that endpoint's designed
+  fallback. `.claude/launch.json` gained a `travel-2-local` config
+  (plain `vite dev --port 5006`) that serves off the
+  alchemy-generated `.alchemy/local/wrangler.jsonc` when the full
+  `bun run dev` cannot run.
+- Empty catches in `entities/theme` got their required
+  expected-error comments in passing (sealed-storage setItem).
+- **Peer review round applied** (GPT-5.6 Sol high-effort audit + gemini
+  inline-diff review, both on the full diff). Fixed from their findings:
+  the AI-binding conditional is now DEV-ONLY (Sol caught that a deploy
+  authenticated a way the probe cannot see would silently ship prod
+  without AI), the credential probe also accepts CLOUDFLARE_API_KEY and
+  the XDG wrangler path, `src/versions/rescue.tsx` is a version-neutral
+  error boundary in both routes so a crashed generation really can be
+  escaped (both reviewers caught that the picker inside a crashed lazy
+  screen never renders; the boundary is keyed by generation id so
+  flipping away clears it), the choice store now hears the cross-tab
+  `storage` event and clears its in-memory override, the scanner
+  handles multiline destructuring, rest elements, template literals,
+  and kebab-case file names, and store.ts param renames (`data` to
+  `snapshot`, `index` to `afterIdx`) plus the Button atom's `type` local
+  (now `buttonKind`) cleared the violations Sol found beyond the
+  scanner's reach. Pushed back on: gemini's `versions/*` wildcard alias
+  suggestion (door-only imports are deliberate house discipline).
 
-- Plain pin click must **not** move the camera; ⌘-click = street-level zoom. Row dot click = fly + popup.
-- Selected day header = accent **underline**, never red/accent text.
-- Detail lines under items: indented plain lines, **no card chrome**.
-- Rows **wrap** by default (a future setting may offer single-line).
-- Edit affordance is a **pencil**, not an ✕ next to other tappables; hover-reveal on desktop, always visible on mobile. The pencil icon was hand-tuned (stubby, 2.5 stroke, eraser divider line).
-- Dark mode must be **designed colors**, never CSS filters/inversions — applies to the map especially.
-- No amber/purple pin palette; current: terracotta/berry/teal/steel/stone with theme-adaptive shadows (`--pin-*` CSS vars in `panda.config.ts`).
-- TODO.md style: short checkbox lines; keep `Progress: N/M` accurate as tasks are checked/added/removed.
-- When consulting other models (`codex` / `gemini` CLIs are on PATH): **form your own ideas first**, append theirs at the end, clearly attributed — never lead with them.
-- Design docs before code for anything substantial; the user reviews everything.
+FOR THE OWNER (verify / decide):
 
-## 5. Next up (explicit user asks, in rough priority)
+- [x] **RESOLVED: the real `.env` landed on this machine** (owner copied
+      it 2026-07-11). Prod deployed from here the same day:
+      https://travel-v2.leaftime.workers.dev serves, root redirects
+      logged-out visitors to the door. Owner login on prod still
+      unverified by owner's own hands.
+- [x] **TypeScript 7 upgrade** (owner ask 2026-07-11): typescript
+      ^7.0.2, the native compiler. Whole tree typechecks unchanged.
+- [ ] Review the versioning design: the picker is a cycling pill on the
+      trip shelf header. Fine for 2-3 generations, becomes a menu if the
+      catalog grows. Placement and the pill treatment are open to taste.
+- [ ] The dark map theme and blue focus rings remain visually
+      unconfirmed by the owner (carried from the pre-pull handoff).
+- [x] **PR stack created** (owner said create them, 2026-07-11): PRs
+      #25 (UI versioning), #26 (banned-names scanner), #27 (keyless
+      dev), #28 (TypeScript 7), based in review order on the snapshot
+      branch `stack-base-2026-07-11` (bleeding-edge as of the round's
+      start), since this work builds on the whole open stack's
+      integration and no single open slice is an honest base. Each PR
+      diff shows exactly its own files. Retarget to main as the earlier
+      stack merges; the snapshot branch is deletable once #25 retargets.
+      Docs follow-ups ride the existing slice/10-house-rules-refresh PR.
 
-1. **Drag items BETWEEN sections** (idea pool → day). Repeatedly named "next up". `use-drag-reorder.ts` is per-container today; cross-container needs shared drop targets + a `moveItemAcross(fromRef, toRef, …)` store mutation.
-2. **Settings menu** — first setting: wrap vs single-line rows.
-3. **Smart chips** — detect times/costs/URLs while typing in a row.
-4. **Day title editing** (seed has titles like "To the beach"; headers currently show date only — deliberate).
-5. **Global paste box / brain-dump inbox** — trip-level; placement (bottom of outline vs in Ideas) deliberately undecided until the magic-paste work.
-6. **Magic paste** — paste anything (text, confirmation emails, images) → LLM → structured items on days; ambiguous pastes trigger a mini-questionnaire; undated stuff lands in the inbox. This is the marquee feature for actually importing the real trip.
-7. Geocode-as-you-type (Google Places (New), cache results at plan time — never live on-trip).
-8. Follow-ups / "still to figure out" list per trip; light-mode polish pass.
+QUEUED BY THIS ROUND:
 
-## 6. Locked future decisions (researched + verified — don't re-litigate)
+- [x] Slice this round into PRs (four slice branches pushed; PR
+      creation blocked on the base problem, see the round report).
+- [x] GPT-5.6 Sol background review of the round's diff (findings
+      applied, see above).
+- [ ] When a second UI generation starts: copy v1, then consider
+      whether map-pane internals (dark style table, overlays) should
+      become version-shared entities instead of duplicating. Give the
+      routes' Suspense a small skeleton fallback at the same time (a
+      generation flip currently blanks for the chunk fetch; moot with
+      one generation).
+- [ ] Rename `ContainerRef.type` to `kind` (its own tiny round: the
+      sweep crosses files owned by several open slices, so it must
+      land after the current PR stack merges; ContainerRef is
+      ephemeral, no data migration needed).
+- [ ] The banned-names scanner is a tripwire, not a proof (Sol):
+      params, type fields, and the Use/T prefixes escape regex. An
+      AST-based rewrite (ts-morph or the TS compiler API) would close
+      it; needs a decision on adding the dependency.
+- [ ] No test infra exists yet (no vitest/test script). Sol flags the
+      scanner and the version-choice store as the surfaces that most
+      earn tests; needs the test-framework decision first.
+- [ ] The rescue boundary is code-reviewed but not exercised (crashing
+      a generation on purpose needs a throwaway broken catalog entry;
+      cheap to do when v2 scaffolding exists).
 
-- **Sync:** D1 + Drizzle + append-only mutation log; `TripRoom` Durable Object per trip applies → broadcasts → catches up; LWW conflicts; HLC timestamps; fractional-index `rank` for ordering (deps already installed). Two users only — keep it simple.
-- **Transit:** Transitous (MOTIS) covers EU incl. **Eurostar (verified)**; Navitia is shutting down — don't use it.
-- **Geocoding:** Google Places (New), plan-time only, results cached into the trip data.
-- **Offline maps:** PMTiles region extract on R2 → OPFS download; the only *legal* offline option with OpenFreeMap-style tiles.
-- **iOS (as of 26.5):** no vibration API at all, no local alarms from web; notifications only via **Declarative Web Push** on an installed PWA. Haptics are Android-only (`entities/haptics`).
-- Voice diary port from travel v1 (MediaRecorder → OPFS → R2 → transcription) is parked in Phase 6.
+## Queue (owner asks, carried from before the pull; TODO.md is authoritative)
 
-## 7. Repo mechanics
+- [ ] **Drag items BETWEEN sections** (idea pool → day). Repeatedly
+      named "next up". `use-drag-reorder.ts` (now under
+      `src/versions/v1/planner/`) is per-container; cross-container
+      needs shared drop targets and a `moveItemAcross` store mutation.
+- [ ] Settings menu. First setting: wrap vs single-line rows.
+- [ ] Smart chips: detect times/costs/URLs while typing in a row.
+- [ ] Day title editing (headers currently show date only, deliberate).
+- [ ] Global paste box / brain-dump inbox (placement deliberately
+      undecided until the magic-paste work).
+- [ ] **Magic paste**: paste anything → LLM → structured items on days.
+      The marquee feature for importing the real trip.
+- [x] Geocode-as-you-type (landed with the Cloudflare round:
+      `/api/places` + KV cache + item-row place picking).
+- [x] Map overlays (landed: food/vegan, luggage, bikes, buses, sights,
+      Suggested with Workers-AI curation).
+- [ ] Light-mode polish pass (owner acknowledged deferring).
 
-- `bun install` (prepare runs `panda codegen` → `styled-system/`, which is gitignored), `bun run dev` → localhost:5006, `bun run typecheck`.
-- `.claude/launch.json` exists for the preview tooling (`travel-2`, bun, port 5006).
-- localStorage keys: `travel2:db:v1` (data), `travel2:theme`, `travel2:leftw` (split width).
-- The initial code landed as stacked PRs (docs → scaffold → atoms → data → dormant infra → outline → map → app wiring). Merge bottom-up; each PR's base is the branch below it.
+## Where things stand (2026-07-11)
+
+- **The Cloudflare infra is LIVE** (since 2026-07-07): the app deploys
+  to https://travel-v2.leaftime.workers.dev with D1 + KV + Workers AI
+  bound. `bun run dev` / `bun run deploy` execute `alchemy.run.ts` under
+  node. The site sits behind a door (allowlisted email + shared
+  password, 90-day sealed cookie). Trip data is still localStorage-only
+  until the D1 + TripRoom Durable Object sync lands.
+- Working UI (all now under `src/versions/v1/`): outline editor
+  (sections per city, keyboard engine, drag reorder, statuses, time
+  chips, item editor), map pane (OpenFreeMap, kind-colored pins,
+  day/pool scoping, route line + transit/route stepper, hand-tuned dark
+  style, ambient overlays with verdict cards), phone layout (outline
+  rides a bottom sheet over a fullscreen map), city chips, ⌘D theming.
+- Data: module store + `useSyncExternalStore` + localStorage
+  (`travel2:db:v1`). Every mutation is a named function in
+  `src/entities/trips/store.ts`. That mutation surface is the seam
+  where sync slots in later. No ad-hoc state writes in components.
+
+## Hard-won gotchas (cost real debugging time, do not relearn)
+
+1. **Hidden browser tabs freeze `requestAnimationFrame`, and MapLibre
+   applies styles on rAF.** A hidden/covered preview tab means the map
+   NEVER initializes: no errors, `isStyleLoaded()` false forever. Looks
+   exactly like a code bug. Bring the window forward, reload.
+2. **MapLibre's stylesheet is unlayered CSS**, so it beats anything
+   Panda emits inside `@layer`. Popup/control skins live in
+   `src/styles.css` as plain unlayered rules.
+3. **Sticky elements pin below the scroll container's `padding-top`.**
+   Padding goes on the first child instead.
+4. **The map camera must NOT be an effect of store state.** It refits
+   only on `[ready, scopeKey]` (+ `scopeNonce`). Depending on the db
+   made pins wiggle on every keystroke.
+5. **Drag-to-reorder: promote ONLY the lifted row**
+   (position/zIndex/will-change). Promoting all rows exploded
+   compositing layers and made the map flicker.
+6. Variable-height drag needs measured heights: slot = midpoint
+   crossing over the heights array (see `use-drag-reorder.ts`, also
+   supports `axis: "x"` for city chips).
+7. **OpenFreeMap's "dark" style is pure grayscale.** Filters/inversions
+   read as "lights off" (owner rejected). The fix is the repaint table:
+   `loadDarkStyle()` + `DARK_PAINT` in
+   `src/versions/v1/planner/map-pane.tsx`.
+8. Auto-growing row text is `<textarea rows={1}>` with
+   `field-sizing: content`. Enter never inserts a newline (the section
+   handler spawns a row). Checkboxes need a `display: grid` fixed-size
+   wrapper.
+9. **React Compiler is on**: no ref writes during render, mutate refs
+   in effects.
+10. Verifying via preview eval: row text lives in textarea `.value`,
+    not `textContent`. Query values.
+11. HMR sometimes shows stale errors mid-multi-file-edit. A full reload
+    clears them. Don't chase ghosts. (Bit again 2026-07-11: a tsconfig
+    `paths` change also needs a dev-server RESTART, vite-tsconfig-paths
+    reads it at startup.)
+12. **Alchemy dev needs Cloudflare credentials even for local work**
+    unless the Workers AI binding is excluded (it proxies remotely).
+    See the conditional in `alchemy.run.ts`.
+
+## User preferences (violating these caused rework)
+
+- Plain pin click must NOT move the camera. ⌘-click = street-level
+  zoom. Row dot click = fly + popup.
+- Selected day header = accent underline, never accent text.
+- Detail lines under items: indented plain lines, no card chrome.
+- Rows wrap by default (a future setting may offer single-line).
+- Edit affordance is a pencil (hand-tuned icon), hover-reveal on
+  desktop, always visible on mobile.
+- Dark mode must be designed colors, never CSS filters/inversions,
+  especially the map.
+- Pin palette: terracotta/berry/teal/steel/stone (`--pin-*` vars in
+  `panda.config.ts`). No amber/purple.
+- TODO.md style: short checkbox lines, keep `Progress: N/M` accurate.
+- When consulting peer models: form your own ideas first, append theirs
+  at the end, clearly attributed. Never lead with them.
+- Design docs before code for anything substantial. The owner reviews
+  everything.
+
+## Locked future decisions (researched and verified, do not re-litigate)
+
+- **Sync:** D1 + Drizzle + append-only mutation log. `TripRoom` Durable
+  Object per trip applies → broadcasts → catches up. LWW conflicts, HLC
+  timestamps, fractional-index `rank` (deps installed). Two users only,
+  keep it simple.
+- **Transit:** Transitous (MOTIS) covers EU incl. Eurostar (verified).
+  Navitia is shutting down, don't use it.
+- **Geocoding:** Google Places (New), plan-time only, results cached
+  into trip data (now live behind `/api/places`).
+- **Offline maps:** PMTiles region extract on R2 → OPFS download. The
+  only legal offline option with OpenFreeMap-style tiles.
+- **iOS (as of 26.5):** no vibration API, no local alarms from web,
+  notifications only via Declarative Web Push on an installed PWA.
+  Haptics are Android-only (`entities/haptics`).
+- Voice diary port from travel v1 is parked in Phase 6.
+
+## Repo mechanics
+
+- `bun install` (prepare runs `panda codegen` → gitignored
+  `styled-system/`). `bun run dev` → localhost:5006 (needs `.env`, see
+  `.env.example`). `bun run deploy` ships prod. `bun run typecheck`,
+  `bun run check:names`.
+- `.claude/launch.json`: `travel-2` (full alchemy dev) and
+  `travel-2-local` (plain vite, for machines without Cloudflare
+  credentials).
+- localStorage keys: `travel2:db:v1` (data), `travel2:theme`,
+  `travel2:leftw` (split width), `travel2:ui-version` (UI generation).
+- Workflow: the working tree LIVES on `bleeding-edge`, uncommitted
+  until slicing. PR slices branch from `origin/main` (or their parent
+  slice), then merge back into `bleeding-edge`. Full rules: CLAUDE.md.
+
+## Compacted history
+
+- **Pre-2026-07-07 (the local-only era):** stacked PRs built the base
+  (docs → scaffold → atoms → data → dormant infra → outline → map →
+  app wiring), then feature rounds added the item editor, drag
+  reorder, dark map style, city chips, and theming. The Cloudflare
+  infra sat dormant by design until the owner asked for it.
