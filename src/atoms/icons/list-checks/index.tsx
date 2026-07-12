@@ -1,5 +1,6 @@
-// Checkbox list: a checked square with its lines. Stroke draws the box
-// and check so they read at toolbar size; currentColor throughout.
+// Checkbox list: two checked squares with their lines, so it reads as a
+// list of checkboxes at toolbar size. Stroke draws the boxes and checks;
+// currentColor throughout.
 export function ListChecks(props: { size?: number }) {
   const size = props.size ?? 16;
   return (
@@ -12,26 +13,43 @@ export function ListChecks(props: { size?: number }) {
       focusable="false"
     >
       <rect
-        x="32"
-        y="72"
-        width="84"
-        height="84"
-        rx="16"
+        x="34"
+        y="42"
+        width="72"
+        height="72"
+        rx="14"
         fill="none"
         stroke="currentColor"
         strokeWidth="16"
       />
       <path
-        d="M56,116l14,14,30,-30"
+        d="M54,80l12,12,26,-26"
         fill="none"
         stroke="currentColor"
         strokeWidth="16"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <rect x="148" y="84" width="76" height="16" rx="8" />
-      <rect x="148" y="128" width="76" height="16" rx="8" />
-      <rect x="32" y="188" width="192" height="16" rx="8" />
+      <rect x="136" y="70" width="86" height="16" rx="8" />
+      <rect
+        x="34"
+        y="142"
+        width="72"
+        height="72"
+        rx="14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="16"
+      />
+      <path
+        d="M54,180l12,12,26,-26"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="16"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect x="136" y="170" width="86" height="16" rx="8" />
     </svg>
   );
 }
