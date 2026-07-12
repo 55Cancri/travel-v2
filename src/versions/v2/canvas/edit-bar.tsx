@@ -1,10 +1,22 @@
 import * as React from "react";
-import { Block, Indent, ListBullets, ListChecks, ListNumbers, Outdent } from "atoms";
+import {
+  Block,
+  Indent,
+  ListBullets,
+  ListChecks,
+  ListNumbers,
+  Outdent,
+  TextB,
+  TextItalic,
+  TextStrikethrough,
+  TextUnderline,
+} from "atoms";
 import { IconButton } from "alloys";
-import type { LineKind } from "./lines";
+import type { LineKind, Mark } from "./lines";
 
 type Props = {
   onMark: (kind: Exclude<LineKind, "text">) => void;
+  onFormat: (mark: Mark) => void;
   onOutdent: () => void;
   onIndent: () => void;
 };
@@ -13,7 +25,8 @@ type Props = {
 // bottom of the LAYOUT viewport, then lifted by however much the keyboard
 // shrinks the VISUAL viewport (Android Chrome keeps fixed elements under
 // the keyboard by default). Buttons preserve focus so pressing them never
-// closes the keyboard.
+// closes the keyboard; the row scrolls sideways on screens narrower than
+// its buttons.
 export function EditBar(props: Props) {
   const [lift, setLift] = React.useState(0);
   React.useEffect(() => {
@@ -38,6 +51,7 @@ export function EditBar(props: Props) {
       gap="xs"
       px="sm"
       py="2px"
+      overflowX="auto"
       bg="surface-panel"
       borderTopWidth="1px"
       borderTopStyle="solid"
@@ -82,6 +96,39 @@ export function EditBar(props: Props) {
       </IconButton>
       <IconButton preservesFocus size="2rlh" aria-label="Indent" onPress={props.onIndent}>
         <Indent size={20} />
+      </IconButton>
+      <IconButton
+        preservesFocus
+        size="2rlh"
+        aria-label="Bold"
+        onPress={() => props.onFormat("bold")}
+        ml="sm"
+      >
+        <TextB size={20} />
+      </IconButton>
+      <IconButton
+        preservesFocus
+        size="2rlh"
+        aria-label="Italic"
+        onPress={() => props.onFormat("italic")}
+      >
+        <TextItalic size={20} />
+      </IconButton>
+      <IconButton
+        preservesFocus
+        size="2rlh"
+        aria-label="Underline"
+        onPress={() => props.onFormat("underline")}
+      >
+        <TextUnderline size={20} />
+      </IconButton>
+      <IconButton
+        preservesFocus
+        size="2rlh"
+        aria-label="Strikethrough"
+        onPress={() => props.onFormat("strike")}
+      >
+        <TextStrikethrough size={20} />
       </IconButton>
     </Block>
   );
