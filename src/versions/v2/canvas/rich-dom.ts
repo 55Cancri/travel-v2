@@ -75,23 +75,24 @@ export const selectionOffsets = (el: HTMLElement) => {
   };
 };
 
+const placeAt = (el: HTMLElement, target: number): [Node, number] => {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let remaining = target;
+  let last: [Node, number] = [el, 0];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const length = node.textContent?.length ?? 0;
+    if (remaining <= length) return [node, remaining];
+    remaining -= length;
+    last = [node, length];
+  }
+  return last;
+};
+
 // Places the selection at text offsets, clamped to the content.
 export const setSelection = (el: HTMLElement, start: number, end = start) => {
-  const place = (target: number): [Node, number] => {
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    let remaining = target;
-    let last: [Node, number] = [el, 0];
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const length = node.textContent?.length ?? 0;
-      if (remaining <= length) return [node, remaining];
-      remaining -= length;
-      last = [node, length];
-    }
-    return last;
-  };
   const range = document.createRange();
-  range.setStart(...place(start));
-  range.setEnd(...place(Math.max(start, end)));
+  range.setStart(...placeAt(el, start));
+  range.setEnd(...placeAt(el, Math.max(start, end)));
   const sel = window.getSelection();
   sel?.removeAllRanges();
   sel?.addRange(range);
@@ -99,16 +100,32 @@ export const setSelection = (el: HTMLElement, start: number, end = start) => {
 
 // Whether the caret sits on the line's first (or last) VISUAL row, which
 // is when an arrow key hops to the neighboring line instead of moving
-// within a wrapped one. Rect-less carets (empty lines, edge quirks)
-// count as on-edge so the hop never strands.
+// within a wrapped one. A collapsed caret at an element boundary between
+// mark wrappers can legitimately have no rect, so the fallback measures
+// the character beside the caret; only a truly unmeasurable line (empty)
+// counts as on-edge.
 export const caretOnEdge = (el: HTMLElement, edge: "first" | "last") => {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return true;
   const range = sel.getRangeAt(0).cloneRange();
   range.collapse(edge === "first");
-  const rects = range.getClientRects();
-  if (rects.length === 0) return true;
-  const rect = rects[0];
+  let rect = range.getClientRects()[0];
+  if (!rect) {
+    const offsets = selectionOffsets(el);
+    const length = el.textContent?.length ?? 0;
+    if (!offsets || length === 0) return true;
+    const at = edge === "first" ? offsets.start : offsets.end;
+    const charRange = document.createRange();
+    if (at < length) {
+      charRange.setStart(...placeAt(el, at));
+      charRange.setEnd(...placeAt(el, at + 1));
+    } else {
+      charRange.setStart(...placeAt(el, at - 1));
+      charRange.setEnd(...placeAt(el, at));
+    }
+    rect = charRange.getClientRects()[0];
+    if (!rect) return true;
+  }
   const shell = el.getBoundingClientRect();
   const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
   return edge === "first"

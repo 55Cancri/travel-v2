@@ -14,6 +14,7 @@ import {
   migrateStoredLine,
   newLine,
   numberFor,
+  plainSpans,
   sliceSpans,
   textOf,
 } from "./lines";
@@ -27,9 +28,14 @@ const loadLines = (): Line[] => {
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) {
+        const seen = new Set<string>();
         const sound = parsed
           .map(migrateStoredLine)
-          .filter((line): line is Line => line !== null)
+          .filter((line): line is Line => {
+            if (line === null || seen.has(line.id)) return false;
+            seen.add(line.id);
+            return true;
+          })
           .map((line) => ({ ...line, indent: clampIndent(line.indent) }));
         if (sound.length < parsed.length) {
           console.warn(
@@ -204,6 +210,49 @@ export function Canvas() {
     );
   };
 
+  // Paste never lets the browser insert live DOM (that path skips the
+  // span model entirely and is the door markup would walk through): the
+  // clipboard's PLAIN TEXT enters the model, with newlines spawning
+  // lines that inherit the target's kind and indent.
+  const pasteText = (id: string, raw: string) => {
+    const at = lineAt(id);
+    if (at < 0) return;
+    const prev = linesRef.current;
+    const line = prev[at];
+    const el = inputs.current.get(id);
+    const offsets = (el && selectionOffsets(el)) ?? null;
+    const length = textOf(line.spans).length;
+    const start = offsets?.start ?? length;
+    const end = offsets?.end ?? start;
+    const segments = raw.replace(/\r\n?/g, "\n").split("\n");
+    const head = sliceSpans(line.spans, 0, start);
+    const tail = sliceSpans(line.spans, end);
+    if (segments.length === 1) {
+      const seam = start + segments[0].length;
+      pendingFocus.current = { id, start: seam, end: seam };
+      commit(
+        prev.map((entry) =>
+          entry.id === id
+            ? { ...entry, spans: concatSpans(concatSpans(head, plainSpans(segments[0])), tail) }
+            : entry,
+        ),
+      );
+      return;
+    }
+    const opened = { ...line, spans: concatSpans(head, plainSpans(segments[0])) };
+    const middle = segments
+      .slice(1, -1)
+      .map((segment) => newLine({ spans: plainSpans(segment), indent: line.indent, kind: line.kind }));
+    const last = segments.at(-1) ?? "";
+    const closing = newLine({
+      spans: concatSpans(plainSpans(last), tail),
+      indent: line.indent,
+      kind: line.kind,
+    });
+    pendingFocus.current = { id: closing.id, start: last.length, end: last.length };
+    commit(prev.slice(0, at).concat([opened], middle, [closing], prev.slice(at + 1)));
+  };
+
   // The bar's marker buttons: press converts the focused line, pressing
   // its current kind again strips it back to plain text.
   const markLine = (id: string | null, kind: Exclude<LineKind, "text">) => {
@@ -265,6 +314,12 @@ export function Canvas() {
           splitAt(hit.id);
           return;
         }
+        if (event.inputType === "insertFromPaste" || event.inputType === "insertFromDrop") {
+          // The paste listener already routed the text through the
+          // model; anything reaching here would insert live DOM.
+          event.preventDefault();
+          return;
+        }
         if (event.inputType === "deleteContentBackward") {
           const offsets = selectionOffsets(hit.el);
           if (offsets && offsets.start === 0 && offsets.end === 0) {
@@ -276,9 +331,28 @@ export function Canvas() {
       { signal: abort.signal },
     );
     shell.addEventListener(
+      "paste",
+      (event) => {
+        const hit = lineOf(event.target);
+        if (!hit) return;
+        event.preventDefault();
+        pasteText(hit.id, event.clipboardData?.getData("text/plain") ?? "");
+      },
+      { signal: abort.signal },
+    );
+    shell.addEventListener(
+      "drop",
+      (event) => {
+        if (lineOf(event.target)) event.preventDefault();
+      },
+      { signal: abort.signal },
+    );
+    shell.addEventListener(
       "compositionstart",
-      () => {
+      (event) => {
         composing.current = true;
+        const hit = lineOf(event.target);
+        if (hit) hit.el.dataset.composing = "";
       },
       { signal: abort.signal },
     );
@@ -287,7 +361,10 @@ export function Canvas() {
       (event) => {
         composing.current = false;
         const hit = lineOf(event.target);
-        if (hit) editInput(hit.id);
+        if (hit) {
+          delete hit.el.dataset.composing;
+          editInput(hit.id);
+        }
       },
       { signal: abort.signal },
     );
@@ -304,7 +381,9 @@ export function Canvas() {
     const neighbor = rows[rows.indexOf(el) + (up ? -1 : 1)];
     if (!neighbor) return;
     event.preventDefault();
-    const column = selectionOffsets(el)?.start ?? 0;
+    const offsets = selectionOffsets(el);
+    // A range hops from the edge it is traveling toward.
+    const column = (up ? offsets?.start : offsets?.end) ?? 0;
     const length = neighbor.textContent?.length ?? 0;
     neighbor.focus();
     setSelection(neighbor, Math.min(column, length));
@@ -315,7 +394,9 @@ export function Canvas() {
   const lineKeyDown = (id: string) => (event: React.KeyboardEvent<HTMLElement>) => {
     // An IME mid-composition owns Enter (it confirms the composed
     // text), and structural edits would tear the composition apart.
-    if (event.nativeEvent.isComposing) return;
+    // keyCode 229 covers engines that drop the isComposing flag on the
+    // keydown that ends a composition.
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.metaKey || event.ctrlKey) {
       const key = event.key.toLowerCase();
       const mark = event.shiftKey && key === "x" ? "strike" : !event.shiftKey && FORMAT_KEYS[key];

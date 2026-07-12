@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Block } from "atoms";
 import { Checkbox, Numeric } from "alloys";
-import type { Line } from "./lines";
+import { type Line, textOf } from "./lines";
 import { parseSpans, renderSpans, sameSpans } from "./rich-dom";
 
 type Props = {
@@ -30,6 +30,9 @@ export function LineRow(props: Props) {
   React.useLayoutEffect(() => {
     const el = contentRef.current;
     if (!el) return;
+    // An IME's uncommitted preedit lives only in the DOM; syncing now
+    // would tear it out mid-composition (the shell stamps the flag).
+    if (el.dataset.composing !== undefined) return;
     if (!sameSpans(parseSpans(el), line.spans)) renderSpans(el, line.spans);
   });
 
@@ -50,7 +53,7 @@ export function LineRow(props: Props) {
           {line.kind === "checkbox" ? (
             <Checkbox
               checked={line.done}
-              muted={line.spans.length === 0}
+              muted={textOf(line.spans).trim() === ""}
               onToggle={props.onToggle}
               label="Done"
               preservesFocus
@@ -67,6 +70,9 @@ export function LineRow(props: Props) {
         as="div"
         contentEditable
         suppressContentEditableWarning
+        role="textbox"
+        aria-multiline="false"
+        aria-placeholder="Type here…"
         data-canvas-line=""
         data-placeholder="Type here…"
         ref={(el: HTMLElement | null) => {
