@@ -55,3 +55,20 @@ export const numberFor = (lines: Line[], at: number) => {
 };
 
 export const clampIndent = (indent: number) => Math.min(MAX_INDENT, Math.max(0, indent));
+
+const KINDS = new Set(["text", "bullet", "checkbox", "numbered"]);
+
+// Guards the localStorage boundary: stored JSON is only a Line when
+// every field checks out, so a legacy or hand-mangled record can never
+// crash rendering.
+export const isLine = (entry: unknown): entry is Line => {
+  if (typeof entry !== "object" || entry === null) return false;
+  const record = entry as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.text === "string" &&
+    typeof record.indent === "number" &&
+    KINDS.has(record.kind as string) &&
+    typeof record.done === "boolean"
+  );
+};

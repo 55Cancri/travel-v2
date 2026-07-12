@@ -39,6 +39,7 @@ export function LineRow(props: Props) {
             muted={line.text.trim() === ""}
             onToggle={props.onToggle}
             label="Done"
+            preservesFocus
           />
         ) : null}
         {line.kind === "numbered" ? (
