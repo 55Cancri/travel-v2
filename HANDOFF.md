@@ -40,8 +40,8 @@ alongside it. Maintain it like this:
 
 ## Round: rich text on the canvas (planned 2026-07-12)
 
-SOL MAX AUDIT (landed after deploy; fix round follows, planned before
-fixing): CRITICAL: native paste/drop inserts live HTML into the
+SOL MAX AUDIT (landed after deploy; fix round COMPLETE, all accepted
+items fixed, tested, browser-verified, and redeployed same round): CRITICAL: native paste/drop inserts live HTML into the
 contenteditable, bypassing renderSpans, so pasted markup with equal
 text/marks survives the parse-compare guard (XSS surface; fix: model-
 level plain-text paste, multiline paste spawning lines, drop prevented,
