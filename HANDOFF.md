@@ -67,9 +67,26 @@ above the phone keyboard that never close it. DONE, deployed to prod
 - Canvas content is per device and NOT synced or tied to trips yet
   (deliberate: it is a feel prototype for the editor).
 
+SOL REVIEW (landed same round, fixes deployed): the audit's critical
+was real: mutations ran inside setState updater functions, which React
+may replay, so a spawned line's minted id could differ from the focus
+target. Mutations now compute at event time from a live linesRef and
+setState receives a plain value. Also fixed: Enter ignores IME
+composition (nativeEvent.isComposing), Enter consumes a selection,
+stored JSON is validated per line (isLine) with indent clamping, and
+the edit bar hides when focus lands on a non-line control (the row
+checkbox now preserves focus on toggle, so checking items mid-edit
+keeps the keyboard open). Pushed back on: keydown/beforeinput dedup for
+a WebView that ignores preventDefault (condition the design rules out).
+
+GOTCHA (bit twice today): `bun run deploy` while a dev server runs
+regenerates `.alchemy/local/wrangler.jsonc` from raw .env, hot-swapping
+the RUNNING dev door to the real credentials and dropping the session.
+After deploying mid-session, restart the dev launch config you were
+using.
+
 AWAITING: owner's phone test (markers, keyboard bar, focus retention on
-his Galaxy). A Sol background review of the canvas was in flight as this
-entry was written; its findings land in the next round entry if any.
+his Galaxy).
 
 ## Round: generation v2 opens as a blank canvas (2026-07-11, later)
 
