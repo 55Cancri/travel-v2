@@ -29,7 +29,9 @@ Before deep work in an area, read the matching rule file:
 
 A single bun root: a TanStack Start + Vite 7 + Panda CSS trip planner and
 offline travel companion (see `OVERVIEW.md` for the vision, `TODO.md` for
-the phased checklist, `HANDOFF.md` for agent handoff context). The
+the phased checklist, `HANDOFF.md` for agent handoff context; write the
+round's plan into HANDOFF.md BEFORE implementing, owner directive
+2026-07-11, so an interrupted round leaves a resumable checklist). The
 Cloudflare infra is live: the app deploys to
 https://travel-v2.leaftime.workers.dev with Workers AI (/api/curate),
 Google Places (/api/places), and a KV place cache. Trip data still lives

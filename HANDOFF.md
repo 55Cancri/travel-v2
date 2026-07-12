@@ -10,11 +10,17 @@ exactly where the last session stopped, even mid-implementation. Read
 authoritative checklist, keep its `Progress: N/M` counter accurate)
 alongside it. Maintain it like this:
 
+- **Write the round's PLAN here BEFORE implementation begins** (owner
+  directive 2026-07-11): a `## Round:` entry opens with the planned
+  work as a checklist plus the design decisions already made, THEN the
+  work starts and items get checked off as they land. A session cut off
+  mid-round leaves a fresh agent the exact remaining checklist, not a
+  mystery diff.
 - **Every work round appends a `## Round:` entry at the TOP** (newest
-  first) before the session ends: what shipped (with file paths), what is
-  mid-flight (the exact resume point: file, branch, next command, the
-  decision already made), what the round queued, and what the owner still
-  needs to verify or decide.
+  first): what shipped (with file paths), what is mid-flight (the exact
+  resume point: file, branch, next command, the decision already made),
+  what the round queued, and what the owner still needs to verify or
+  decide.
 - **Write for a stranger.** More detail than feels necessary is correct.
   An interrupted implementation must be resumable from this file alone,
   so record intent and next steps, not just diffs. "Half of X is in
@@ -31,6 +37,45 @@ alongside it. Maintain it like this:
 - **Standing sections** (gotchas, preferences, locked decisions, repo
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
+
+## Round: canvas toolbar, markers polish, font (planned 2026-07-11, late night)
+
+Owner feedback on the first canvas build. PLAN, written before
+implementation per the new rule above:
+
+- [ ] **Icon-only edit bar, condensed.** Indent/outdent lose their text
+      labels and become the classic glyphs (three lines + arrow right /
+      arrow left). New buttons for bullet list, checkbox, and numbered
+      list that convert the FOCUSED line on press (pressing the line's
+      current kind toggles it back to plain text). All buttons are
+      IconButton alloys with preservesFocus so the keyboard stays open.
+      New icons under `src/atoms/icons/`: indent, outdent,
+      list-bullets, list-checks, list-numbers (256-viewBox
+      currentColor, matching the set).
+- [ ] **Bullets read black**: the bullet dot (and the ordinal, for
+      coherence) move from text-muted to text-primary.
+- [ ] **Remove the marker hint line** from the v2 shelf ("Markers as
+      you type…"). The typed shortcuts themselves STAY.
+- [ ] **Left-align plain text with the page**: the marker gutter
+      renders only for marker lines, so a plain text line's textarea
+      starts at the same left edge as the "v2" title (list items keep
+      their natural gutter indent).
+- [ ] **Canvas font**: the canvas text tries Inter Variable
+      (@fontsource-variable/inter, canvas-scoped import so it rides the
+      v2 chunk), crisper than Instrument Sans at dense list sizes. App
+      chrome keeps Instrument Sans. One-prop revert if the owner
+      dislikes it.
+- [ ] Verify in browser, Sol review, follow-up commits on slice/30
+      (PR #30), merge to bleeding-edge, deploy.
+
+DECIDED AND DEFERRED (needs its own round, raised to the owner):
+inline text formatting (bold/italic/underline/strikethrough over a
+selection). Lines are plain strings in a textarea, which cannot render
+mixed inline styles; real inline marks need the line editor rebuilt on
+contenteditable (or an overlay-mirror hack not worth shipping). The
+toolbar therefore ships WITHOUT formatting buttons this round: dead
+buttons are worse than absent ones. Owner input wanted on the
+contenteditable round's priority.
 
 ## Round: the v2 canvas editor (2026-07-11, night)
 
