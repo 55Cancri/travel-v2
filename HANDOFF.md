@@ -40,10 +40,11 @@ alongside it. Maintain it like this:
 
 ## Round: canvas toolbar, markers polish, font (planned 2026-07-11, late night)
 
-Owner feedback on the first canvas build. PLAN, written before
-implementation per the new rule above:
+Owner feedback on the first canvas build. Planned first, then all
+items landed, verified with real clicks, and deployed (follow-up on
+PR #30):
 
-- [ ] **Icon-only edit bar, condensed.** Indent/outdent lose their text
+- [x] **Icon-only edit bar, condensed.** Indent/outdent lose their text
       labels and become the classic glyphs (three lines + arrow right /
       arrow left). New buttons for bullet list, checkbox, and numbered
       list that convert the FOCUSED line on press (pressing the line's
@@ -52,20 +53,20 @@ implementation per the new rule above:
       New icons under `src/atoms/icons/`: indent, outdent,
       list-bullets, list-checks, list-numbers (256-viewBox
       currentColor, matching the set).
-- [ ] **Bullets read black**: the bullet dot (and the ordinal, for
+- [x] **Bullets read black**: the bullet dot (and the ordinal, for
       coherence) move from text-muted to text-primary.
-- [ ] **Remove the marker hint line** from the v2 shelf ("Markers as
+- [x] **Remove the marker hint line** from the v2 shelf ("Markers as
       you type…"). The typed shortcuts themselves STAY.
-- [ ] **Left-align plain text with the page**: the marker gutter
+- [x] **Left-align plain text with the page**: the marker gutter
       renders only for marker lines, so a plain text line's textarea
       starts at the same left edge as the "v2" title (list items keep
       their natural gutter indent).
-- [ ] **Canvas font**: the canvas text tries Inter Variable
+- [x] **Canvas font**: the canvas text tries Inter Variable
       (@fontsource-variable/inter, canvas-scoped import so it rides the
       v2 chunk), crisper than Instrument Sans at dense list sizes. App
       chrome keeps Instrument Sans. One-prop revert if the owner
       dislikes it.
-- [ ] Verify in browser, Sol review, follow-up commits on slice/30
+- [x] Verify in browser, Sol review, follow-up commits on slice/30
       (PR #30), merge to bleeding-edge, deploy.
 
 DECIDED AND DEFERRED (needs its own round, raised to the owner):
