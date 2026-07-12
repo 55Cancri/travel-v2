@@ -67,7 +67,11 @@ PR #30):
       chrome keeps Instrument Sans. One-prop revert if the owner
       dislikes it.
 - [x] Verify in browser, Sol review, follow-up commits on slice/30
-      (PR #30), merge to bleeding-edge, deploy.
+      (PR #30), merge to bleeding-edge, deploy. Sol verdict: zero
+      runtime defects; its two nits (numbered gutter overflow past two
+      digits, checkbox-list icon consistency) were fixed same round.
+      Its no-tests should-fix remains blocked on the queued test-infra
+      decision.
 
 DECIDED AND DEFERRED (needs its own round, raised to the owner):
 inline text formatting (bold/italic/underline/strikethrough over a
