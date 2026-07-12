@@ -15,14 +15,22 @@ import { IconButton } from "alloys";
 import type { LineKind, Mark } from "./lines";
 
 type Props = {
-  // With text selected the bar is about the SELECTION (format buttons);
-  // with a bare caret it is about the LINE (lists, indentation).
-  formatting: boolean;
+  // With text selected the bar is about the SELECTION (format buttons,
+  // pressed for the marks every selected character carries); with a
+  // bare caret (null) it is about the LINE (lists, indentation).
+  marks: Mark[] | null;
   onMark: (kind: Exclude<LineKind, "text">) => void;
   onFormat: (mark: Mark) => void;
   onOutdent: () => void;
   onIndent: () => void;
 };
+
+const FORMATS = [
+  { mark: "bold", label: "Bold", Glyph: TextB },
+  { mark: "italic", label: "Italic", Glyph: TextItalic },
+  { mark: "underline", label: "Underline", Glyph: TextUnderline },
+  { mark: "strike", label: "Strikethrough", Glyph: TextStrikethrough },
+] as const;
 
 // The editing controls that ride above the mobile keyboard. Fixed to the
 // bottom of the LAYOUT viewport, then lifted by however much the keyboard
@@ -30,6 +38,7 @@ type Props = {
 // the keyboard by default). Buttons preserve focus so pressing them never
 // closes the keyboard.
 export function EditBar(props: Props) {
+  const marks = props.marks;
   const [lift, setLift] = React.useState(0);
   React.useEffect(() => {
     const vv = window.visualViewport;
@@ -63,41 +72,24 @@ export function EditBar(props: Props) {
     >
       {/* 2rlh keeps every control at fingertip size: these are the
           primary surface while the phone keyboard is up. */}
-      {props.formatting ? (
-        <>
-          <IconButton
-            preservesFocus
-            size="2rlh"
-            aria-label="Bold"
-            onPress={() => props.onFormat("bold")}
-          >
-            <TextB size={20} />
-          </IconButton>
-          <IconButton
-            preservesFocus
-            size="2rlh"
-            aria-label="Italic"
-            onPress={() => props.onFormat("italic")}
-          >
-            <TextItalic size={20} />
-          </IconButton>
-          <IconButton
-            preservesFocus
-            size="2rlh"
-            aria-label="Underline"
-            onPress={() => props.onFormat("underline")}
-          >
-            <TextUnderline size={20} />
-          </IconButton>
-          <IconButton
-            preservesFocus
-            size="2rlh"
-            aria-label="Strikethrough"
-            onPress={() => props.onFormat("strike")}
-          >
-            <TextStrikethrough size={20} />
-          </IconButton>
-        </>
+      {marks !== null ? (
+        FORMATS.map((format) => {
+          const held = marks.includes(format.mark);
+          return (
+            <IconButton
+              key={format.mark}
+              preservesFocus
+              size="2rlh"
+              aria-label={format.label}
+              aria-pressed={held}
+              bg={held ? "surface-muted" : undefined}
+              color={held ? "text-primary" : undefined}
+              onPress={() => props.onFormat(format.mark)}
+            >
+              <format.Glyph size={20} />
+            </IconButton>
+          );
+        })
       ) : (
         <>
           <IconButton

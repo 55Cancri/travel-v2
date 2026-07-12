@@ -5,6 +5,7 @@ import {
   applyMark,
   claimMarker,
   concatSpans,
+  marksOver,
   migrateStoredLine,
   normalizeSpans,
   numberFor,
@@ -68,6 +69,29 @@ describe("applyMark", () => {
       span("he", ["bold", "italic"]),
       span("llo", ["bold"]),
     ]);
+  });
+});
+
+describe("marksOver", () => {
+  const mixed = [span("he", ["bold", "italic"]), span("llo", ["bold"])];
+
+  test("reports only marks the whole range carries, in canonical order", () => {
+    expect(marksOver(mixed, 0, 5)).toEqual(["bold"]);
+    expect(marksOver(mixed, 0, 2)).toEqual(["bold", "italic"]);
+    expect(marksOver(mixed, 2, 5)).toEqual(["bold"]);
+  });
+
+  test("an unmarked or empty range reports nothing", () => {
+    expect(marksOver([span("hello")], 0, 5)).toEqual([]);
+    expect(marksOver(mixed, 2, 2)).toEqual([]);
+  });
+
+  test("agrees with applyMark's toggle threshold", () => {
+    // marksOver says "bold" held, so applyMark must lift it, and vice versa.
+    expect(applyMark(mixed, 0, 5, "bold").every((entry) => !entry.marks.includes("bold"))).toBe(
+      true,
+    );
+    expect(marksOver(applyMark(mixed, 0, 5, "italic"), 0, 5)).toContain("italic");
   });
 });
 
