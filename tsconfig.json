@@ -25,7 +25,7 @@
     "allowUnreachableCode": false,
     "noErrorTruncation": true,
 
-    "types": ["vite/client", "node", "temporal-polyfill/types/global"],
+    "types": ["vite/client", "node", "bun", "temporal-polyfill/types/global"],
     "paths": {
       "atoms": ["./src/atoms/index.ts"],
       "alloys": ["./src/alloys/index.ts"],

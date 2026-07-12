@@ -29,15 +29,27 @@ export const newLine = (seed?: Partial<Omit<Line, "id">>) => ({
 
 export const textOf = (spans: Span[]) => spans.map((span) => span.text).join("");
 
-const sameMarks = (a: Mark[], b: Mark[]) =>
-  a.length === b.length && a.every((mark) => b.includes(mark));
+export const plainSpans = (text: string): Span[] =>
+  text === "" ? [] : [{ text, marks: [] }];
 
-// Drops empty runs and merges adjacent runs that carry identical marks,
-// so every span list has exactly one shape per content.
+const MARK_ORDER: Mark[] = ["bold", "italic", "underline", "strike"];
+
+// One canonical spelling per mark set: deduped, fixed order. Everything
+// downstream (merging, DOM comparison) relies on it.
+const canonicalMarks = (marks: Mark[]) =>
+  MARK_ORDER.filter((mark) => marks.includes(mark));
+
+const sameMarks = (a: Mark[], b: Mark[]) =>
+  a.length === b.length && a.every((mark, i) => b[i] === mark);
+
+// Drops empty runs, canonicalizes each run's marks, and merges adjacent
+// runs that carry identical marks, so every span list has exactly one
+// shape per content.
 export const normalizeSpans = (spans: Span[]) => {
   const merged: Span[] = [];
-  for (const span of spans) {
-    if (span.text === "") continue;
+  for (const entry of spans) {
+    if (entry.text === "") continue;
+    const span = { text: entry.text, marks: canonicalMarks(entry.marks) };
     const tail = merged.at(-1);
     if (tail && sameMarks(tail.marks, span.marks)) {
       merged[merged.length - 1] = { ...tail, text: tail.text + span.text };
@@ -155,10 +167,11 @@ export const isLine = (entry: unknown): entry is Line => {
 };
 
 // The pre-rich-text shape carried `text: string`. The load boundary
-// rewrites such records into single-span lines once; runtime code only
-// ever sees the span shape.
+// rewrites such records into single-span lines once, and every accepted
+// record leaves in canonical span form; runtime code only ever sees
+// normalized spans.
 export const migrateStoredLine = (entry: unknown): Line | null => {
-  if (isLine(entry)) return entry;
+  if (isLine(entry)) return { ...entry, spans: normalizeSpans(entry.spans) };
   if (typeof entry !== "object" || entry === null) return null;
   const record = entry as Record<string, unknown>;
   if (
