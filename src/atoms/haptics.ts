@@ -27,7 +27,7 @@ const lastFired: Partial<Record<HapticName, number>> = {};
 let reducedMotion: MediaQueryList | undefined;
 
 export const haptic = (name: HapticName) => {
-  if (typeof navigator === "undefined" || !("vibrate" in navigator)) return;
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
   // Chromium ignores calls from hidden pages anyway; bail first so a
   // background call cannot cancel a pattern already in flight.
   if (document.visibilityState !== "visible") return;
