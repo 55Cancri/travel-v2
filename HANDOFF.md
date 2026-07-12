@@ -63,30 +63,31 @@ BEFORE IMPLEMENTATION:
 - Known, accepted tradeoff: browser-native undo history degrades with
   manual DOM management (queued as future work, not silently lost).
 
-PLAN CHECKLIST:
+PLAN CHECKLIST (all landed, browser-verified, deployed as PR #31
+stacked on #30):
 
-- [ ] `lines.ts`: Span/Mark types, span algebra (text length, split at
+- [x] `lines.ts`: Span/Mark types, span algebra (text length, split at
       offset, concat with adjacent-equal normalization, applyMark over
       a range with all-marked-toggles-off semantics), claimMarker over
       leading span text, isLine for the new shape + the load migration.
-- [ ] New `rich-dom.ts`: renderSpans(el, spans) via DOM nodes,
+- [x] New `rich-dom.ts`: renderSpans(el, spans) via DOM nodes,
       parseSpans(el), selectionOffsets(el), setSelection(el, start,
       end), and rect-based first/last visual line detection for arrow
       hops (replaces the textarea mirror in caret-line.ts, which gets
       deleted).
-- [ ] `line-row.tsx`: contenteditable div (data-canvas-line moves to
+- [x] `line-row.tsx`: contenteditable div (data-canvas-line moves to
       it), :empty::before placeholder, same marker gutter.
-- [ ] `index.tsx`: engine reworked to selection offsets (split,
+- [x] `index.tsx`: engine reworked to selection offsets (split,
       backspace ladder, hops), input parsing with composition tracking
       (compositionstart/end delegated on the shell, parse on end),
       applyMark plumbing, and Cmd/Ctrl+B / I / U (+Shift+X strike)
       shortcuts with the browser's own contenteditable defaults
       suppressed.
-- [ ] `edit-bar.tsx`: four new format buttons (preservesFocus) after
+- [x] `edit-bar.tsx`: four new format buttons (preservesFocus) after
       the list/indent groups; bar scrolls horizontally if the phone is
       narrower than the button row. Four new icons in atoms/icons:
       text-b, text-italic, text-underline, text-strikethrough.
-- [ ] Verify heavily in browser (the risky bits: caret restoration
+- [x] Verify heavily in browser (the risky bits: caret restoration
       after formatting, parse fidelity, Enter/backspace at offsets,
       marker triggers still firing, checkbox toggle, persistence
       migration from old records). Sol review. New slice/31-rich-text
