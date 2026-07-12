@@ -30,5 +30,11 @@ export type Props<T extends _tt.ButtonElement = "button"> = _tt.PolymorphicProps
      * and hold-reveal without double firing.
      */
     onLongPress?: (event: LongPressEvent) => void;
+    /**
+     * Pressing never moves focus to the button, so whatever the user was
+     * editing keeps its caret and the mobile keyboard stays open. For
+     * toolbar buttons that act on a focused input.
+     */
+    preservesFocus?: boolean;
   }
 >;

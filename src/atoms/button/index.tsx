@@ -79,6 +79,7 @@ export const Button = function <T extends _t.As = "button">(
     loadingIndicator,
     onPress,
     onLongPress,
+    preservesFocus,
     _motion,
     ...restProps
   } = props;
@@ -109,6 +110,7 @@ export const Button = function <T extends _t.As = "button">(
       isDisabled,
       onPress,
       href,
+      preventFocusOnPress: preservesFocus,
       type: elementType === "button" ? (buttonKind ?? "button") : undefined,
     },
     domRef as React.RefObject<HTMLElement>,

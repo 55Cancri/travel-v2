@@ -1,0 +1,81 @@
+import * as React from "react";
+import { Block } from "atoms";
+import { Checkbox, Numeric } from "alloys";
+import type { Line } from "./lines";
+
+type Props = {
+  line: Line;
+  // Display number when the line is numbered; markers of other kinds
+  // ignore it.
+  ordinal: number;
+  onChange: (text: string, caret: number) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onToggle: () => void;
+  inputRef: (el: HTMLTextAreaElement | null) => void;
+};
+
+// One canvas line: a marker gutter and an auto-growing textarea sharing a
+// baseline. The gutter is always reserved so every line's text sits on
+// the same column regardless of kind.
+export function LineRow(props: Props) {
+  const { line } = props;
+  const done = line.kind === "checkbox" && line.done;
+  return (
+    <Block
+      grid
+      cols="1.6rem 1fr"
+      columnGap="xs"
+      alignItems="start"
+      // Indentation is a per-line runtime value, so it rides a raw style.
+      style={{ paddingLeft: `${line.indent * 1.5}rem` }}
+    >
+      <Block grid placeItems="center" h="1.5lh">
+        {line.kind === "bullet" ? (
+          <Block w="0.32rem" h="0.32rem" borderRadius="9999px" bg="text-muted" />
+        ) : null}
+        {line.kind === "checkbox" ? (
+          <Checkbox
+            checked={line.done}
+            muted={line.text.trim() === ""}
+            onToggle={props.onToggle}
+            label="Done"
+          />
+        ) : null}
+        {line.kind === "numbered" ? (
+          <Numeric fontSize="md" color="text-muted">
+            {props.ordinal}.
+          </Numeric>
+        ) : null}
+      </Block>
+      <Block
+        as="textarea"
+        data-canvas-line=""
+        ref={props.inputRef}
+        value={line.text}
+        placeholder="Type here…"
+        rows={1}
+        onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
+          props.onChange(event.currentTarget.value, event.currentTarget.selectionStart ?? 0)
+        }
+        onKeyDown={props.onKeyDown}
+        width="100%"
+        border="0"
+        outline="none"
+        background="transparent"
+        padding="0"
+        paddingBlock="0.25lh"
+        margin="0"
+        fontFamily="inherit"
+        fontSize="md"
+        fontWeight={450}
+        lineHeight="1.5"
+        resize="none"
+        overflow="hidden"
+        _placeholder={{ color: "text-muted" }}
+        color={done ? "text-muted" : "text-primary"}
+        textDecoration={done ? "line-through" : "none"}
+        style={{ fieldSizing: "content" } as React.CSSProperties}
+      />
+    </Block>
+  );
+}
