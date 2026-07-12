@@ -38,6 +38,64 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: rich text on the canvas (planned 2026-07-12)
+
+Owner approved inline formatting (bold/italic/underline/strikethrough)
+with "whatever keeps all the existing functionality". DESIGN DECIDED
+BEFORE IMPLEMENTATION:
+
+- Per-line CONTENTEDITABLE replaces the per-line textarea. No editor
+  framework (Lexical/ProseMirror would replace our whole line model and
+  add a heavy dependency); the existing engine (lines, kinds, indents,
+  split/merge, edit bar, IME beforeinput path) stays ours.
+- Data: a line's `text: string` becomes `spans: { text, marks[] }[]`
+  with marks from "bold" | "italic" | "underline" | "strike". The
+  localStorage load MIGRATES old `{ text }` records to single-span
+  lines at the boundary (one-time rewrite, no legacy branches in
+  runtime code). Storage key stays `travel2:v2:canvas`.
+- DOM is built programmatically from spans (createTextNode + mark
+  wrappers), NEVER innerHTML strings, so user text cannot inject
+  markup. During plain typing the DOM is source of truth (parse back
+  to spans on input); a line only re-renders from state when state
+  changed from OUTSIDE typing (formatting, conversion, split/merge),
+  guarded by comparing serialized forms. Caret restores by text
+  offset.
+- Known, accepted tradeoff: browser-native undo history degrades with
+  manual DOM management (queued as future work, not silently lost).
+
+PLAN CHECKLIST:
+
+- [ ] `lines.ts`: Span/Mark types, span algebra (text length, split at
+      offset, concat with adjacent-equal normalization, applyMark over
+      a range with all-marked-toggles-off semantics), claimMarker over
+      leading span text, isLine for the new shape + the load migration.
+- [ ] New `rich-dom.ts`: renderSpans(el, spans) via DOM nodes,
+      parseSpans(el), selectionOffsets(el), setSelection(el, start,
+      end), and rect-based first/last visual line detection for arrow
+      hops (replaces the textarea mirror in caret-line.ts, which gets
+      deleted).
+- [ ] `line-row.tsx`: contenteditable div (data-canvas-line moves to
+      it), :empty::before placeholder, same marker gutter.
+- [ ] `index.tsx`: engine reworked to selection offsets (split,
+      backspace ladder, hops), input parsing with composition tracking
+      (compositionstart/end delegated on the shell, parse on end),
+      applyMark plumbing, and Cmd/Ctrl+B / I / U (+Shift+X strike)
+      shortcuts with the browser's own contenteditable defaults
+      suppressed.
+- [ ] `edit-bar.tsx`: four new format buttons (preservesFocus) after
+      the list/indent groups; bar scrolls horizontally if the phone is
+      narrower than the button row. Four new icons in atoms/icons:
+      text-b, text-italic, text-underline, text-strikethrough.
+- [ ] Verify heavily in browser (the risky bits: caret restoration
+      after formatting, parse fidelity, Enter/backspace at offsets,
+      marker triggers still firing, checkbox toggle, persistence
+      migration from old records). Sol review. New slice/31-rich-text
+      stacked on slice/30 (PR base slice/30). Merge, push, deploy.
+
+If interrupted mid-round: the working tree lives on bleeding-edge;
+check which checklist items' files exist and typecheck; the design
+above is settled, do not re-litigate it.
+
 ## Round: canvas toolbar, markers polish, font (planned 2026-07-11, late night)
 
 Owner feedback on the first canvas build. Planned first, then all
