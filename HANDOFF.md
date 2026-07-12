@@ -40,6 +40,27 @@ alongside it. Maintain it like this:
 
 ## Round: rich text on the canvas (planned 2026-07-12)
 
+SOL MAX AUDIT (landed after deploy; fix round follows, planned before
+fixing): CRITICAL: native paste/drop inserts live HTML into the
+contenteditable, bypassing renderSpans, so pasted markup with equal
+text/marks survives the parse-compare guard (XSS surface; fix: model-
+level plain-text paste, multiline paste spawning lines, drop prevented,
+belt on insertFromPaste beforeinput). SHOULD-FIX, all accepted: marks
+get a canonical order+dedupe so multi-mark spans round-trip and the
+focused DOM never rebuilds spuriously; the load boundary normalizes
+noncanonical rich records and dedupes line ids; the LineRow DOM-sync
+guard and Enter both respect in-flight composition (dataset flag +
+keyCode 229); arrow hops probe a real character rect when the caret
+rect is missing and use the selection END for downward hops; bun:test
+(built into bun, ZERO new deps, settling the stalled test-infra
+decision) lands with lines.test.ts over the span algebra + migration.
+NITS: checkbox whitespace muting restored, aria-placeholder/textbox
+semantics added; backward-selection direction and aria-pressed states
+QUEUED. PUSHED BACK: cross-line selection editing needs a document-
+level selection model (own round, queued); separate per-line hosts
+already fence most cross-line editing.
+
+
 Owner approved inline formatting (bold/italic/underline/strikethrough)
 with "whatever keeps all the existing functionality". DESIGN DECIDED
 BEFORE IMPLEMENTATION:
