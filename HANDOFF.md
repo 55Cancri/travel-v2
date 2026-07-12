@@ -78,6 +78,13 @@ work, per-item verdicts in the round report):
       probed 200 on prod. Sol review verdict recorded below when it
       lands.
 
+OWNER FOLLOW-UP (same day): asked for a buzz on checking/unchecking a
+line's checkbox. Already covered: the Checkbox alloy presses through
+the Button atom, so the deployed build vibrates on both check and
+uncheck. Re-verified live with instrumented vibrate (two clicks, two
+[10] pulses, done state flipped true then false). No code change; if
+his phone stays silent there, it is the cached pre-haptics bundle.
+
 SOL VERDICT (post-deploy): conformance pass, sweep complete, SSR safe,
 the Link wrap keeps router navigation. Accepted its hardening nit
 (vibrate probed as a function, 1bde00e, redeployed). PUSHED BACK on
