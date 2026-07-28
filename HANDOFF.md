@@ -107,7 +107,29 @@ too. DESIGN DECIDED BEFORE IMPLEMENTATION:
       color; drag and resize both held and persisted; dark theme
       repaints map and panel.
 - [x] `bun test src` (37 pass), typecheck, `bun run check:names`.
-- [ ] Sol review pass on the diff (running at hand-off time).
+- [x] Sol review pass. Two full-diff runs at high effort exited 0 with
+      NO final answer (see the gotcha below); a third, scoped to just
+      v3 + entities/osm and capped at two tool calls, delivered eight
+      real defects. All eight are fixed in commit 0cf031d: the pin
+      effect painting into a mid-swap style, theme swaps resolving out
+      of order, the panel's live frame being reset by a re-render
+      mid-drag, moving in a narrow window baking in the shrunken size,
+      a second refresh press being a no-op, words typed before the map
+      loaded never searching, and `nextChange` naming an already-past
+      closing time inside the repeated DST hour.
+
+### Gotcha: Sol dies silently on big diffs
+
+`codex exec -m gpt-5.6-sol` at high effort, pointed at a ~1700 line
+diff and left free to explore the repo, ran for minutes and exited 0
+having emitted only its tool-call transcript: no final message at all.
+It did this twice. A trivial prompt on the same CLI answered fine, so
+the CLI is healthy; the run is being cut off by scale. What worked was
+narrowing hard: one saved diff file, an explicit "do not explore the
+repository", a two-tool-call budget, and a word cap. Scope Sol per
+feature area rather than per round, which is what CLAUDE.md already
+advises for large rounds, and treat a run that returns no verdict as a
+failed run rather than a clean review.
 
 ### Bugs found and fixed while verifying (all mine except the last two)
 
