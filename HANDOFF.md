@@ -38,6 +38,109 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: version dropdown + v3 "map scout" (planned 2026-07-28)
+
+Owner ask, verbatim in intent: turn the version switcher into a dropdown
+and add a generation v3 that is a draggable, resizable wide input
+floating on top of a map. Typing "media markt" on a line lists every
+match, each checkable (plus a show-all), and the checked ones pin onto
+the map with pin icons that carry today's open/closed state ("closed",
+"closes at 8pm"). The next line takes a specific address and pins that
+too. DESIGN DECIDED BEFORE IMPLEMENTATION:
+
+- **Reading of the ask (stated, because it changes the shape):** ONE
+  floating panel that holds a STACK of query lines, draggable by its
+  grip and resizable from its corner, rather than N independently
+  floating inputs. "On the next line" reads as the same surface, and
+  five separately-dragged boxes over a map is chaos. If the owner
+  wanted separate floating inputs, that is a small change to this
+  design, not a rewrite.
+- **The picker becomes a real dropdown** and cycling dies. catalog.ts
+  predicted this ("a menu earns its place only if the catalog ever
+  grows past" two or three generations); three generations plus the
+  owner's ask is that moment. Anchor positioning is not Baseline, so
+  the menu is an absolutely-positioned Block in a relative wrapper,
+  dismissed by outside-press and Escape through one AbortController.
+- **Data-source machinery leaves v1 and becomes version-neutral.**
+  Generations are self-contained in their SCREENS, but the Overpass
+  HTTP client, the OSM opening_hours grammar, and the Photon geocoder
+  are infrastructure, and v3 is the second real caller. They move to
+  `entities/osm/` (overpass + opening-hours) and `entities/geocode/`,
+  v1's overlays and item-row import from the new doors. Copying them
+  into v3 would be the rule-zero violation.
+- **`opening-hours.ts` grows a `nextChange`** (minutes until the
+  open/closed state flips) because "closes at 8pm" needs a boundary,
+  not just a boolean. `isOpenAt` gets rewritten on the same new
+  `effectiveSpans` helper so one place owns "which spans apply on day
+  N", instead of two parallel readings of the rule list.
+- **A line's query hits two sources at once,** because the owner's two
+  examples want different ones and he should never have to say which:
+  Overpass name/brand/operator regex inside the viewport (this is what
+  makes "all the Media Markts, pinpointed" work, and it is the only
+  source carrying `opening_hours`), plus Photon (addresses, and named
+  places outside the view). One merged, deduped result list.
+- **Open/closed rides the pin itself,** not just the popup: the pin
+  icon is drawn in the line's color, a closed place gets the muted
+  fill plus a red ring, and the collision-managed label under the pin
+  reads "Media Markt / closes 8pm" or "/ closed". Full detail (hours,
+  address, links) lives in the hover popup.
+- v3 ships `draft: true`, so `latestUiVersion` stays v1 and only a
+  deliberate flip reaches it. Its Planner renders the same scout
+  screen, so a device flipped to v3 on a trip URL is not dead-ended.
+
+- [x] `entities/osm/` (overpass.ts, opening-hours.ts + `nextChange`,
+      index door) and `entities/geocode/`; v1 imports repointed. A THIRD
+      module came out of v1 unplanned: `entities/map-style/` (the light
+      URL, the dark repaint, and `mapStyle(dark)`), because v3 needed
+      the same paper and copying 60 lines of DARK_PAINT into it would
+      have been the rule-zero violation. map-pane.tsx shrank by 74.
+- [x] `picker.tsx` rewritten as a dropdown; cycling deleted.
+- [x] v3 catalog entry + `v3/trips-shelf`, `v3/planner` (both render
+      the one screen v3 has).
+- [x] `v3/scout/`: map-canvas, query-panel (drag + resize + remembered
+      frame), query-line, find-places, open-now, pin-icons, lines.ts
+      (the reducer).
+- [x] Verified live: search returned 63 Albert Heijn branches each
+      reading "Open · closes 10pm"; show-all pinned them with labels
+      reading "Albert Heijn / closes 10pm"; a result press centred the
+      map; a second line found "Dam 1" through the geocoder in its own
+      color; drag and resize both held and persisted; dark theme
+      repaints map and panel.
+- [x] `bun test src` (37 pass), typecheck, `bun run check:names`.
+- [ ] Sol review pass on the diff (running at hand-off time).
+
+### Bugs found and fixed while verifying (all mine except the last two)
+
+- The map container was styled `position:absolute; inset:0`, which
+  maplibre-gl.css overrides with its own unlayered `position:relative`
+  on the element it claims: the container computed to zero height and
+  the map never showed. It is now a raw div with inline 100%/100%,
+  the same shape v1 uses, with the reason written down.
+- Maplibre sizes its canvas at construction and its own `trackResize`
+  only reacts to later CHANGES, so a map built before the stylesheet
+  landed kept the 400x300 fallback canvas forever. v3 now owns a
+  ResizeObserver (`trackResize: false`), which reports the current
+  size the moment it starts watching.
+- The panel fitted itself to `window.innerWidth` at mount and wrote
+  the result back to its stored frame. In a window that has not been
+  laid out yet (0x0) that pinned it to minimum size in a corner,
+  permanently. The authored frame is now separate from the fitted one.
+- The grip row's pointerdown preventDefault swallowed presses on the
+  add-line button inside it. A press starting on a button is no
+  longer a drag.
+- **Pre-existing, from code this round moved:** `loadDarkStyle()`
+  memoized ONE style object and handed the same reference to every
+  caller. Maplibre takes ownership of a style object and mutates it,
+  so the second map to ask (two generations, or one remount) got a
+  style that silently never loaded. `mapStyle` now hands out
+  `structuredClone`s.
+- **Pre-existing, from code this round moved:** the Overpass client
+  retried HTTP statuses but not fetch rejections, and a connection
+  the public instance simply drops (its commonest way of shedding
+  load) surfaced as an instant hard failure. Those now retry on the
+  same backoff, with aborts still passing straight through.
+
+
 ## Round: haptics on the edit bar, redesigned from the v6 story (planned 2026-07-12)
 
 Owner ask: pressing the edit-bar buttons (checkbox, numbered, indent,

@@ -4,7 +4,7 @@
 // overlays afterward.
 
 import type { OverlayKind } from "./catalog";
-import { overpassQuery } from "./overpass";
+import { overpassQuery } from "entities/osm";
 
 export type OverlayPlace = {
   id: string;

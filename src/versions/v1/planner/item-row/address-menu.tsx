@@ -1,6 +1,6 @@
 import { Block, Button, Text } from "atoms";
 import { Subtext } from "alloys";
-import type { AddressHit } from "./geocode";
+import type { AddressHit } from "entities/geocode";
 
 // The suggestion popover riding a row: an elevated panel of geocoder hits.
 // The highlight lives in the row (keyboard arrows and pointer hover both
