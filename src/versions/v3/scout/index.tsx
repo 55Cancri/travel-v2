@@ -25,6 +25,7 @@ export function Scout() {
   const db = useDb();
   const [lines, dispatch] = React.useReducer(scoutReducer, undefined, openingLines);
   const now = useMinuteClock();
+  const [mapReady, storeMapReady] = React.useState(false);
   const mapApiRef = React.useRef<ScoutMapApi | null>(null);
 
   const placed = Object.values(db.items).find((item) => item.place);
@@ -68,13 +69,14 @@ export function Scout() {
 
   return (
     <Block position="fixed" inset="0" overflow="hidden">
-      <MapCanvas pins={pins} home={home} apiRef={mapApiRef} />
+      <MapCanvas pins={pins} home={home} onReady={storeMapReady} apiRef={mapApiRef} />
       <QueryPanel
         lines={lines}
         scopeOf={scopeOf}
         dispatch={dispatch}
         onFocusFinding={focusFinding}
         now={now}
+        mapReady={mapReady}
       />
       {/* The way out of a generation that has gone wrong, kept clear of the
           map's own controls in the opposite corner. */}

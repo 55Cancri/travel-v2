@@ -120,6 +120,9 @@ const pinCard = (properties: Record<string, unknown>) => {
 export function MapCanvas(props: {
   pins: ScoutPin[];
   home: { lng: number; lat: number };
+  // Announced upward so a line typed before the map existed can search the
+  // moment it does, instead of waiting for the next keystroke.
+  onReady: (ready: boolean) => void;
   apiRef: React.RefObject<ScoutMapApi | null>;
 }) {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
@@ -131,6 +134,8 @@ export function MapCanvas(props: {
   const [styleTick, storeStyleTick] = React.useState(0);
   const homeRef = React.useRef(props.home);
   homeRef.current = props.home;
+  const onReadyRef = React.useRef(props.onReady);
+  onReadyRef.current = props.onReady;
 
   React.useEffect(() => {
     let disposed = false;
@@ -194,15 +199,22 @@ export function MapCanvas(props: {
       map.on("click", PIN_LAYER, openCard);
       map.on("moveend", () => rememberCamera(map));
       map.on("load", () => {
-        if (!disposed) storeReady(true);
+        if (disposed) return;
+        storeReady(true);
+        onReadyRef.current(true);
       });
       // Follow <html data-theme>: swap the paper, then let the pin effect
-      // rebuild everything the swap took with it.
-      observer = new MutationObserver(() => {
+      // rebuild everything the swap took with it. Each swap claims a
+      // number, and a swap that is no longer the newest drops its style on
+      // arrival: fetching the dark paper takes long enough that two quick
+      // flips can come back out of order and leave the losing one showing.
+      let themeGeneration = 0;
+      const followTheme = () => {
+        const generation = ++themeGeneration;
         (async () => {
           const dark = document.documentElement.dataset.theme === "dark";
           const nextStyle = await mapStyle(dark);
-          if (disposed) return;
+          if (disposed || generation !== themeGeneration) return;
           map.setStyle(nextStyle as never);
           // style.load, not styledata: styledata fires repeatedly and can
           // land while the new style is still arriving, and re-adding the
@@ -211,8 +223,13 @@ export function MapCanvas(props: {
             if (!disposed) storeStyleTick((tick) => tick + 1);
           });
         })();
-      });
+      };
+      observer = new MutationObserver(followTheme);
       observer.observe(document.documentElement, { attributeFilter: ["data-theme"] });
+      // The theme was read before the style fetch above, and the watcher
+      // only starts now, so a flip during startup would otherwise go
+      // unseen until the next one.
+      if ((document.documentElement.dataset.theme === "dark") !== isDark) followTheme();
 
       props.apiRef.current = {
         view: () => {
@@ -242,6 +259,7 @@ export function MapCanvas(props: {
       mapRef.current?.remove();
       mapRef.current = null;
       storeReady(false);
+      onReadyRef.current(false);
     };
     // Mount-only: the api ref is a stable handle, and every live value the
     // callbacks read comes through a ref.
@@ -252,6 +270,11 @@ export function MapCanvas(props: {
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
+    // A style swap leaves the map styleless for a moment, and adding an
+    // image, source, or layer in that window throws. Ticking a checkbox or
+    // the minute clock mid-swap would land exactly there. Nothing is lost
+    // by waiting: style.load bumps styleTick and runs this again.
+    if (!map.isStyleLoaded()) return;
     const dark = document.documentElement.dataset.theme === "dark";
     for (const pin of pins) {
       const id = pinImageId(pin.color, pin.phase, dark);

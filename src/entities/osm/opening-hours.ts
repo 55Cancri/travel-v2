@@ -152,10 +152,16 @@ export const nextChange = (rules: DayRule[], moment: Temporal.ZonedDateTime) => 
   if (boundary === undefined) return null;
   const dayOffset = Math.floor(boundary / 1440);
   const minuteOfDay = boundary % 1440;
-  return moment
-    .startOfDay()
-    .add({ days: dayOffset })
-    .with({ hour: Math.floor(minuteOfDay / 60), minute: minuteOfDay % 60 });
+  return moment.startOfDay().add({ days: dayOffset }).with(
+    { hour: Math.floor(minuteOfDay / 60), minute: minuteOfDay % 60 },
+    // On the night the clocks go back, the target wall time happens twice.
+    // Take the LATER one: a shop shutting at 02:30 stays open through the
+    // repeat, and picking the earlier occurrence lands the "closes at"
+    // moment in the past. `offset: "ignore"` is what makes that choice
+    // stick, because the default carries the start-of-day offset forward
+    // whenever it still parses, which is exactly the earlier occurrence.
+    { disambiguation: "later", offset: "ignore" },
+  );
 };
 
 const clock12 = (raw: string) => {

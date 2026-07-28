@@ -20,6 +20,10 @@ export type ScoutLine = {
   // Which findings are painted on the map. Ids rather than the findings
   // themselves, so a fresh search cannot leave a stale copy pinned.
   shownIds: string[];
+  // Bumped by every refresh press. Clearing `query` alone would make a
+  // second press while a search is already running a silent no-op, since
+  // the value it clears is already empty.
+  runId: number;
   notice?: string;
   failure?: string;
 };
@@ -43,6 +47,7 @@ const freshLine = (taken: string[]): ScoutLine => ({
   status: "idle",
   findings: [],
   shownIds: [],
+  runId: 0,
 });
 
 export const openingLines = () => [freshLine([])];
@@ -116,7 +121,11 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
     case "refreshed":
       // Forgetting what the findings answered to is what makes the same
       // words search again, now against wherever the map is looking.
-      return withLine(lines, action.id, (line) => ({ ...line, query: "" }));
+      return withLine(lines, action.id, (line) => ({
+        ...line,
+        query: "",
+        runId: line.runId + 1,
+      }));
     case "toggled":
       return withLine(lines, action.id, (line) => ({
         ...line,
