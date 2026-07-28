@@ -31,6 +31,7 @@ export function QueryLine(props: {
   dispatch: (action: ScoutAction) => void;
   onFocusFinding: (finding: Finding) => void;
   now: Temporal.Instant;
+  mapReady: boolean;
 }) {
   const line = props.line;
   const isSearching = line.status === "searching";
@@ -45,8 +46,9 @@ export function QueryLine(props: {
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       const scope = props.scopeOf();
-      // No map yet means no view to search inside; the next keystroke (or
-      // the refresh press) tries again against a map that has loaded.
+      // No map yet means no view to search inside. mapReady is a dependency
+      // above, so this run repeats itself the moment the map has one,
+      // instead of leaving typed words silently unsearched forever.
       if (!scope) return;
       props.dispatch({ name: "searching", id: line.id, query: text });
       try {
@@ -71,7 +73,7 @@ export function QueryLine(props: {
     // The dispatch and scope reader are stable handles; every other value
     // the run needs is read when the timer fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line.typed, line.query]);
+  }, [line.typed, line.query, line.runId, props.mapReady]);
 
   const allShown = line.findings.length > 0 && line.shownIds.length === line.findings.length;
 

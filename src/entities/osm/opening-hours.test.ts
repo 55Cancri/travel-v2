@@ -111,4 +111,16 @@ describe("nextChange", () => {
     expect(flip?.toPlainTime().toString({ smallestUnit: "minute" })).toBe("04:00");
     expect(duringTheFold.until(flip!).total({ unit: "hours" })).toBe(3.5);
   });
+
+  test("never reports a flip that already happened in a repeated hour", () => {
+    // 02:30 occurs twice on this date. Standing in the SECOND one, the
+    // earlier occurrence is in the past, and naming it would read as a shop
+    // that closed before it was asked about.
+    const late = rulesOf("Su 00:00-02:45");
+    const secondPass = Temporal.ZonedDateTime.from(
+      "2026-10-25T02:30+01:00[Europe/Amsterdam]",
+    );
+    const flip = nextChange(late, secondPass);
+    expect(secondPass.until(flip!).total({ unit: "minutes" })).toBeGreaterThan(0);
+  });
 });

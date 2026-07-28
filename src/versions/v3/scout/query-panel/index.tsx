@@ -71,6 +71,7 @@ export function QueryPanel(props: {
   dispatch: (action: ScoutAction) => void;
   onFocusFinding: (finding: Finding) => void;
   now: Temporal.Instant;
+  mapReady: boolean;
 }) {
   // Mount with the opening frame and adopt the stored one on the client:
   // localStorage and window are both out of reach while this renders on the
@@ -95,8 +96,13 @@ export function QueryPanel(props: {
   }, []);
 
   const shown = viewport ? fitted(frame, viewport) : frame;
+  // The live frame follows the rendered one EXCEPT during a gesture, when
+  // the pointer owns it. Results arriving (or the minute clock ticking)
+  // re-render mid-drag, and syncing then would hand pointerup the geometry
+  // from before the drag started.
+  const gesturingRef = React.useRef(false);
   const liveRef = React.useRef(shown);
-  liveRef.current = shown;
+  if (!gesturingRef.current) liveRef.current = shown;
 
   const startGesture = (event: React.PointerEvent<HTMLElement>, gesture: "move" | "size") => {
     if (event.button !== 0) return;
@@ -106,7 +112,14 @@ export function QueryPanel(props: {
     if ((event.target as HTMLElement).closest("button")) return;
     event.preventDefault();
     const grip = event.currentTarget;
-    const origin = { x: event.clientX, y: event.clientY, frame: liveRef.current, viewport };
+    // Moving carries the AUTHORED size along, never the fitted one: nudging
+    // the panel in a narrow window must not quietly adopt the shrunken
+    // width as the size the user chose. Resizing does author what is
+    // grabbed, because that is the size being set.
+    const startFrame =
+      gesture === "move" ? { ...frame, x: liveRef.current.x, y: liveRef.current.y } : liveRef.current;
+    const origin = { x: event.clientX, y: event.clientY, frame: startFrame, viewport };
+    gesturingRef.current = true;
     grip.setPointerCapture(event.pointerId);
     haptic("grab");
     const gestureListeners = new AbortController();
@@ -136,6 +149,7 @@ export function QueryPanel(props: {
     );
     const settle = () => {
       gestureListeners.abort();
+      gesturingRef.current = false;
       storeFrame(liveRef.current);
       rememberFrame(liveRef.current);
     };
@@ -198,6 +212,7 @@ export function QueryPanel(props: {
             dispatch={props.dispatch}
             onFocusFinding={props.onFocusFinding}
             now={props.now}
+            mapReady={props.mapReady}
           />
         ))}
       </Block>
