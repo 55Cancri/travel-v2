@@ -32,6 +32,430 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: version dropdown + v3 "map scout" (planned 2026-07-28)
+
+Owner ask, verbatim in intent: turn the version switcher into a dropdown
+and add a generation v3 that is a draggable, resizable wide input
+floating on top of a map. Typing "media markt" on a line lists every
+match, each checkable (plus a show-all), and the checked ones pin onto
+the map with pin icons that carry today's open/closed state ("closed",
+"closes at 8pm"). The next line takes a specific address and pins that
+too. DESIGN DECIDED BEFORE IMPLEMENTATION:
+
+- **Reading of the ask (stated, because it changes the shape):** ONE
+  floating panel that holds a STACK of query lines, draggable by its
+  grip and resizable from its corner, rather than N independently
+  floating inputs. "On the next line" reads as the same surface, and
+  five separately-dragged boxes over a map is chaos. If the owner
+  wanted separate floating inputs, that is a small change to this
+  design, not a rewrite.
+- **The picker becomes a real dropdown** and cycling dies. catalog.ts
+  predicted this ("a menu earns its place only if the catalog ever
+  grows past" two or three generations); three generations plus the
+  owner's ask is that moment. Anchor positioning is not Baseline, so
+  the menu is an absolutely-positioned Block in a relative wrapper,
+  dismissed by outside-press and Escape through one AbortController.
+- **Data-source machinery leaves v1 and becomes version-neutral.**
+  Generations are self-contained in their SCREENS, but the Overpass
+  HTTP client, the OSM opening_hours grammar, and the Photon geocoder
+  are infrastructure, and v3 is the second real caller. They move to
+  `entities/osm/` (overpass + opening-hours) and `entities/geocode/`,
+  v1's overlays and item-row import from the new doors. Copying them
+  into v3 would be the rule-zero violation.
+- **`opening-hours.ts` grows a `nextChange`** (minutes until the
+  open/closed state flips) because "closes at 8pm" needs a boundary,
+  not just a boolean. `isOpenAt` gets rewritten on the same new
+  `effectiveSpans` helper so one place owns "which spans apply on day
+  N", instead of two parallel readings of the rule list.
+- **A line's query hits two sources at once,** because the owner's two
+  examples want different ones and he should never have to say which:
+  Overpass name/brand/operator regex inside the viewport (this is what
+  makes "all the Media Markts, pinpointed" work, and it is the only
+  source carrying `opening_hours`), plus Photon (addresses, and named
+  places outside the view). One merged, deduped result list.
+- **Open/closed rides the pin itself,** not just the popup: the pin
+  icon is drawn in the line's color, a closed place gets the muted
+  fill plus a red ring, and the collision-managed label under the pin
+  reads "Media Markt / closes 8pm" or "/ closed". Full detail (hours,
+  address, links) lives in the hover popup.
+- v3 ships `draft: true`, so `latestUiVersion` stays v1 and only a
+  deliberate flip reaches it. Its Planner renders the same scout
+  screen, so a device flipped to v3 on a trip URL is not dead-ended.
+
+- [x] `entities/osm/` (overpass.ts, opening-hours.ts + `nextChange`,
+      index door) and `entities/geocode/`; v1 imports repointed. A THIRD
+      module came out of v1 unplanned: `entities/map-style/` (the light
+      URL, the dark repaint, and `mapStyle(dark)`), because v3 needed
+      the same paper and copying 60 lines of DARK_PAINT into it would
+      have been the rule-zero violation. map-pane.tsx shrank by 74.
+- [x] `picker.tsx` rewritten as a dropdown; cycling deleted.
+- [x] v3 catalog entry + `v3/trips-shelf`, `v3/planner` (both render
+      the one screen v3 has).
+- [x] `v3/scout/`: map-canvas, query-panel (drag + resize + remembered
+      frame), query-line, find-places, open-now, pin-icons, lines.ts
+      (the reducer).
+- [x] Verified live: search returned 63 Albert Heijn branches each
+      reading "Open · closes 10pm"; show-all pinned them with labels
+      reading "Albert Heijn / closes 10pm"; a result press centred the
+      map; a second line found "Dam 1" through the geocoder in its own
+      color; drag and resize both held and persisted; dark theme
+      repaints map and panel.
+- [x] `bun test src` (37 pass), typecheck, `bun run check:names`.
+- [ ] Sol review pass on the diff (running at hand-off time).
+
+### Bugs found and fixed while verifying (all mine except the last two)
+
+- The map container was styled `position:absolute; inset:0`, which
+  maplibre-gl.css overrides with its own unlayered `position:relative`
+  on the element it claims: the container computed to zero height and
+  the map never showed. It is now a raw div with inline 100%/100%,
+  the same shape v1 uses, with the reason written down.
+- Maplibre sizes its canvas at construction and its own `trackResize`
+  only reacts to later CHANGES, so a map built before the stylesheet
+  landed kept the 400x300 fallback canvas forever. v3 now owns a
+  ResizeObserver (`trackResize: false`), which reports the current
+  size the moment it starts watching.
+- The panel fitted itself to `window.innerWidth` at mount and wrote
+  the result back to its stored frame. In a window that has not been
+  laid out yet (0x0) that pinned it to minimum size in a corner,
+  permanently. The authored frame is now separate from the fitted one.
+- The grip row's pointerdown preventDefault swallowed presses on the
+  add-line button inside it. A press starting on a button is no
+  longer a drag.
+- **Pre-existing, from code this round moved:** `loadDarkStyle()`
+  memoized ONE style object and handed the same reference to every
+  caller. Maplibre takes ownership of a style object and mutates it,
+  so the second map to ask (two generations, or one remount) got a
+  style that silently never loaded. `mapStyle` now hands out
+  `structuredClone`s.
+- **Pre-existing, from code this round moved:** the Overpass client
+  retried HTTP statuses but not fetch rejections, and a connection
+  the public instance simply drops (its commonest way of shedding
+  load) surfaced as an instant hard failure. Those now retry on the
+  same backoff, with aborts still passing straight through.
+
+## Round: haptics on the edit bar, redesigned from the v6 story (planned 2026-07-12)
+
+Owner ask: pressing the edit-bar buttons (checkbox, numbered, indent,
+outdent, and the rest) must vibrate; stockpile-v6's haptics module is
+the reference. DESIGN DECIDED BEFORE IMPLEMENTATION (adoption is design
+work, per-item verdicts in the round report):
+
+- The haptics module is REDESIGNED on the v6 story (pattern vocabulary,
+  per-name rate caps, visibility + reduced-motion gates, crisp 8-25ms
+  pulses) and RELOCATED from entities/haptics to src/atoms/haptics.ts,
+  because haptics is interaction wiring and atoms may not reach into
+  entities. API becomes haptic("tap" | "grab"); the old
+  haptics.tap()/grab() object dies. v6's tick/confirm/warn/reject
+  patterns and its localStorage kill switch are NOT ported (no
+  consumers, no settings UI yet; each is a one-line add later).
+- The Button ATOM fires haptic("tap") on every press by default, with
+  a `haptic` prop (name to change the cue, false to silence), so no
+  feature code ever sprinkles vibration calls on buttons again. Link
+  gets the same default on click (it has no press wiring to hook).
+- All 12 manual call sites sweep away: calls inside Button/Checkbox/
+  IconButton presses are deleted (the atom covers them), the
+  drag-reorder grab converts to haptic("grab"), and the city chip
+  keeps a manual tap under haptic={false} because its press handler
+  suppresses the action after a drag and the buzz must not lie.
+
+- [x] atoms/haptics.ts + atoms door export; delete entities/haptics.
+- [x] Button default-tap + haptic prop; Link click tap.
+- [x] Sweep the 12 call sites (picker, trips-shelf x2, item-editor x2,
+      planner index x5, use-drag-reorder, section).
+- [x] Verify in browser by instrumenting navigator.vibrate: checkbox,
+      numbered, indent, outdent each fired exactly one [10] tap while
+      the action applied and focus held; the version pill and a trip
+      Link buzz and still navigate; the visibility gate proven live
+      (the pane reports hidden, zero calls until the state is shimmed
+      visible).
+- [x] slice/32-haptics off slice/31-rich-text: commit e2bc91e, PR #32
+      (base slice/31), merged to bleeding-edge, deployed, fresh asset
+      probed 200 on prod. Sol review verdict recorded below when it
+      lands.
+
+OWNER FOLLOW-UP (same day): asked for a buzz on checking/unchecking a
+line's checkbox. Already covered: the Checkbox alloy presses through
+the Button atom, so the deployed build vibrates on both check and
+uncheck. Re-verified live with instrumented vibrate (two clicks, two
+[10] pulses, done state flipped true then false). No code change; if
+his phone stays silent there, it is the cached pre-haptics bundle.
+
+SOL VERDICT (post-deploy): conformance pass, sweep complete, SSR safe,
+the Link wrap keeps router navigation. Accepted its hardening nit
+(vibrate probed as a function, 1bde00e, redeployed). PUSHED BACK on
+its one P2 (the delete-city button buzzes at press even if the
+confirm dialog is then cancelled): under the shipped model the buzz
+acknowledges the PRESS (input received), like Android system touch
+feedback, not the outcome; the chip is the only exception because its
+"press" can be the ghost tail of a drag, not a real tap. If the owner
+feels a cancelled delete should not have buzzed, the fix is one line
+(haptic={false} on that button plus a manual tap after confirm).
+
+BONUS PROOF: a stale-HMR module mid-edit crashed Canvas once in dev,
+and the UiVersionRescue boundary caught it and recovered the app,
+which was the queued "rescue boundary never exercised" item. The
+crash was HMR ghosting (it referenced an identifier that no longer
+exists in any file), gone after reload, current code verified clean.
+
+## Round: verify italics + contextual bar end to end (planned 2026-07-12)
+
+Owner reports italics STILL not visible on his device and asked to
+confirm the contextual bar (selection = B/I/U/S, bare caret = line
+controls) is implemented, deployed, and working. Found on arrival:
+commit 4b34c2a carries the italic face + contextual bar, but the
+working tree holds an UNCOMMITTED follow-up (syncTextSelected recompute
+on focus, bar spacing tweak) that never shipped. PLAN:
+
+- [x] Read the rich-text render path (rich-dom.ts) and confirm the
+      italic mark actually maps to font-style italic with the Inter
+      italic face loaded. (Yes: italic renders as <i>, computed
+      font-style italic, family Inter Variable.)
+- [x] Run the local dev server, apply italic to selected text, verify
+      the slant VISUALLY (screenshot), and verify the bar swaps
+      between format buttons (selection) and line controls (caret).
+      (All verified: real slant on screen, bar swaps both directions,
+      marks stack (i+b), storage records spans correctly, focus stays
+      on the line through bar presses.)
+- [x] Commit the follow-up to slice/31 (PR #31): 1b6f7ea, pushed,
+      merged to bleeding-edge (646d9d3), pushed.
+- [x] Deploy, verify on prod: deployed clean (no [deleting] lines);
+      prod serves the new build's hashed CSS with the italic
+      @font-face and the inter-latin-wght-italic woff2 (both 200).
+- [x] Sol background review of the follow-up diff: conformance pass,
+      no blocking defect. Its two accepted findings (the selection
+      probe ran before the programmatic selection landed; a
+      selectionchange straggling in after blur could re-show the
+      format bar) are FIXED in 39e5f64. Its stale-closure concern was
+      checked against the real compiler output and is not a bug; the
+      identity contract is now named in a comment on syncTextSelected.
+- [x] BONUS, queue burn-down: the format buttons now show PRESSED for
+      the marks the whole selection carries (the aria-pressed nit
+      queued by the rich-text audit): marksOver in lines.ts (tested,
+      including agreement with applyMark's toggle threshold),
+      selectedMarks replaces the textSelected boolean, edit-bar
+      renders the four buttons from one FORMATS table with
+      aria-pressed + a surface-muted fill. Commit 39e5f64 on
+      slice/31 (PR #31), merged to bleeding-edge (8a6d6b6), deployed,
+      browser-verified (Italic pressed on italic text, Bold
+      press/unpress live-updates, caret returns line controls). Sol
+      review of this commit: pass on all three verdicts, zero defects;
+      its one note (no DOM-level component tests for the bar) joins
+      the standing test-infra gap, which now needs a happy-dom vs
+      Playwright decision before bar behavior can get automated
+      coverage.
+
+VERIFICATION GOTCHA (cost an hour, do not relearn): the in-app browser
+automation CANNOT create native text selections (double-click,
+drag-select, and shift+arrow all fail silently in the contenteditable),
+and its screenshot-coordinate clicks mismap near the bottom bar. Use
+getSelection().setBaseAndExtent(...) in page JS to build the selection
+(it fires the same selectionchange the app listens to) and click bar
+buttons by read_page REFS, never by screenshot coordinates. Ref clicks
+exercise the full react-aria press path and preservesFocus correctly.
+
+If the owner STILL sees no italics on his phone after this deploy, the
+remaining suspects are his browser cache (hard refresh) or the phone
+sitting on UI v1 rather than v2.
+
+## Round: bar polish and a real italic face (planned 2026-07-12)
+
+Owner feedback after phone testing rich text. PLAN, before the work:
+
+- [x] **Italics render for real.** Inter Variable's default fontsource
+      file is upright-only (font-style: normal), so <i> had no italic
+      face to match and the browser did not synthesize one. Import
+      @fontsource-variable/inter/wght-italic.css alongside, verify the
+      slant VISUALLY (screenshot), not just by computed style.
+- [x] **Compact bar**: shrink the gap between icon buttons (2px) and
+      the group separators (xs), buttons keep their 2rlh hit size.
+- [x] **Contextual bar**: a document selectionchange listener tracks
+      whether the active line carries a non-collapsed selection; with a
+      selection the bar shows ONLY the format buttons (B I U S), else
+      ONLY the line controls (lists + indent/outdent).
+- [x] Verify, test, follow-up commit on slice/31 (PR #31), merge,
+      deploy.
+
+## Round: rich text on the canvas (planned 2026-07-12)
+
+SOL MAX AUDIT (landed after deploy; fix round COMPLETE, all accepted
+items fixed, tested, browser-verified, and redeployed same round): CRITICAL: native paste/drop inserts live HTML into the
+contenteditable, bypassing renderSpans, so pasted markup with equal
+text/marks survives the parse-compare guard (XSS surface; fix: model-
+level plain-text paste, multiline paste spawning lines, drop prevented,
+belt on insertFromPaste beforeinput). SHOULD-FIX, all accepted: marks
+get a canonical order+dedupe so multi-mark spans round-trip and the
+focused DOM never rebuilds spuriously; the load boundary normalizes
+noncanonical rich records and dedupes line ids; the LineRow DOM-sync
+guard and Enter both respect in-flight composition (dataset flag +
+keyCode 229); arrow hops probe a real character rect when the caret
+rect is missing and use the selection END for downward hops; bun:test
+(built into bun, ZERO new deps, settling the stalled test-infra
+decision) lands with lines.test.ts over the span algebra + migration.
+NITS: checkbox whitespace muting restored, aria-placeholder/textbox
+semantics added; backward-selection direction and aria-pressed states
+QUEUED. PUSHED BACK: cross-line selection editing needs a document-
+level selection model (own round, queued); separate per-line hosts
+already fence most cross-line editing.
+
+
+Owner approved inline formatting (bold/italic/underline/strikethrough)
+with "whatever keeps all the existing functionality". DESIGN DECIDED
+BEFORE IMPLEMENTATION:
+
+- Per-line CONTENTEDITABLE replaces the per-line textarea. No editor
+  framework (Lexical/ProseMirror would replace our whole line model and
+  add a heavy dependency); the existing engine (lines, kinds, indents,
+  split/merge, edit bar, IME beforeinput path) stays ours.
+- Data: a line's `text: string` becomes `spans: { text, marks[] }[]`
+  with marks from "bold" | "italic" | "underline" | "strike". The
+  localStorage load MIGRATES old `{ text }` records to single-span
+  lines at the boundary (one-time rewrite, no legacy branches in
+  runtime code). Storage key stays `travel2:v2:canvas`.
+- DOM is built programmatically from spans (createTextNode + mark
+  wrappers), NEVER innerHTML strings, so user text cannot inject
+  markup. During plain typing the DOM is source of truth (parse back
+  to spans on input); a line only re-renders from state when state
+  changed from OUTSIDE typing (formatting, conversion, split/merge),
+  guarded by comparing serialized forms. Caret restores by text
+  offset.
+- Known, accepted tradeoff: browser-native undo history degrades with
+  manual DOM management (queued as future work, not silently lost).
+
+PLAN CHECKLIST (all landed, browser-verified, deployed as PR #31
+stacked on #30):
+
+- [x] `lines.ts`: Span/Mark types, span algebra (text length, split at
+      offset, concat with adjacent-equal normalization, applyMark over
+      a range with all-marked-toggles-off semantics), claimMarker over
+      leading span text, isLine for the new shape + the load migration.
+- [x] New `rich-dom.ts`: renderSpans(el, spans) via DOM nodes,
+      parseSpans(el), selectionOffsets(el), setSelection(el, start,
+      end), and rect-based first/last visual line detection for arrow
+      hops (replaces the textarea mirror in caret-line.ts, which gets
+      deleted).
+- [x] `line-row.tsx`: contenteditable div (data-canvas-line moves to
+      it), :empty::before placeholder, same marker gutter.
+- [x] `index.tsx`: engine reworked to selection offsets (split,
+      backspace ladder, hops), input parsing with composition tracking
+      (compositionstart/end delegated on the shell, parse on end),
+      applyMark plumbing, and Cmd/Ctrl+B / I / U (+Shift+X strike)
+      shortcuts with the browser's own contenteditable defaults
+      suppressed.
+- [x] `edit-bar.tsx`: four new format buttons (preservesFocus) after
+      the list/indent groups; bar scrolls horizontally if the phone is
+      narrower than the button row. Four new icons in atoms/icons:
+      text-b, text-italic, text-underline, text-strikethrough.
+- [x] Verify heavily in browser (the risky bits: caret restoration
+      after formatting, parse fidelity, Enter/backspace at offsets,
+      marker triggers still firing, checkbox toggle, persistence
+      migration from old records). Sol review. New slice/31-rich-text
+      stacked on slice/30 (PR base slice/30). Merge, push, deploy.
+
+If interrupted mid-round: the working tree lives on bleeding-edge;
+check which checklist items' files exist and typecheck; the design
+above is settled, do not re-litigate it.
+
+## Round: canvas toolbar, markers polish, font (planned 2026-07-11, late night)
+
+Owner feedback on the first canvas build. Planned first, then all
+items landed, verified with real clicks, and deployed (follow-up on
+PR #30):
+
+- [x] **Icon-only edit bar, condensed.** Indent/outdent lose their text
+      labels and become the classic glyphs (three lines + arrow right /
+      arrow left). New buttons for bullet list, checkbox, and numbered
+      list that convert the FOCUSED line on press (pressing the line's
+      current kind toggles it back to plain text). All buttons are
+      IconButton alloys with preservesFocus so the keyboard stays open.
+      New icons under `src/atoms/icons/`: indent, outdent,
+      list-bullets, list-checks, list-numbers (256-viewBox
+      currentColor, matching the set).
+- [x] **Bullets read black**: the bullet dot (and the ordinal, for
+      coherence) move from text-muted to text-primary.
+- [x] **Remove the marker hint line** from the v2 shelf ("Markers as
+      you type…"). The typed shortcuts themselves STAY.
+- [x] **Left-align plain text with the page**: the marker gutter
+      renders only for marker lines, so a plain text line's textarea
+      starts at the same left edge as the "v2" title (list items keep
+      their natural gutter indent).
+- [x] **Canvas font**: the canvas text tries Inter Variable
+      (@fontsource-variable/inter, canvas-scoped import so it rides the
+      v2 chunk), crisper than Instrument Sans at dense list sizes. App
+      chrome keeps Instrument Sans. One-prop revert if the owner
+      dislikes it.
+- [x] Verify in browser, Sol review, follow-up commits on slice/30
+      (PR #30), merge to bleeding-edge, deploy. Sol verdict: zero
+      runtime defects; its two nits (numbered gutter overflow past two
+      digits, checkbox-list icon consistency) were fixed same round.
+      Its no-tests should-fix remains blocked on the queued test-infra
+      decision.
+
+DECIDED AND DEFERRED (needs its own round, raised to the owner):
+inline text formatting (bold/italic/underline/strikethrough over a
+selection). Lines are plain strings in a textarea, which cannot render
+mixed inline styles; real inline marks need the line editor rebuilt on
+contenteditable (or an overlay-mirror hack not worth shipping). The
+toolbar therefore ships WITHOUT formatting buttons this round: dead
+buttons are worse than absent ones. Owner input wanted on the
+contenteditable round's priority.
+
+## Round: the v2 canvas editor (2026-07-11, night)
+
+The owner's design brief for v2's start: an editable canvas with typed
+markers, indents, vertical rhythm, and indent/outdent buttons riding
+above the phone keyboard that never close it. DONE, deployed to prod
+(PR #30, stacked on #29):
+
+- `src/versions/v2/canvas/`: `lines.ts` (Line record: id/text/indent/
+  kind/done; marker claiming; the numbering walk), `line-row.tsx`
+  (marker gutter + auto-growing textarea, one shared text column),
+  `edit-bar.tsx` (fixed bottom bar, visualViewport-lifted above the
+  Android keyboard), `caret-line.ts` (wrapped-line caret math),
+  `index.tsx` (state, localStorage persistence under
+  `travel2:v2:canvas`, the key engine).
+- Markers: "- " bullet, "[] "/"[ ] " checkbox (tap to toggle, strikes
+  through), "N. " numbered with automatic renumbering per indent run.
+  Enter splits and inherits; Enter on an empty marker line demotes it;
+  Backspace at start climbs marker -> indent -> merge. Tab/Shift-Tab
+  and the edit-bar buttons indent/outdent.
+- The Button atom gained `preservesFocus` (react-aria's
+  preventFocusOnPress): edit-bar presses never move focus, so the
+  keyboard stays open. Verified: the bar (which hides on blur) stays up
+  through a press that applies its action.
+- **Android IME hard-won lesson**: keydown on mobile IMEs (and the
+  browser automation driver, which is how it surfaced) can carry
+  unusable key values, so Enter and backspace-at-start ALSO answer
+  through a DELEGATED NATIVE beforeinput listener on the canvas shell
+  (insertLineBreak / deleteContentBackward). React's onBeforeInput is
+  a synthetic that does NOT see native beforeinput, so the listener is
+  imperative (AbortController). A handled keydown cancels its
+  beforeinput, so desktop never double-fires. Both paths are exercised
+  in the test plan.
+- Canvas content is per device and NOT synced or tied to trips yet
+  (deliberate: it is a feel prototype for the editor).
+
+SOL REVIEW (landed same round, fixes deployed): the audit's critical
+was real: mutations ran inside setState updater functions, which React
+may replay, so a spawned line's minted id could differ from the focus
+target. Mutations now compute at event time from a live linesRef and
+setState receives a plain value. Also fixed: Enter ignores IME
+composition (nativeEvent.isComposing), Enter consumes a selection,
+stored JSON is validated per line (isLine) with indent clamping, and
+the edit bar hides when focus lands on a non-line control (the row
+checkbox now preserves focus on toggle, so checking items mid-edit
+keeps the keyboard open). Pushed back on: keydown/beforeinput dedup for
+a WebView that ignores preventDefault (condition the design rules out).
+
+GOTCHA (bit twice today): `bun run deploy` while a dev server runs
+regenerates `.alchemy/local/wrangler.jsonc` from raw .env, hot-swapping
+the RUNNING dev door to the real credentials and dropping the session.
+After deploying mid-session, restart the dev launch config you were
+using.
+
+AWAITING: owner's phone test (markers, keyboard bar, focus retention on
+his Galaxy).
+
 ## Round: generation v2 opens as a blank canvas (2026-07-11, later)
 
 The owner is starting the v2 UI design. DONE:
