@@ -34,6 +34,15 @@ export const UI_VERSIONS: UiVersion[] = [
     ),
     Planner: React.lazy(() => import("./v2/planner").then((m) => ({ default: m.Planner }))),
   },
+  {
+    id: "v3",
+    label: "Map scout",
+    draft: true,
+    TripsShelf: React.lazy(() =>
+      import("./v3/trips-shelf").then((m) => ({ default: m.TripsShelf })),
+    ),
+    Planner: React.lazy(() => import("./v3/planner").then((m) => ({ default: m.Planner }))),
+  },
 ];
 
 // What a fresh device (or a retired stored id) resolves to: the newest

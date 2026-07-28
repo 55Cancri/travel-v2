@@ -14,7 +14,7 @@ import {
 import { Center, Checkbox, IconButton, Subtext } from "alloys";
 import { KIND_META, type Item } from "entities/trips/types";
 import { AddressMenu } from "./address-menu";
-import { fetchAddressHits, type AddressHit } from "./geocode";
+import { fetchAddressHits, type AddressHit } from "entities/geocode";
 
 // One plan row. The grip COLUMN is always reserved so checkboxes and text
 // never shift as handles appear (the handle itself only renders when the row

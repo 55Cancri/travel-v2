@@ -4,7 +4,7 @@
 // bounds and only refetch when the view leaves the covered area.
 
 import type { ViewBounds } from "./fetch-places";
-import { overpassQuery } from "./overpass";
+import { overpassQuery } from "entities/osm";
 
 export type BusRoute = {
   id: number;

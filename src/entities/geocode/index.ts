@@ -1,7 +1,7 @@
-// Address and place lookups for row autocomplete, from Photon (komoot's
-// keyless OSM geocoder, built for as-you-type search; Nominatim's usage
-// policy forbids autocomplete). Biased toward the segment's city so three
-// typed letters already rank the right continent first.
+// Address and place lookups from Photon (komoot's keyless OSM geocoder,
+// built for as-you-type search; Nominatim's usage policy forbids
+// autocomplete). Callers pass a bias point, typically the city already on
+// screen, so three typed letters rank the right continent first.
 
 export type AddressHit = {
   label: string;

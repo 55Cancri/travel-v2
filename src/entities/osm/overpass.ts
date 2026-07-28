@@ -2,6 +2,10 @@
 // slots per client and sheds excess with 429s (and 504s under load), so
 // queries run strictly one at a time through a module-wide queue and a
 // rejected attempt waits out a growing backoff before trying again.
+//
+// Shedding is not always polite: over its limit the instance also just drops
+// the connection, which surfaces as a fetch rejection rather than a status.
+// Those retry on the same schedule, since they mean the same thing.
 
 const OVERPASS = "https://overpass-api.de/api/interpreter";
 const RETRYABLE = new Set([429, 502, 503, 504]);
@@ -27,11 +31,20 @@ const rest = (ms: number, signal: AbortSignal) =>
 
 const attemptQuery = async <Body>(query: string, signal: AbortSignal) => {
   for (let attempt = 1; ; attempt++) {
-    const res = await fetch(OVERPASS, {
-      method: "POST",
-      body: new URLSearchParams({ data: query }),
-      signal,
-    });
+    let res: Response;
+    try {
+      res = await fetch(OVERPASS, {
+        method: "POST",
+        body: new URLSearchParams({ data: query }),
+        signal,
+      });
+    } catch (error) {
+      // A caller that walked away is not a failure to retry, and the last
+      // attempt's error is the one the caller gets to see.
+      if (signal.aborted || attempt >= ATTEMPTS) throw error;
+      await rest(BACKOFF_MS[attempt - 1] ?? 8000, signal);
+      continue;
+    }
     if (res.ok) return (await res.json()) as Body;
     if (attempt >= ATTEMPTS || !RETRYABLE.has(res.status)) {
       throw new Error(`overpass responded ${res.status}`);
