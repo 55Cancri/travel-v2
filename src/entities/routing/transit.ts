@@ -225,7 +225,10 @@ export const fetchRide = async (
           signal,
         );
       } catch (error) {
-        if (signal.aborted) return;
+        // An abort did not "fail this board", it ended the whole request.
+        // Swallowing it here would cache an itinerary permanently missing
+        // its next-departure times for every later caller.
+        if (signal.aborted) throw error;
         console.warn("[transit] departures board failed:", error);
       }
     }),

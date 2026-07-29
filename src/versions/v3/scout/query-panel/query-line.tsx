@@ -187,6 +187,10 @@ export function QueryLine(props: {
             // the container while it closes. The inner box is what scrolls,
             // so the clip and the scroll never fight.
             overflow="hidden"
+            // inert, not just aria-hidden: a zero-height box still holds
+            // focusable checkboxes, and tabbing into rows nobody can see is
+            // worse than not announcing them.
+            inert={!line.expanded}
             aria-hidden={!line.expanded}
             _motion={{
               initial: false,

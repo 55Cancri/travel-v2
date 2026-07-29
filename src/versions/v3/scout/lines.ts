@@ -99,8 +99,11 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
           notice: action.results.notice,
           failure: undefined,
           // A new answer starts unpainted: silently re-pinning ids that
-          // happen to repeat would mix two searches on one map.
+          // happen to repeat would mix two searches on one map. It also
+          // starts open, or a search run after folding the last one away
+          // would land its results behind a closed disclosure.
           shownIds: [],
+          expanded: true,
         },
       );
     case "failed":
