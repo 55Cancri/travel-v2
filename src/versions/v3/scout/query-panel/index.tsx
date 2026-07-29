@@ -4,6 +4,7 @@ import { IconButton } from "alloys";
 import type { Finding, SearchScope } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
 import { QueryLine } from "./query-line";
+import { RouteStrip } from "./route-strip";
 
 // The floating frame the query lines live in: dragged by its grip row,
 // resized from its bottom corner, and remembered across reloads so a scout
@@ -72,6 +73,10 @@ export function QueryPanel(props: {
   onFocusFinding: (finding: Finding) => void;
   now: Temporal.Instant;
   mapReady: boolean;
+  routeCount: number;
+  routeNotice: string | null;
+  onClearRoute: () => void;
+  onUndoRoutePoint: () => void;
 }) {
   // Mount with the opening frame and adopt the stored one on the client:
   // localStorage and window are both out of reach while this renders on the
@@ -203,6 +208,14 @@ export function QueryPanel(props: {
         </IconButton>
       </Block>
       <Block overflowY="auto" px="sm" pb="sm">
+        {props.routeCount > 0 ? (
+          <RouteStrip
+            count={props.routeCount}
+            notice={props.routeNotice}
+            onClear={props.onClearRoute}
+            onUndo={props.onUndoRoutePoint}
+          />
+        ) : null}
         {props.lines.map((line) => (
           <QueryLine
             key={line.id}
