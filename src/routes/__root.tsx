@@ -1,6 +1,7 @@
 import * as React from "react";
 import { HeadContent, Scripts, createRootRoute, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { MotionConfig } from "framer-motion";
 import "@fontsource-variable/instrument-sans";
 import { toggleTheme, THEME_KEY } from "entities/theme";
 import appCss from "../styles.css?url";
@@ -61,7 +62,10 @@ function RootDocument(props: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {props.children}
+        {/* One place decides that motion follows the reader's own
+            reduce-motion setting, so no individual animation has to
+            remember to ask. */}
+        <MotionConfig reducedMotion="user">{props.children}</MotionConfig>
         <Scripts />
       </body>
     </html>

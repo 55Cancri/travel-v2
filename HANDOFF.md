@@ -38,6 +38,104 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: scout polish + Cmd-click routes (planned 2026-07-29)
+
+Owner ask, in his order:
+
+1. Pressing plus adds the new line at the TOP of the panel, not the
+   bottom.
+2. "Show all" becomes a disclosure. Ticking it collapses the result
+   rows into one row reading [checkbox] [caret] "Show all (N)"; the
+   caret flips right/down and toggles the rows back open. Spacing has
+   to let the caret slot in naturally. Opening and closing animates
+   height plus a fade.
+3. Show where the owner is: detect location as a "you are here", or
+   let him drop his own marker.
+4. The pin icon reads as a circle stacked on a triangle (an ice cream
+   cone). The head must flow into the point as one curve.
+5. Cmd-click a series of map points and draw a route between them,
+   using transit / cycling / walking. v1 already does this for a day.
+6. LATER, his word: save a path, name it, edit it, untick points, drag
+   to reorder them in a list, on its own input separate from search.
+7. Maybe: bus stops, metro and train lines shown on the map by
+   default, if it is cheap.
+
+DESIGN DECIDED BEFORE IMPLEMENTATION:
+
+- **The two network clients behind routing leave v1** the same way the
+  OSM ones did last round: `fetchRoadRoute` (the OSRM foot router) and
+  `fetchRide` (Transitous transit itineraries) become
+  `entities/routing/`. What stays in v1 is `planDayRoute`, which is
+  shaped around a trip DAY and its vias, and is not v3's problem. v3
+  writes its own much smaller planner over the same two clients.
+- **The walk-or-ride split is the reusable idea, not the code.** Legs
+  under `WALK_LIMIT_METERS` road-route as a walk chain, longer ones ask
+  transit. That constant moves with the clients.
+- **Cmd-click is additive and ordered**: each Cmd-click appends a
+  waypoint, the route redraws, and the waypoints render as small
+  numbered dots distinct from search pins. Plain click keeps doing
+  nothing to the route, so no accidental waypoints.
+- **Location uses maplibre's own GeolocateControl** (already mounted in
+  v3) rather than a hand-rolled watcher, because it already owns the
+  permission prompt, the accuracy ring, and the "you are here" dot.
+  Cmd-click waypoints double as the self-placed markers he offered as
+  the alternative, so both halves of item 3 land.
+- **The pin becomes one path, not two shapes.** The head's tangent has
+  to meet the tip, so the outline is a circle arc whose end angles are
+  computed FROM the tip position (not a fixed 135/45), joined by the
+  two tangent lines. That is the only way the curve flows into the
+  point instead of a cone.
+- **The disclosure animates height**, which the house motion rule
+  normally forbids. Naming the conflict: the rule targets continuous
+  animation, and it sanctions `layout` for real layout changes. A
+  one-shot 300ms open / 200ms close of a list IS a real layout change
+  and is exactly what the owner asked for, so it stands.
+- Items 6 and 7 are NOT in this round. 6 the owner called "later". 7 he
+  asked whether it is cheap: it is cheapish (v1 already has
+  `fetch-bus-network` and `fetch-stop-board`), but it wants its own
+  round and its own answer about what "by default" costs on Overpass.
+
+- [x] `entities/routing/` (road.ts = the OSRM client, geometry helpers,
+      WALK_LIMIT_METERS; transit.ts = Transitous whole) + v1 repointed.
+      `fetchRoadRoute` now takes plain coordinate pairs rather than a
+      trip's own waypoint union, which is what let a network client stop
+      depending on one screen's data model.
+- [x] Plus adds at the top (verified: the new blue line appeared above
+      the existing one).
+- [x] Show-all disclosure. Verified: ticking show-all folded seven rows
+      into the single row [checkbox][caret][Show all (7)], the caret
+      turned, and pressing it opened them again.
+- [x] Pin silhouette redrawn from the TANGENT points off the tip.
+      Verified on screen: the head runs into the point as one curve.
+- [x] Cmd-click waypoints + drawn route. Verified: three numbered dots
+      and a walking path following real streets between them, plus a
+      route strip in the panel with Undo and clear.
+- [x] `MotionConfig reducedMotion="user"` added at the document root.
+      The house motion rule required it and nothing had it, which the
+      first real animation in the app made worth fixing.
+- [x] typecheck, 39 tests, check:names.
+- [ ] Geolocate "you are here": the control is mounted but this browser
+      reports no geolocation support, so it is UNVERIFIED here. Needs
+      the owner's own device.
+- [ ] Scoped Sol pass on this round's diff.
+- [ ] NOT visually re-confirmed after the last two edits (splitting the
+      route into a dashed walk layer and a solid ride layer, and moving
+      the map's ready gate from "load" to "style.load"). Both typecheck;
+      the pane kept collapsing to 0x0 and further checks were noise.
+
+### Bug found while verifying this round
+
+- The map's ready flag hung off maplibre's `load` event, which waits for
+  the first RENDERED frame. A container with no size (a background tab,
+  a collapsed pane) never produces one, so the map stayed permanently
+  un-ready: no pin layer, no route layer, and every typed search
+  silently skipped. It now hangs off `style.load`, which is the actual
+  precondition for adding sources and layers.
+- `line-dasharray` is the one paint property maplibre will not drive
+  from a feature, so the first attempt at "walks dashed, rides solid"
+  would have failed silently. The route is now two filtered layers over
+  one source.
+
 ## Round: version dropdown + v3 "map scout" (planned 2026-07-28)
 
 Owner ask, verbatim in intent: turn the version switcher into a dropdown

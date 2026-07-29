@@ -3,6 +3,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { mapStyle } from "entities/map-style";
 import type { ViewBounds } from "./find-places";
 import { pinImage, pinImageId, type PinPhase } from "./pin-icons";
+import type { RouteLeg, Waypoint } from "./route";
 
 // The whole screen, with the query panel floating over it. The camera is the
 // user's: nothing here moves it on its own, and the panel asks for a move
@@ -34,6 +35,8 @@ export type ScoutMapApi = {
 
 const CAMERA_KEY = "travel2:scout-camera";
 const PIN_LAYER = "scout-pins";
+const ROUTE_LAYER = "scout-route";
+const WAYPOINT_LAYER = "scout-waypoints";
 
 type Camera = { lng: number; lat: number; zoom: number };
 
@@ -67,6 +70,28 @@ const rememberCamera = (map: import("maplibre-gl").Map) => {
     // across-reload memory is lost.
   }
 };
+
+const routeCollection = (legs: RouteLeg[]) => ({
+  type: "FeatureCollection" as const,
+  features: legs
+    .filter((leg) => leg.line.length >= 2)
+    .map((leg) => ({
+      type: "Feature" as const,
+      geometry: { type: "LineString" as const, coordinates: leg.line },
+      properties: { mode: leg.mode, name: leg.name ?? "" },
+    })),
+});
+
+const waypointCollection = (points: Waypoint[]) => ({
+  type: "FeatureCollection" as const,
+  features: points.map((point, idx) => ({
+    type: "Feature" as const,
+    geometry: { type: "Point" as const, coordinates: [point.lng, point.lat] },
+    // The order clicked is the whole meaning of a route, so each point
+    // wears its position rather than being one anonymous dot among many.
+    properties: { id: point.id, order: String(idx + 1) },
+  })),
+});
 
 const pinCollection = (pins: ScoutPin[], dark: boolean) => ({
   type: "FeatureCollection" as const,
@@ -119,6 +144,12 @@ const pinCard = (properties: Record<string, unknown>) => {
 
 export function MapCanvas(props: {
   pins: ScoutPin[];
+  route: RouteLeg[];
+  waypoints: Waypoint[];
+  // Cmd (or Ctrl) held while clicking: the gesture that grows a route,
+  // deliberately a modifier so a plain click never drops a point by
+  // accident while reading the map.
+  onRoutePoint: (at: { lng: number; lat: number }) => void;
   home: { lng: number; lat: number };
   // Announced upward so a line typed before the map existed can search the
   // moment it does, instead of waiting for the next keystroke.
@@ -136,6 +167,8 @@ export function MapCanvas(props: {
   homeRef.current = props.home;
   const onReadyRef = React.useRef(props.onReady);
   onReadyRef.current = props.onReady;
+  const onRoutePointRef = React.useRef(props.onRoutePoint);
+  onRoutePointRef.current = props.onRoutePoint;
 
   React.useEffect(() => {
     let disposed = false;
@@ -197,8 +230,17 @@ export function MapCanvas(props: {
       });
       // Touch has no hover: a tap is how a phone reads a pin.
       map.on("click", PIN_LAYER, openCard);
+      map.on("click", (event) => {
+        const held = event.originalEvent.metaKey || event.originalEvent.ctrlKey;
+        if (held) onRoutePointRef.current({ lng: event.lngLat.lng, lat: event.lngLat.lat });
+      });
       map.on("moveend", () => rememberCamera(map));
-      map.on("load", () => {
+      // style.load, not load: "load" waits for the first rendered frame,
+      // which never arrives while the container has no size (a background
+      // tab, a collapsed pane), leaving the map permanently un-ready and
+      // its layers unbuilt. Having a style is the real precondition for
+      // adding sources and layers, and it is also enough to search.
+      map.on("style.load", () => {
         if (disposed) return;
         storeReady(true);
         onReadyRef.current(true);
@@ -316,6 +358,104 @@ export function MapCanvas(props: {
       },
     });
   }, [pins, ready, styleTick]);
+
+  const route = props.route;
+  const waypoints = props.waypoints;
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !map.isStyleLoaded()) return;
+    const dark = document.documentElement.dataset.theme === "dark";
+    const legs = routeCollection(route);
+    const points = waypointCollection(waypoints);
+    const drawn = map.getSource(ROUTE_LAYER) as import("maplibre-gl").GeoJSONSource | undefined;
+    if (drawn) {
+      drawn.setData(legs);
+      (map.getSource(WAYPOINT_LAYER) as import("maplibre-gl").GeoJSONSource).setData(points);
+      return;
+    }
+    map.addSource(ROUTE_LAYER, { type: "geojson", data: legs });
+    map.addSource(WAYPOINT_LAYER, { type: "geojson", data: points });
+    // Under the search pins: the route is context for them, not a rival.
+    const under = map.getLayer(PIN_LAYER) ? PIN_LAYER : undefined;
+    // Two layers rather than one, because line-dasharray is the one paint
+    // property maplibre will not drive from a feature: a walk has to be a
+    // separate filtered layer to be dashed at all. The pair also means the
+    // two modes differ by pattern and not by colour alone.
+    const routeWidth = ["interpolate", ["linear"], ["zoom"], 11, 3, 17, 6] as unknown as number;
+    map.addLayer(
+      {
+        id: ROUTE_LAYER,
+        type: "line",
+        source: ROUTE_LAYER,
+        filter: ["==", ["get", "mode"], "ride"],
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: {
+          // Our own colour rather than each operator's brand: an imported
+          // hue is tuned for someone else's paper and can vanish on one of
+          // our two.
+          "line-color": dark ? "#6B93BF" : "#3A6EA5",
+          "line-width": routeWidth,
+          "line-opacity": 0.9,
+        },
+      },
+      under,
+    );
+    map.addLayer(
+      {
+        id: `${ROUTE_LAYER}-walk`,
+        type: "line",
+        source: ROUTE_LAYER,
+        filter: ["!=", ["get", "mode"], "ride"],
+        layout: { "line-cap": "butt", "line-join": "round" },
+        paint: {
+          "line-color": dark ? "#8A8378" : "#6B6258",
+          "line-width": routeWidth,
+          "line-opacity": 0.85,
+          "line-dasharray": [1.6, 1.3],
+        },
+      },
+      under,
+    );
+    map.addLayer(
+      {
+        id: `${WAYPOINT_LAYER}-dot`,
+        type: "circle",
+        source: WAYPOINT_LAYER,
+        paint: {
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            11,
+            7,
+            17,
+            11,
+          ] as unknown as number,
+          "circle-color": dark ? "#D9D0C4" : "#2C2722",
+          "circle-stroke-color": dark ? "#171512" : "#FFFFFF",
+          "circle-stroke-width": 2,
+        },
+      },
+      under,
+    );
+    map.addLayer(
+      {
+        id: WAYPOINT_LAYER,
+        type: "symbol",
+        source: WAYPOINT_LAYER,
+        layout: {
+          // The order clicked is the whole meaning of a route, so each point
+          // wears its position rather than being an anonymous dot.
+          "text-field": ["get", "order"],
+          "text-font": ["Noto Sans Bold"],
+          "text-size": 11,
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": dark ? "#171512" : "#FFFFFF" },
+      },
+      under,
+    );
+  }, [route, waypoints, ready, styleTick]);
 
   // A raw element with inline sizing, not an atom: maplibre claims this node,
   // stamping its own class and `position: relative` from its unlayered
