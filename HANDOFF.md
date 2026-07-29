@@ -38,6 +38,101 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: make scout search feel instant (planned 2026-07-29)
+
+Owner: "google's search results load so quick. why is it so slow in this
+app? Takes like 5s+ to show address results and searching 'Nemo Science'
+didn't give me any results."
+
+MEASURED FIRST, both faults are mine:
+
+- Photon (the geocoder) answers in **0.09s**. The same query on Overpass
+  took **9.9s**. `findPlaces` used `Promise.allSettled` and rendered
+  nothing until BOTH returned, so a 90ms answer waited on a ten-second
+  one. Plus a flat 600ms debounce on top.
+- The Overpass regex matched the WHOLE typed phrase as one substring.
+  The museum's OSM name is just `Nemo` (tourism=museum), so
+  "Nemo Science" could never match it. Google tokenizes; we did not.
+  Confirmed by querying name~"nemo": `Nemo | museum` is right there.
+
+DESIGN DECIDED BEFORE IMPLEMENTATION:
+
+- **Results stream per source instead of arriving as one batch.**
+  `findPlaces` takes an `onResults` callback and calls it as each source
+  lands: the geocoder within ~100ms, the map sweep when it finishes. The
+  line reports `sweeping` so the panel can say more is still coming.
+- **Overpass is not a search index and stops being treated as one.** Its
+  real value is "every branch inside this view", which is exactly what
+  the owner asked for with media markt, so it stays. But it gets its own
+  delay INSIDE findPlaces (the whole call aborts on the next keystroke,
+  so that wait doubles as the sweep's debounce) and the typing debounce
+  drops to 250ms for the fast half.
+- **The sweep queries ONE token, the longest, and ranks client-side by
+  how many tokens a name contains.** Overpass speaks POSIX ERE with no
+  lookahead, so an all-words-in-any-order regex is not available. One
+  selective token plus local ranking is what makes "Nemo Science" reach
+  a place called "Nemo".
+- **A street is not a place.** "Anemoonstraat" substring-matches "nemo".
+  An element carrying `highway` and no POI category drops out.
+- **A tick survives a re-search.** `answered` now intersects the shown
+  ids with the new findings instead of clearing them, which it has to do
+  anyway now that one search reports twice.
+
+- [x] find-places streams per source, filters streets, ranks locally,
+      and holds the sweep back on its own delay with a HARD DEADLINE.
+- [x] lines.ts preserves ticks across an answer and carries `sweeping`.
+- [x] query-line debounce down to 150ms; renders partial results.
+- [x] Verified live, measured in dev on "Nemo Science": geocoder rows at
+      2.2s with "Still sweeping the map for more matches", then the sweep
+      lands at 7.2s with **Nemo the museum ranked first** and the notice
+      clears. Before this round the same query returned nothing at all.
+- [x] typecheck, 47 tests, check:names.
+- [ ] Scoped Sol pass on this round's diff.
+
+### The word-anchor idea was wrong, and the fix is the interesting part
+
+The plan said query Overpass for the single longest word. That is wrong
+in exactly the case the owner reported: for "Nemo Science" the longest
+word is "science", and the museum is named "Nemo", so anchoring on the
+longest word misses it just as surely as the whole phrase did. Overpass
+now gets an ALTERNATION of every typed word (`nemo|science`), which
+POSIX ERE can express, and the ranking sorts out which matches answer
+the phrase.
+
+Ranking then had its own trap. Word coverage alone puts "Bar of NEMO
+Science Center" ABOVE the museum, because the bar's name contains both
+typed words and the museum's contains one. A `wikidata`/`wikipedia` tag
+is the nearest thing OSM has to prominence, and it is the same signal
+the trip planner already uses to tell a landmark from a lawn fixture, so
+it now carries weight. Verified: "Nemo" comes back first.
+
+### Bug: an effect must not be keyed on what its own result changes
+
+Streaming results introduced a self-defeating loop that took three
+measured attempts to see. The line's search effect depended on
+`line.query`, and the FIRST reported result set `line.query`, which
+re-ran the effect, whose cleanup aborted the search that was still
+running its second half. The map sweep was killed during its 600ms
+delay and never issued a single request, while `sweeping` stayed true
+forever because the abort suppressed the final repaint. Symptom: a
+spinner and "still sweeping" that never ended.
+
+`query` existed ONLY to stop the effect re-running, so it is gone from
+the line entirely. A ref records `runId:text` for what was launched.
+
+Also added, because the same investigation showed nothing bounded it: the
+sweep now carries a 20s deadline via `AbortSignal.any`, so a public
+instance that never answers cannot leave the line spinning.
+
+### Still unexplained, and stated rather than hidden
+
+First results land at ~2.2s in dev, but the geocoder request itself
+takes ~50ms and the debounce is now 150ms. Instrumenting `fetch` showed
+the request does not even START until ~1s after the keystroke. That gap
+is dev-mode overhead (Vite, StrictMode double-effects, Panda runtime)
+which was NOT isolated. Production is likely faster and has NOT been
+measured, because prod needs the owner's own door password.
+
 ## Round: scout polish + Cmd-click routes (planned 2026-07-29)
 
 Owner ask, in his order:

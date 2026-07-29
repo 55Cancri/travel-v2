@@ -12,11 +12,11 @@ export type ScoutLine = {
   id: string;
   color: string;
   typed: string;
-  // The text the current findings answer to. Empty means nothing has been
-  // asked yet, which is also how a refresh makes the same words run again.
-  query: string;
   status: LineStatus;
   findings: Finding[];
+  // The slow half of the search is still out, so the rows on screen are
+  // not yet the whole answer.
+  sweeping: boolean;
   // Which findings are painted on the map. Ids rather than the findings
   // themselves, so a fresh search cannot leave a stale copy pinned.
   shownIds: string[];
@@ -47,10 +47,10 @@ const freshLine = (taken: string[]): ScoutLine => ({
   id: crypto.randomUUID(),
   color: LINE_COLORS.find((color) => !taken.includes(color)) ?? LINE_COLORS[taken.length % LINE_COLORS.length],
   typed: "",
-  query: "",
   status: "idle",
   findings: [],
   shownIds: [],
+  sweeping: false,
   runId: 0,
   expanded: true,
 });
@@ -93,16 +93,21 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
       return withLine(lines, action.id, (line) =>
         !stillAsking(line, action.query) ? line : {
           ...line,
-          query: action.query,
           status: "answered",
           findings: action.results.findings,
           notice: action.results.notice,
+          sweeping: action.results.sweeping,
           failure: undefined,
-          // A new answer starts unpainted: silently re-pinning ids that
-          // happen to repeat would mix two searches on one map. It also
-          // starts open, or a search run after folding the last one away
-          // would land its results behind a closed disclosure.
-          shownIds: [],
+          // Ticks are kept for findings that came back, and dropped for
+          // the rest. One search now reports twice (the fast source, then
+          // the map sweep), so clearing here would un-tick whatever was
+          // picked between the two. Ids identify a place, so a kept tick
+          // always refers to the same place.
+          shownIds: line.shownIds.filter((id) =>
+            action.results.findings.some((finding) => finding.id === id),
+          ),
+          // Open, or a search run after folding the last one away would
+          // land its results behind a closed disclosure.
           expanded: true,
         },
       );
@@ -110,31 +115,27 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
       return withLine(lines, action.id, (line) =>
         !stillAsking(line, action.query) ? line : {
           ...line,
-          query: action.query,
           status: "failed",
           failure: action.failure,
           findings: [],
           shownIds: [],
+          sweeping: false,
         },
       );
     case "emptied":
       return withLine(lines, action.id, (line) => ({
         ...line,
-        query: "",
         status: "idle",
         findings: [],
         shownIds: [],
+        sweeping: false,
         notice: undefined,
         failure: undefined,
       }));
     case "refreshed":
-      // Forgetting what the findings answered to is what makes the same
-      // words search again, now against wherever the map is looking.
-      return withLine(lines, action.id, (line) => ({
-        ...line,
-        query: "",
-        runId: line.runId + 1,
-      }));
+      // A new run id is what makes the same words search again, now against
+      // wherever the map is looking.
+      return withLine(lines, action.id, (line) => ({ ...line, runId: line.runId + 1 }));
     case "toggled":
       return withLine(lines, action.id, (line) => ({
         ...line,

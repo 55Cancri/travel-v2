@@ -10,10 +10,11 @@ import { ResultRow } from "./result-row";
 // debounce, one abort signal) and reports every result upward, so the panel
 // above it holds the whole picture and no answer lives in two places.
 //
-// The search waits for a pause in typing rather than firing per keystroke:
-// the map half of it runs against a public Overpass instance whose fair-use
-// budget a per-keystroke sweep would burn through in one word.
-const DEBOUNCE_MS = 600;
+// Short, because what this delay gates is the FAST source: the geocoder
+// answers in about fifty milliseconds and caches, so this pause was the
+// largest cost we control over the whole search. The expensive map sweep
+// holds itself back separately, inside findPlaces.
+const DEBOUNCE_MS = 150;
 
 export function QueryLine(props: {
   line: ScoutLine;
@@ -27,13 +28,24 @@ export function QueryLine(props: {
   const line = props.line;
   const isSearching = line.status === "searching";
 
+  // What this line has already launched a search for. A REF, not a field on
+  // the line: the effect must not be keyed on anything its own results
+  // change. It was, and reporting the fast half of a search tore down the
+  // slow half that was still running, so the map sweep was aborted before it
+  // ever issued a request.
+  const launchedRef = React.useRef("");
+
   React.useEffect(() => {
     const text = line.typed.trim();
     if (text.length < MIN_QUERY_CHARS) {
+      launchedRef.current = "";
       if (line.status !== "idle") props.dispatch({ name: "emptied", id: line.id });
       return;
     }
-    if (text === line.query) return;
+    // The run id makes a refresh press count as a different search for the
+    // same words.
+    const attempt = `${line.runId}:${text}`;
+    if (launchedRef.current === attempt) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       const scope = props.scopeOf();
@@ -41,11 +53,15 @@ export function QueryLine(props: {
       // below, so this run repeats itself the moment the map has one,
       // instead of leaving typed words silently unsearched forever.
       if (!scope) return;
+      launchedRef.current = attempt;
       props.dispatch({ name: "searching", id: line.id, query: text });
       try {
-        const results = await findPlaces(text, scope, controller.signal);
-        if (controller.signal.aborted) return;
-        props.dispatch({ name: "answered", id: line.id, query: text, results });
+        // Reports once per source, so the geocoder's answer paints while the
+        // map sweep is still out.
+        await findPlaces(text, scope, controller.signal, (results) => {
+          if (controller.signal.aborted) return;
+          props.dispatch({ name: "answered", id: line.id, query: text, results });
+        });
       } catch (error) {
         if (controller.signal.aborted) return;
         console.warn("[scout] line search failed:", error);
@@ -64,7 +80,7 @@ export function QueryLine(props: {
     // The dispatch and scope reader are stable handles; every other value
     // the run needs is read when the timer fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line.typed, line.query, line.runId, props.mapReady]);
+  }, [line.typed, line.runId, props.mapReady]);
 
   const allShown = line.findings.length > 0 && line.shownIds.length === line.findings.length;
 
@@ -87,7 +103,7 @@ export function QueryLine(props: {
               style={{ background: line.color }}
             />
           }
-          end={isSearching ? <Spinner size={16} /> : undefined}
+          end={isSearching || line.sweeping ? <Spinner size={16} /> : undefined}
         />
         {props.canRemove ? (
           <IconButton
