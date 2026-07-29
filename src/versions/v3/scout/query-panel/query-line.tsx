@@ -1,9 +1,9 @@
 import * as React from "react";
-import { Block, Button, Input, MagnifyingGlass, Spinner, Text, X } from "atoms";
+import { Block, Button, CaretRight, Input, MagnifyingGlass, Spinner, Text, X } from "atoms";
 import { Checkbox, ErrorNote, IconButton } from "alloys";
 import { findPlaces, MIN_QUERY_CHARS, type Finding, type SearchScope } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
-import { openLine, openVerdict } from "../open-now";
+import { ResultRow } from "./result-row";
 
 // One line of the panel: what was typed, what it found, and which of those
 // findings are on the map. The line owns its own search lifecycle (one
@@ -14,15 +14,6 @@ import { openLine, openVerdict } from "../open-now";
 // the map half of it runs against a public Overpass instance whose fair-use
 // budget a per-keystroke sweep would burn through in one word.
 const DEBOUNCE_MS = 600;
-
-const detailOf = (finding: Finding, now: Temporal.Instant) => {
-  const verdict = openVerdict(finding, now);
-  return {
-    verdict,
-    line: [finding.category, finding.address].filter(Boolean).join(" · "),
-    hours: openLine(verdict),
-  };
-};
 
 export function QueryLine(props: {
   line: ScoutLine;
@@ -47,7 +38,7 @@ export function QueryLine(props: {
     const timer = setTimeout(async () => {
       const scope = props.scopeOf();
       // No map yet means no view to search inside. mapReady is a dependency
-      // above, so this run repeats itself the moment the map has one,
+      // below, so this run repeats itself the moment the map has one,
       // instead of leaving typed words silently unsearched forever.
       if (!scope) return;
       props.dispatch({ name: "searching", id: line.id, query: text });
@@ -137,19 +128,47 @@ export function QueryLine(props: {
       ) : null}
 
       {line.findings.length > 0 ? (
-        // A chain search returns dozens of branches. Capping the list and
-        // scrolling inside it keeps every OTHER line of the panel reachable,
-        // instead of burying the next question under this one's answers.
-        <Block pt="xs" maxH="15rem" overflowY="auto">
-          <Block grid cols="auto 1fr auto" alignItems="center" gap="sm" py="xs">
+        <Block pt="xs">
+          <Block grid cols="auto 1fr auto" alignItems="center" gap="sm">
             <Checkbox
               checked={allShown}
               onToggle={() => props.dispatch({ name: "allToggled", id: line.id })}
               label="Show all on the map"
             />
-            <Text fontSize="xs" fontWeight="550" color="text-muted">
-              Show all ({line.findings.length})
-            </Text>
+            {/* The caret and the count are one target, the way a disclosure
+                row usually is: a bare caret is a small thing to hit. */}
+            <Button
+              type="button"
+              aria-expanded={line.expanded}
+              onPress={() => props.dispatch({ name: "disclosed", id: line.id })}
+              justifyContent="start"
+              gap="xs"
+              w="100%"
+              minH="xl"
+              px={0}
+              borderRadius="xs"
+              color="text-muted"
+              _hover={{ "@media (hover: hover)": { color: "text-primary" } }}
+            >
+              <Block
+                display="grid"
+                placeItems="center"
+                // A rotation, not a second glyph: the same caret turns, so
+                // the two positions can never drift apart.
+                _motion={{
+                  // Starts where it belongs instead of swinging into place
+                  // the first time a result list appears.
+                  initial: false,
+                  animate: { rotate: line.expanded ? 90 : 0 },
+                  transition: { duration: 0.2, ease: "easeOut" },
+                }}
+              >
+                <CaretRight size={14} />
+              </Block>
+              <Text fontSize="xs" fontWeight="550">
+                Show all ({line.findings.length})
+              </Text>
+            </Button>
             <IconButton
               type="button"
               aria-label="Search this view again"
@@ -158,56 +177,51 @@ export function QueryLine(props: {
               <MagnifyingGlass size={16} />
             </IconButton>
           </Block>
-          {line.findings.map((finding) => {
-            const detail = detailOf(finding, props.now);
-            return (
-              <Block key={finding.id} grid cols="auto 1fr" alignItems="start" gap="sm" py="xs">
-                <Block pt="0.15rem">
-                  <Checkbox
-                    checked={line.shownIds.includes(finding.id)}
-                    onToggle={() =>
-                      props.dispatch({ name: "toggled", id: line.id, findingId: finding.id })
-                    }
-                    label={`Show ${finding.name} on the map`}
-                  />
-                </Block>
-                <Button
-                  type="button"
-                  onPress={() => props.onFocusFinding(finding)}
-                  w="100%"
-                  minW={0}
-                  px={0}
-                  // The button centres its slots by default, which would let
-                  // each row's left edge drift with the length of its text.
-                  justifyContent="start"
-                  borderRadius="xs"
-                  title="Centre the map here"
-                >
-                  {/* The button lays its own slots out in a column, so the
-                      row's three lines stack inside one child of it. */}
-                  <Block grid justifyItems="start" minW={0} textAlign="start">
-                    <Text fontSize="sm" fontWeight="550" color="text-primary">
-                      {finding.name}
-                    </Text>
-                    {detail.hours ? (
-                      <Text
-                        fontSize="xs"
-                        fontWeight="550"
-                        color={detail.verdict.phase === "closed" ? "danger" : "text-muted"}
-                      >
-                        {detail.hours}
-                      </Text>
-                    ) : null}
-                    {detail.line ? (
-                      <Text fontSize="xs" color="text-muted">
-                        {detail.line}
-                      </Text>
-                    ) : null}
-                  </Block>
-                </Button>
-              </Block>
-            );
-          })}
+          {/* The rows stay mounted and the box closes over them, rather
+              than unmounting them on the way out. A disclosure that
+              animates its own removal has to keep rendering the old props
+              while it goes, so the row a press just changed would visibly
+              revert as it folded away. */}
+          <Block
+            // The height tween needs a clipped box, or the rows spill out of
+            // the container while it closes. The inner box is what scrolls,
+            // so the clip and the scroll never fight.
+            overflow="hidden"
+            // inert, not just aria-hidden: a zero-height box still holds
+            // focusable checkboxes, and tabbing into rows nobody can see is
+            // worse than not announcing them.
+            inert={!line.expanded}
+            aria-hidden={!line.expanded}
+            _motion={{
+              initial: false,
+              animate: {
+                height: line.expanded ? "auto" : 0,
+                opacity: line.expanded ? 1 : 0,
+              },
+              transition: line.expanded
+                ? { duration: 0.3, ease: "easeOut" }
+                : { duration: 0.2, ease: "easeIn" },
+            }}
+          >
+            {/* A chain search returns dozens of branches. Capping the list
+                and scrolling inside it keeps every OTHER line of the panel
+                reachable, instead of burying the next question under this
+                one's answers. */}
+            <Block maxH="15rem" overflowY="auto">
+              {line.findings.map((finding) => (
+                <ResultRow
+                  key={finding.id}
+                  finding={finding}
+                  checked={line.shownIds.includes(finding.id)}
+                  now={props.now}
+                  onToggle={() =>
+                    props.dispatch({ name: "toggled", id: line.id, findingId: finding.id })
+                  }
+                  onFocus={() => props.onFocusFinding(finding)}
+                />
+              ))}
+            </Block>
+          </Block>
         </Block>
       ) : null}
     </Block>

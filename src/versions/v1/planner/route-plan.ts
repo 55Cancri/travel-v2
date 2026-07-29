@@ -1,5 +1,14 @@
 import type { RouteVia } from "entities/trips/types";
-import { fetchRide, type TransitLeg } from "./transit-plan";
+import {
+  fetchRide,
+  fetchRoadRoute,
+  metersBetween,
+  nearestVertex,
+  straightRoute,
+  WALK_LIMIT_METERS,
+  type RoadRoute,
+  type TransitLeg,
+} from "entities/routing";
 
 // Route math for the day route editor. A day's plan becomes a list of
 // parts: walking CHAINS (consecutive close-together stops with their
@@ -19,19 +28,6 @@ export const waypointCoord = (waypoint: RouteWaypoint): [number, number] =>
   waypoint.kind === "stop"
     ? [waypoint.lng, waypoint.lat]
     : [waypoint.via.lng, waypoint.via.lat];
-
-// Beyond this a leg stops being a walk and becomes a transit ride
-// (roughly a 20-minute walk).
-export const WALK_LIMIT_METERS = 1500;
-
-// Equirectangular approximation: plenty at itinerary scale, where the only
-// question is "walkable or not".
-const metersBetween = (a: { lng: number; lat: number }, b: { lng: number; lat: number }) => {
-  const scale = Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180);
-  const dLng = (b.lng - a.lng) * scale;
-  const dLat = b.lat - a.lat;
-  return Math.hypot(dLng, dLat) * 111320;
-};
 
 // Stops in day order, each followed by its anchored vias, sliced into
 // walking chains wherever a leg exceeds the walk limit (that leg becomes a
@@ -63,114 +59,6 @@ const splitStops = (stops: RouteStop[], vias: RouteVia[]) => {
   return skeleton;
 };
 
-// The fetched line plus, per request waypoint, the index of its nearest
-// line vertex: the split points that let a grabbed vertex resolve to a leg.
-export type RoadRoute = { line: number[][]; waypointVertex: number[] };
-
-// A straight polyline through the waypoints wears the same shape, so leg
-// attribution works before the router answers (or when it fails).
-export const straightRoute = (waypoints: RouteWaypoint[]): RoadRoute => ({
-  line: waypoints.map(waypointCoord),
-  waypointVertex: waypoints.map((_, idx) => idx),
-});
-
-const FOOT_ROUTER = "https://routing.openstreetmap.de/routed-foot/route/v1/foot";
-const roadRouteCache = new Map<string, RoadRoute>();
-
-// Squared equirectangular distance: monotonic in true distance at city
-// scale, which is all nearest-point comparisons need.
-const flatDistanceSq = (a: number[], lng: number, lat: number) => {
-  const scale = Math.cos((lat * Math.PI) / 180);
-  const dLng = (a[0] - lng) * scale;
-  const dLat = a[1] - lat;
-  return dLng * dLng + dLat * dLat;
-};
-
-export const nearestVertex = (
-  line: number[][],
-  lng: number,
-  lat: number,
-  fromIdx = 0,
-) => {
-  let best = fromIdx;
-  let bestD = Infinity;
-  for (let i = fromIdx; i < line.length; i++) {
-    const d = flatDistanceSq(line[i], lng, lat);
-    if (d < bestD) {
-      bestD = d;
-      best = i;
-    }
-  }
-  return best;
-};
-
-// The closest point ON the line (projected onto its segments, not just the
-// nearest vertex, so it stays glued to straight fallback lines too): where
-// the hover grab-handle rides.
-export const nearestPointOnLine = (line: number[][], lng: number, lat: number) => {
-  if (line.length === 0) return null;
-  const scale = Math.cos((lat * Math.PI) / 180);
-  let best: [number, number] = [line[0][0], line[0][1]];
-  let bestD = Infinity;
-  for (let i = 0; i < line.length - 1; i++) {
-    const [ax, ay] = line[i];
-    const [bx, by] = line[i + 1];
-    const dx = (bx - ax) * scale;
-    const dy = by - ay;
-    const lenSq = dx * dx + dy * dy;
-    const t =
-      lenSq === 0
-        ? 0
-        : Math.min(1, Math.max(0, (((lng - ax) * scale) * dx + (lat - ay) * dy) / lenSq));
-    const cx = ax + (bx - ax) * t;
-    const cy = ay + (by - ay) * t;
-    const ddx = (lng - cx) * scale;
-    const ddy = lat - cy;
-    const d = ddx * ddx + ddy * ddy;
-    if (d < bestD) {
-      bestD = d;
-      best = [cx, cy];
-    }
-  }
-  return best;
-};
-
-export const fetchRoadRoute = async (
-  waypoints: RouteWaypoint[],
-  signal: AbortSignal,
-) => {
-  const coords = waypoints.map(waypointCoord);
-  const key = coords.map((pair) => pair.join(",")).join(";");
-  const cached = roadRouteCache.get(key);
-  if (cached) return cached;
-  const res = await fetch(
-    `${FOOT_ROUTER}/${key}?overview=full&geometries=geojson&steps=false`,
-    { signal },
-  );
-  if (!res.ok) throw new Error(`router responded ${res.status}`);
-  const body = (await res.json()) as {
-    code?: string;
-    routes?: Array<{ geometry?: { coordinates?: number[][] } }>;
-    waypoints?: Array<{ location?: [number, number] }>;
-  };
-  const line = body.routes?.[0]?.geometry?.coordinates;
-  if (body.code !== "Ok" || !line || line.length < 2) {
-    throw new Error(`router returned no route (${body.code ?? "no code"})`);
-  }
-  // Searching each snapped waypoint from the previous one's vertex keeps
-  // the indices monotonic even when the route crosses itself.
-  const waypointVertex: number[] = [];
-  let cursor = 0;
-  for (let i = 0; i < coords.length; i++) {
-    const snapped = body.waypoints?.[i]?.location ?? coords[i];
-    cursor = nearestVertex(line, snapped[0], snapped[1], cursor);
-    waypointVertex.push(cursor);
-  }
-  const route: RoadRoute = { line, waypointVertex };
-  roadRouteCache.set(key, route);
-  return route;
-};
-
 export type DayRoutePart =
   | { kind: "chain"; waypoints: RouteWaypoint[]; road: RoadRoute }
   | { kind: "ride"; from: RouteStop; to: RouteStop; legs: TransitLeg[] };
@@ -189,7 +77,7 @@ export const planDayRoute = (
 ) => {
   const parts: DayRoutePart[] = splitStops(stops, vias).map((part) =>
     part.kind === "chain"
-      ? { kind: "chain", waypoints: part.waypoints, road: straightRoute(part.waypoints) }
+      ? { kind: "chain", waypoints: part.waypoints, road: straightRoute(part.waypoints.map(waypointCoord)) }
       : {
           kind: "ride",
           from: part.from,
@@ -210,7 +98,7 @@ export const planDayRoute = (
   const settling = parts.map((part, idx) => {
     const fetched =
       part.kind === "chain"
-        ? fetchRoadRoute(part.waypoints, signal).then((road) => {
+        ? fetchRoadRoute(part.waypoints.map(waypointCoord), signal).then((road) => {
             parts[idx] = { ...part, road };
           })
         : fetchRide(part.from, part.to, dateIso, signal).then((legs) => {

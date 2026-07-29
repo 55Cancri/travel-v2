@@ -8,13 +8,8 @@ import { mapStyle } from "entities/map-style";
 import { formatHours, isOpenAt, parseOpeningHours } from "entities/osm";
 import { KIND_META, type Item, type ItemKind, type RouteVia } from "entities/trips/types";
 import { addRouteVia, moveRouteVia, removeRouteVia } from "entities/trips/store";
-import {
-  fetchRoadRoute,
-  legAt,
-  nearestPointOnLine,
-  planDayRoute,
-  type DayRoutePart,
-} from "./route-plan";
+import { fetchRoadRoute, nearestPointOnLine } from "entities/routing";
+import { legAt, planDayRoute, waypointCoord, type DayRoutePart } from "./route-plan";
 import {
   curatePicks,
   fetchBusNetwork,
@@ -1124,7 +1119,10 @@ export function MapPane(props: {
           lastPreview = now;
           previewAbort?.abort();
           previewAbort = new AbortController();
-          fetchRoadRoute(tentativeWaypoints(move.lngLat.lng, move.lngLat.lat), previewAbort.signal)
+          fetchRoadRoute(
+            tentativeWaypoints(move.lngLat.lng, move.lngLat.lat).map(waypointCoord),
+            previewAbort.signal,
+          )
             .then((road) =>
               drawRoute(parts.map((part, i) => (i === partIdx ? { ...chain, road } : part))),
             )

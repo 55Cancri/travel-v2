@@ -6,6 +6,7 @@ import { openingLines, scoutReducer } from "./lines";
 import { MapCanvas, type ScoutMapApi, type ScoutPin } from "./map-canvas";
 import { openLine, openTag, openVerdict, useMinuteClock } from "./open-now";
 import { QueryPanel } from "./query-panel";
+import { planRoute, type RouteLeg, type Waypoint } from "./route";
 import { UiVersionPicker } from "../../picker";
 
 // Generation v3: the map IS the screen, and the plan floats over it. A line
@@ -26,7 +27,42 @@ export function Scout() {
   const [lines, dispatch] = React.useReducer(scoutReducer, undefined, openingLines);
   const now = useMinuteClock();
   const [mapReady, storeMapReady] = React.useState(false);
+  const [waypoints, storeWaypoints] = React.useState<Waypoint[]>([]);
+  const [route, storeRoute] = React.useState<RouteLeg[]>([]);
+  const [routeNotice, storeRouteNotice] = React.useState<string | null>(null);
   const mapApiRef = React.useRef<ScoutMapApi | null>(null);
+
+  // The route follows the points: every Cmd-click re-asks the routers, and
+  // a run superseded mid-flight is abandoned rather than allowed to paint
+  // a stale path over the newer one.
+  React.useEffect(() => {
+    if (waypoints.length < 2) {
+      storeRoute([]);
+      storeRouteNotice(null);
+      return;
+    }
+    const controller = new AbortController();
+    // The previous plan's notice belongs to the previous points, so it goes
+    // now rather than lingering over a route being redrawn. The drawn line
+    // stays until the new one lands, which reads as the route catching up
+    // rather than blinking out on every added point.
+    storeRouteNotice(null);
+    planRoute(waypoints, Temporal.Now.plainDateISO().toString(), controller.signal)
+      .then((plan) => {
+        if (controller.signal.aborted) return;
+        storeRoute(plan.legs);
+        storeRouteNotice(plan.notice ?? null);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        console.warn("[scout] route planning failed:", error);
+        // The old line would otherwise sit under the failure notice as if
+        // it still described these points.
+        storeRoute([]);
+        storeRouteNotice("The route could not be planned.");
+      });
+    return () => controller.abort();
+  }, [waypoints]);
 
   const placed = Object.values(db.items).find((item) => item.place);
   const home = placed?.place ?? FALLBACK_HOME;
@@ -69,7 +105,19 @@ export function Scout() {
 
   return (
     <Block position="fixed" inset="0" overflow="hidden">
-      <MapCanvas pins={pins} home={home} onReady={storeMapReady} apiRef={mapApiRef} />
+      <MapCanvas
+        pins={pins}
+        route={route}
+        waypoints={waypoints}
+        onRoutePoint={(at) =>
+          storeWaypoints((current) =>
+            current.concat({ id: crypto.randomUUID(), lng: at.lng, lat: at.lat }),
+          )
+        }
+        home={home}
+        onReady={storeMapReady}
+        apiRef={mapApiRef}
+      />
       <QueryPanel
         lines={lines}
         scopeOf={scopeOf}
@@ -77,6 +125,10 @@ export function Scout() {
         onFocusFinding={focusFinding}
         now={now}
         mapReady={mapReady}
+        routeCount={waypoints.length}
+        routeNotice={routeNotice}
+        onClearRoute={() => storeWaypoints([])}
+        onUndoRoutePoint={() => storeWaypoints((current) => current.slice(0, -1))}
       />
       {/* The way out of a generation that has gone wrong, kept clear of the
           map's own controls in the opposite corner. */}

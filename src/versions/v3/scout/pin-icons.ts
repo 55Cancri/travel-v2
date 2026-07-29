@@ -37,11 +37,18 @@ export const pinImage = (color: string, phase: PinPhase, dark: boolean) => {
   const radius = PIN_WIDTH / 2 - OUTLINE;
   const cx = PIN_WIDTH / 2;
   const cy = radius + OUTLINE;
-  // The head sweeps the long way over the top, then both flanks run down to
-  // the tip: one closed teardrop, filled and stroked as a single path.
+  const tipY = PIN_HEIGHT - OUTLINE;
+  // Where the flanks leave the head. Taking the TANGENT points from the tip
+  // (rather than two fixed angles) is the whole difference between a
+  // teardrop and a circle sitting on a triangle: at the tangent the flank
+  // and the curve share a direction, so the outline turns into the point
+  // with no corner to catch the eye.
+  const fromTip = Math.acos(radius / (tipY - cy));
   ctx.beginPath();
-  ctx.arc(cx, cy, radius, Math.PI * 0.75, Math.PI * 0.25);
-  ctx.lineTo(cx, PIN_HEIGHT - OUTLINE);
+  // Clockwise from the lower-left tangent, the long way over the top, to
+  // the lower-right one; the two flanks then close the shape at the tip.
+  ctx.arc(cx, cy, radius, Math.PI / 2 + fromTip, Math.PI / 2 - fromTip);
+  ctx.lineTo(cx, tipY);
   ctx.closePath();
 
   const hollow = phase === "closed";

@@ -24,6 +24,10 @@ export type ScoutLine = {
   // second press while a search is already running a silent no-op, since
   // the value it clears is already empty.
   runId: number;
+  // Whether the result rows are showing. Painting everything is the moment
+  // the rows stop earning their height, so showing all folds them away and
+  // the caret brings them back.
+  expanded: boolean;
   notice?: string;
   failure?: string;
 };
@@ -48,6 +52,7 @@ const freshLine = (taken: string[]): ScoutLine => ({
   findings: [],
   shownIds: [],
   runId: 0,
+  expanded: true,
 });
 
 export const openingLines = () => [freshLine([])];
@@ -61,6 +66,7 @@ export type ScoutAction =
   | { name: "refreshed"; id: string }
   | { name: "toggled"; id: string; findingId: string }
   | { name: "allToggled"; id: string }
+  | { name: "disclosed"; id: string }
   | { name: "added" }
   | { name: "removed"; id: string };
 
@@ -93,8 +99,11 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
           notice: action.results.notice,
           failure: undefined,
           // A new answer starts unpainted: silently re-pinning ids that
-          // happen to repeat would mix two searches on one map.
+          // happen to repeat would mix two searches on one map. It also
+          // starts open, or a search run after folding the last one away
+          // would land its results behind a closed disclosure.
           shownIds: [],
+          expanded: true,
         },
       );
     case "failed":
@@ -134,15 +143,23 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
           : line.shownIds.concat(action.findingId),
       }));
     case "allToggled":
-      return withLine(lines, action.id, (line) => ({
-        ...line,
-        shownIds:
-          line.shownIds.length === line.findings.length
-            ? []
-            : line.findings.map((finding) => finding.id),
-      }));
+      return withLine(lines, action.id, (line) => {
+        const wasAll = line.shownIds.length === line.findings.length;
+        return {
+          ...line,
+          shownIds: wasAll ? [] : line.findings.map((finding) => finding.id),
+          // Turning everything on makes the rows redundant, so they fold
+          // away; turning it back off is the start of picking individually,
+          // which needs them.
+          expanded: wasAll,
+        };
+      });
+    case "disclosed":
+      return withLine(lines, action.id, (line) => ({ ...line, expanded: !line.expanded }));
     case "added":
-      return lines.concat(freshLine(lines.map((line) => line.color)));
+      // Newest line on top: the panel grows toward the reader instead of
+      // pushing the next question below the last one's answers.
+      return [freshLine(lines.map((line) => line.color))].concat(lines);
     case "removed":
       // The last line never leaves: an empty panel offers no way back.
       return lines.length === 1 ? lines : lines.filter((line) => line.id !== action.id);
