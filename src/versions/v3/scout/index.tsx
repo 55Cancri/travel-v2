@@ -42,6 +42,11 @@ export function Scout() {
       return;
     }
     const controller = new AbortController();
+    // The previous plan's notice belongs to the previous points, so it goes
+    // now rather than lingering over a route being redrawn. The drawn line
+    // stays until the new one lands, which reads as the route catching up
+    // rather than blinking out on every added point.
+    storeRouteNotice(null);
     planRoute(waypoints, Temporal.Now.plainDateISO().toString(), controller.signal)
       .then((plan) => {
         if (controller.signal.aborted) return;
@@ -51,6 +56,9 @@ export function Scout() {
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         console.warn("[scout] route planning failed:", error);
+        // The old line would otherwise sit under the failure notice as if
+        // it still described these points.
+        storeRoute([]);
         storeRouteNotice("The route could not be planned.");
       });
     return () => controller.abort();
