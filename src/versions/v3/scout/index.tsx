@@ -357,22 +357,35 @@ export function Scout() {
 
   return (
     <Block position="fixed" inset="0" overflow="hidden">
-      <MapCanvas
-        pins={pins}
-        saved={saved}
-        route={route}
-        cards={cards}
-        cardsCoverSearch={cardsCoverSearch}
-        onCardPress={onCardPress}
-        onSearchPinPress={onSearchPinPress}
-        onSavedPinPress={onSavedPinPress}
-        onEdgePress={(edgeId) => storeOpenSheet({ face: "edge", edgeId })}
-        onSpotDrop={onSpotDrop}
-        opening={opening}
-        onCameraRest={(camera) => rememberMapCamera(readScoutDb().activeMapId, camera)}
-        onReady={storeMapReady}
-        apiRef={mapApiRef}
-      />
+      {/* The docked sidebar PUSHES the map instead of covering it: the
+          map's left edge follows the sidebar's width (the canvas's own
+          resize observer keeps MapLibre correct through the slide). The
+          curve matches the sidebar's, so the two move as one seam. */}
+      <Block
+        position="absolute"
+        inset="0"
+        style={{
+          left: wide && docked ? "24rem" : 0,
+          transition: "left 300ms cubic-bezier(0.32, 0.72, 0, 1)",
+        }}
+      >
+        <MapCanvas
+          pins={pins}
+          saved={saved}
+          route={route}
+          cards={cards}
+          cardsCoverSearch={cardsCoverSearch}
+          onCardPress={onCardPress}
+          onSearchPinPress={onSearchPinPress}
+          onSavedPinPress={onSavedPinPress}
+          onEdgePress={(edgeId) => storeOpenSheet({ face: "edge", edgeId })}
+          onSpotDrop={onSpotDrop}
+          opening={opening}
+          onCameraRest={(camera) => rememberMapCamera(readScoutDb().activeMapId, camera)}
+          onReady={storeMapReady}
+          apiRef={mapApiRef}
+        />
+      </Block>
       {/* The floating panel is the wide-window search surface; a phone
           reaches the same lines through the search sheet instead. MOUNTED
           conditionally, not CSS-hidden: the panel's query lines carry

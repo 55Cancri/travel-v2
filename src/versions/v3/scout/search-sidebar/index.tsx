@@ -46,7 +46,10 @@ export function SearchSidebar(props: {
             initial: { x: "-100%" },
             animate: { x: 0 },
             exit: { x: "-100%" },
-            transition: { type: "spring", stiffness: 420, damping: 40 },
+            // A tween on the same curve as the map's left-edge push, so
+            // the sidebar and the map move as one seam; a spring here
+            // would let the map lag its own wall.
+            transition: { duration: 0.3, ease: [0.32, 0.72, 0, 1] },
           }}
         >
           <Block grid cols="1fr auto auto" alignItems="center" gap="xs" pl="md" pr="sm" pt="sm" pb="xs">
