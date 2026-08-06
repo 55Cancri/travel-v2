@@ -38,6 +38,65 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: place-drawer polish + connect feedback (planned 2026-08-06)
+
+Owner's second phone pass, his items in his order:
+
+1. "Closes 17:00" reads as a train timetable; he wants "5p" (compact
+   12-hour: "5p", "5:30p", "12p").
+2. Place drawer: name input has too much padding, the address hugs the
+   input, the address wants a map-pin icon on its left, the sheet should
+   carry TWO font sizes only (small labels, regular everything else,
+   hours included), and Done becomes a BLUE button at input height.
+3. The sheet drag handle sits too close to the drawers' top edge.
+4. Connect mode: tapping the toggle then pins drew no routes for him.
+   Every link of that chain reads correct on audit (canvas handlers,
+   promote, chain, edge mutation, plan effect, draw effect), and the
+   hidden pane blocks a live repro, so this round ships the missing
+   FEEDBACK: a floating status chip while connecting (tap count, then
+   the routing notice, which mobile could not see at all before). If it
+   recurs, the chip pinpoints the breaking link: chip stuck at 1 after
+   two taps = tap handling; chip counts but no line = plan/draw.
+5. Connect toggle active = blue with a white icon (accent read as just
+   another tile).
+6. Search icon moves ABOVE the connect toggle.
+
+Decisions: compact clock lives in scout's open-now (entities/osm keeps
+its 24h label for the planner); blue = the focus-ring blues (blue.500,
+blue.400 dark), the one blue already in the system.
+
+- [x] compactClock in open-now.ts ("5p", "5:30p", "12p"), both OSM and
+      google verdict paths, tests updated.
+- [x] Place drawer: address row with MapPin icon (hours line indents to
+      match its text), two type sizes only (xs labels via FieldLabel,
+      md values), compact input (py 0.35lh), blue Done/Save at input
+      height (blue.500, blue.400 dark).
+- [x] Sheet: handle now pt sm off the top edge.
+- [x] Chrome: search above connect; active connect tile blue.500 with a
+      WHITE glyph. Two cascade traps found live: an IconButton color
+      prop loses to the Button atom's aria-pressed color (the glyph got
+      a colored span wrapper instead), and a color on the tile Block
+      never reaches the svg because the button's own color interrupts
+      inheritance.
+- [x] Connect status chip, bottom center while connecting: "Tap pins to
+      connect them" -> "1 place in the chain · tap the next" -> "N
+      places connected", with the routing notice underneath (mobile's
+      first sight of routing failures).
+- [x] planEdges unit tests with mocked routers: walkable pair takes the
+      foot router; a bus-only edge whose router answers a walking
+      itinerary straightens + notices (and the mock asserts
+      transitModes=BUS reached the wire). 68 tests green.
+- [x] typecheck, tests, check:names, em dash grep clean. Verified in
+      the pane (DOM level, map still cannot boot in a hidden pane):
+      search at y50 above connect at y92, active tile rgb(59,130,246)
+      with white glyph, chip renders. Deployed; on PR #38.
+- [ ] The routes-not-drawing report itself remains UNREPRODUCED: every
+      link of the chain audits clean and the logic layer is now
+      unit-tested, so the owner should retry WITH the chip visible; the
+      chip's count pinpoints the failing link if it recurs (stuck at 1
+      after two taps = tap handling; counts but no line = plan/draw,
+      and the notice will say which).
+
 ## Round: mobile follow-up: a tapped result becomes a pin (planned 2026-08-06)
 
 Owner, testing on his phone: after closing the search drawer nothing he
