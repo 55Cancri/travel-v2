@@ -85,6 +85,12 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner: placeholder de-noised to "Search places", and the plus/X
+      pair truly matched at last: the X was a FILLED Phosphor-bold
+      shape beside a 2px-stroke plus, so equal nominal sizes could
+      never look equal. The X redrew as a stroke icon on the plus's own
+      grid (one unit narrower, diagonals read larger), consistent at
+      every X site in the app.
 - [x] Owner screenshot pass on the sidebar header: Escape closes the
       sidebar (deferring to any open sheet's own Escape), opening
       autofocuses the first query input, ONE type treatment on the
