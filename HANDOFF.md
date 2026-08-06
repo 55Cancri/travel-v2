@@ -73,6 +73,11 @@ Decisions before implementation:
       the real door and agent credentials only fit the fixture door.
       Owner is at the screen with HMR; his eyes are the visual check.
       Deployed; on PR #38.
+- [x] Owner follow-up mid-round: the sidebar must PUSH the map right,
+      not overlay it. The map wrapper's left edge now animates to the
+      sidebar's 24rem on the same 300ms cubic-bezier the sidebar
+      tweens on (spring dropped: it would lag its own wall), and the
+      canvas's resize observer keeps MapLibre sized through the slide.
 
 ## Round: place-drawer polish + connect feedback (planned 2026-08-06)
 
