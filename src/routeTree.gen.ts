@@ -13,7 +13,9 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TripTripIdRouteImport } from './routes/trip.$tripId'
 import { Route as ApiSessionRouteImport } from './routes/api.session'
+import { Route as ApiSearchRouteImport } from './routes/api.search'
 import { Route as ApiPlacesRouteImport } from './routes/api.places'
+import { Route as ApiPlaceDetailsRouteImport } from './routes/api.place-details'
 import { Route as ApiCurateRouteImport } from './routes/api.curate'
 
 const LoginRoute = LoginRouteImport.update({
@@ -36,9 +38,19 @@ const ApiSessionRoute = ApiSessionRouteImport.update({
   path: '/api/session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSearchRoute = ApiSearchRouteImport.update({
+  id: '/api/search',
+  path: '/api/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPlacesRoute = ApiPlacesRouteImport.update({
   id: '/api/places',
   path: '/api/places',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPlaceDetailsRoute = ApiPlaceDetailsRouteImport.update({
+  id: '/api/place-details',
+  path: '/api/place-details',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCurateRoute = ApiCurateRouteImport.update({
@@ -51,7 +63,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/api/curate': typeof ApiCurateRoute
+  '/api/place-details': typeof ApiPlaceDetailsRoute
   '/api/places': typeof ApiPlacesRoute
+  '/api/search': typeof ApiSearchRoute
   '/api/session': typeof ApiSessionRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
@@ -59,7 +73,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/api/curate': typeof ApiCurateRoute
+  '/api/place-details': typeof ApiPlaceDetailsRoute
   '/api/places': typeof ApiPlacesRoute
+  '/api/search': typeof ApiSearchRoute
   '/api/session': typeof ApiSessionRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
@@ -68,7 +84,9 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/api/curate': typeof ApiCurateRoute
+  '/api/place-details': typeof ApiPlaceDetailsRoute
   '/api/places': typeof ApiPlacesRoute
+  '/api/search': typeof ApiSearchRoute
   '/api/session': typeof ApiSessionRoute
   '/trip/$tripId': typeof TripTripIdRoute
 }
@@ -78,7 +96,9 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/api/curate'
+    | '/api/place-details'
     | '/api/places'
+    | '/api/search'
     | '/api/session'
     | '/trip/$tripId'
   fileRoutesByTo: FileRoutesByTo
@@ -86,7 +106,9 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/api/curate'
+    | '/api/place-details'
     | '/api/places'
+    | '/api/search'
     | '/api/session'
     | '/trip/$tripId'
   id:
@@ -94,7 +116,9 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/api/curate'
+    | '/api/place-details'
     | '/api/places'
+    | '/api/search'
     | '/api/session'
     | '/trip/$tripId'
   fileRoutesById: FileRoutesById
@@ -103,7 +127,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   ApiCurateRoute: typeof ApiCurateRoute
+  ApiPlaceDetailsRoute: typeof ApiPlaceDetailsRoute
   ApiPlacesRoute: typeof ApiPlacesRoute
+  ApiSearchRoute: typeof ApiSearchRoute
   ApiSessionRoute: typeof ApiSessionRoute
   TripTripIdRoute: typeof TripTripIdRoute
 }
@@ -138,11 +164,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/search': {
+      id: '/api/search'
+      path: '/api/search'
+      fullPath: '/api/search'
+      preLoaderRoute: typeof ApiSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/places': {
       id: '/api/places'
       path: '/api/places'
       fullPath: '/api/places'
       preLoaderRoute: typeof ApiPlacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/place-details': {
+      id: '/api/place-details'
+      path: '/api/place-details'
+      fullPath: '/api/place-details'
+      preLoaderRoute: typeof ApiPlaceDetailsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/curate': {
@@ -159,7 +199,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   ApiCurateRoute: ApiCurateRoute,
+  ApiPlaceDetailsRoute: ApiPlaceDetailsRoute,
   ApiPlacesRoute: ApiPlacesRoute,
+  ApiSearchRoute: ApiSearchRoute,
   ApiSessionRoute: ApiSessionRoute,
   TripTripIdRoute: TripTripIdRoute,
 }
