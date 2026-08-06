@@ -50,7 +50,7 @@ export function SearchSidebar(props: {
           zIndex={25}
           grid
           rows="auto 1fr"
-          bg="surface-panel"
+          bg="surface-shell"
           boxShadow="8px 0 30px rgba(0, 0, 0, 0.18)"
           _motion={{
             initial: { x: "-100%" },

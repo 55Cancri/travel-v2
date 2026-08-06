@@ -28,6 +28,9 @@ const DEBOUNCE_MS = 150;
 export function QueryLine(props: {
   line: ScoutLine;
   canRemove: boolean;
+  // The first line of its surface: the one whose results the surface-wide
+  // keyboard (arrows, j/k, Enter with focus anywhere non-editable) drives.
+  primary: boolean;
   scopeOf: () => SearchScope | null;
   dispatch: (action: ScoutAction) => void;
   onFocusFinding: (finding: Finding) => void;
@@ -179,31 +182,75 @@ export function QueryLine(props: {
     storeActiveIdx(-1);
   }, [walkableSig]);
 
+  // Up clamps at the first row rather than walking off it back into
+  // "nothing highlighted"; from nothing, either direction lands on row
+  // one.
+  const stepHighlight = (delta: 1 | -1) => {
+    if (walkable.length === 0) return;
+    storeActiveIdx((idx) =>
+      delta === 1 ? Math.min(idx + 1, walkable.length - 1) : Math.max(idx - 1, 0),
+    );
+  };
+
   // Enter is one action, not two: an unchecked row checks AND flies, a
   // checked row unchecks and holds the camera still.
-  const onSearchKeys = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      storeActiveIdx((idx) => Math.min(idx + 1, walkable.length - 1));
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      storeActiveIdx((idx) => Math.max(idx - 1, -1));
-      return;
-    }
-    if (event.key !== "Enter") return;
+  const actOnActive = () => {
     const finding = walkable[activeIdx];
-    if (!finding) return;
-    event.preventDefault();
+    if (!finding) return false;
     if (line.shownIds.includes(finding.id)) {
       props.dispatch({ name: "toggled", id: line.id, findingId: finding.id });
-      return;
+      return true;
     }
     ensureShown(finding).then((shown) => {
       if (shown) props.onFocusFinding(shown);
     });
+    return true;
   };
+
+  const onSearchKeys = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      stepHighlight(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    if (event.key === "Enter" && actOnActive()) event.preventDefault();
+  };
+
+  // The surface-wide keyboard: the same walk without the input focused,
+  // plus j/k, which can only exist OUTSIDE the field (typed letters must
+  // stay letters). Editable targets are skipped entirely, which also
+  // leaves the input-focused case to the handler above.
+  const surfaceKeysRef = React.useRef<(event: KeyboardEvent) => void>(() => {});
+  surfaceKeysRef.current = (event: KeyboardEvent) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target as HTMLElement;
+    if (
+      target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable
+    ) {
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "j") {
+      event.preventDefault();
+      stepHighlight(1);
+      return;
+    }
+    if (event.key === "ArrowUp" || event.key === "k") {
+      event.preventDefault();
+      stepHighlight(-1);
+      return;
+    }
+    if (event.key === "Enter" && actOnActive()) event.preventDefault();
+  };
+  React.useEffect(() => {
+    if (!props.primary) return;
+    const controller = new AbortController();
+    document.addEventListener("keydown", (event) => surfaceKeysRef.current(event), {
+      signal: controller.signal,
+    });
+    return () => controller.abort();
+  }, [props.primary]);
 
   return (
     <Block py="xs">
@@ -213,6 +260,12 @@ export function QueryLine(props: {
           placeholder="Search places"
           aria-label="What to find on the map"
           py="0.35lh"
+          // The dot's gaps are symmetric: edge to dot equals dot to text
+          // (both the input's own 0.5lh pad). A darker well than the
+          // shell it sits on, so the field reads as the surface's one
+          // place to type.
+          columnGap="sm"
+          bg="surface-page"
           onChange={(event) =>
             props.dispatch({ name: "typed", id: line.id, text: event.target.value })
           }

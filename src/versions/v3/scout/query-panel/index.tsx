@@ -172,7 +172,7 @@ export function QueryPanel(props: {
       borderWidth="1px"
       borderStyle="solid"
       borderColor="border-muted"
-      bg="surface-panel"
+      bg="surface-shell"
       boxShadow="0 10px 30px rgba(0, 0, 0, 0.22)"
       overflow="hidden"
       style={{ left: shown.x, top: shown.y, width: shown.width, height: shown.height }}

@@ -107,6 +107,13 @@ export default defineConfig({
         },
         // Hover fill for small round controls — darker than surface-muted in
         // dark mode so the circle doesn't flash bright behind icons.
+        // The big docked surfaces (search sidebar, sheets, the floating
+        // panel): one step deeper than surface-panel in dark, so the
+        // panel-toned controls sitting on them read as raised instead of
+        // dissolving into a wash.
+        "surface-shell": {
+          value: { base: "{colors.white}", _dark: "#211E1B" },
+        },
         "surface-hover": {
           // Dark sits one step above the panel, or a hover well painted on
           // a panel surface is invisible (stone.800 on stone.800).

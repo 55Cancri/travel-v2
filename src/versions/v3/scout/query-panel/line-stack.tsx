@@ -28,11 +28,12 @@ export function LineStack(props: {
           onUndo={props.onUndoEdge}
         />
       ) : null}
-      {props.lines.map((line) => (
+      {props.lines.map((line, i) => (
         <QueryLine
           key={line.id}
           line={line}
           canRemove={props.lines.length > 1}
+          primary={i === 0}
           scopeOf={props.scopeOf}
           dispatch={props.dispatch}
           onFocusFinding={props.onFocusFinding}

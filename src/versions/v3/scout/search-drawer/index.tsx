@@ -59,11 +59,12 @@ export function SearchDrawer(props: {
         typed={first.typed}
         onPick={(query) => props.dispatch({ name: "typed", id: first.id, text: query })}
       />
-      {props.lines.map((line) => (
+      {props.lines.map((line, i) => (
         <QueryLine
           key={line.id}
           line={line}
           canRemove={props.lines.length > 1}
+          primary={i === 0}
           scopeOf={props.scopeOf}
           dispatch={props.dispatch}
           onFocusFinding={(finding) => {
