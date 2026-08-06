@@ -85,6 +85,20 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner: an "+ Add place" ghost row below the lines, LANDED (70
+      tests incl. append-order; deployed): the
+      row (or Cmd+Enter from an input) appends a NEW query line and
+      focuses it. Lines flip from prepend to APPEND so the fresh input
+      lands below its predecessor, shift+tab walks back up naturally,
+      and the ghost row reads as the list's growing edge. Right side of
+      the row: keycap hints, a new Command icon and a KeyReturn icon
+      (top line left to right, down, then left with the arrowhead).
+      A fresh line is empty so it shows no results by construction.
+      Files: atoms/icons/command + key-return, lines.ts (append),
+      query-panel/add-place-row.tsx, line-stack wiring + last-input
+      focus, query-line Cmd+Enter (before the plain-Enter branch, which
+      would otherwise toggle the highlighted row), sheet passes the
+      shortcut through.
 - [x] Owner's fourth pass: the notch is REBUILT as a chevron svg whose
       base line lies on the card's border row (fill blanks the border
       segment, stroked slants rise from the line itself, rotated per
