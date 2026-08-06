@@ -142,14 +142,32 @@ export function Scout() {
     return () => controller.abort();
   }, [wide, docked]);
 
-  // A bare "s" toggles the docked sidebar, but never while typing: a
-  // key press whose target is editable belongs to the text field.
+  // One surface open at a time: the phone's search sheet, the maps menu,
+  // a place's editor, or a connection's editor.
+  const [openSheet, storeOpenSheet] = React.useState<
+    | { face: "search" }
+    | { face: "maps" }
+    | { face: "place"; target: PlaceDrawerTarget }
+    | { face: "edge"; edgeId: string }
+    | null
+  >(null);
+
+  // A bare "s" toggles the docked sidebar (never while typing: a key
+  // press whose target is editable belongs to the text field), and
+  // Escape closes it, unless a sheet is open, because the sheet's own
+  // Escape listener already answers that press.
+  const openSheetRef = React.useRef(openSheet);
+  openSheetRef.current = openSheet;
   React.useEffect(() => {
     if (!wide) return;
     const controller = new AbortController();
     document.addEventListener(
       "keydown",
       (event) => {
+        if (event.key === "Escape" && openSheetRef.current === null) {
+          storeDocked(false);
+          return;
+        }
         if (event.key !== "s" || event.metaKey || event.ctrlKey || event.altKey) return;
         const target = event.target as HTMLElement;
         if (
@@ -166,15 +184,6 @@ export function Scout() {
     );
     return () => controller.abort();
   }, [wide]);
-  // One surface open at a time: the phone's search sheet, the maps menu,
-  // a place's editor, or a connection's editor.
-  const [openSheet, storeOpenSheet] = React.useState<
-    | { face: "search" }
-    | { face: "maps" }
-    | { face: "place"; target: PlaceDrawerTarget }
-    | { face: "edge"; edgeId: string }
-    | null
-  >(null);
   const mapApiRef = React.useRef<ScoutMapApi | null>(null);
   // The tail of the chain being connected: the next connected node draws
   // an edge from here. Dropped when connect mode ends or the map switches.

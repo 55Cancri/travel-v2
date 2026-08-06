@@ -44,7 +44,7 @@ export function SearchDrawer(props: {
       {/* A header row of its own, so the plus stands in the same corner
           whether or not suggestions render below it. */}
       <Block grid cols="1fr auto" alignItems="center" pt="xs">
-        <Text fontSize="sm" fontWeight="550" color="text-muted">
+        <Text fontSize="md" fontWeight="550" color="text-muted">
           Search
         </Text>
         <IconButton
@@ -52,7 +52,7 @@ export function SearchDrawer(props: {
           aria-label="Add a query line"
           onPress={() => props.dispatch({ name: "added" })}
         >
-          <Plus size={16} />
+          <Plus size={18} />
         </IconButton>
       </Block>
       <SuggestionRows
