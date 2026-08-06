@@ -362,9 +362,18 @@ Phase G, round close:
       known-benign website-build churn, no other [deleting] lines.
 - [x] TODO.md: 8 scout lines checked + the maps-reorder follow-up
       added, Progress 54 / 91.
-- [ ] Close this round entry after the peer findings are handled and
-      the owner's visual pass happens (pane was hidden all round after
-      Phase B, see the BLOCKED items above).
+- [x] Owner's first mobile pass (2026-08-06) flagged four search-sheet
+      cuts, all fixed same turn and deployed: the sheet stands at a
+      fixed 85dvh from open (measured: 690px on an 812px viewport,
+      empty), streaming results cannot resize it, addresses wrap (the
+      Button atom's max-content slot track clamped to the row, a trap
+      worth remembering for any long text inside a Button), and the
+      add-line plus lives in its own header row so it no longer slides
+      corners when the suggestion block appears. On slice/38.
+- [ ] Close this round entry after the owner's remaining visual pass
+      (pane was hidden most of the round, see the BLOCKED items above;
+      address wrapping specifically still needs his eyes, the pane
+      could not produce search results to measure).
 
 ### Resume protocol for this round
 
