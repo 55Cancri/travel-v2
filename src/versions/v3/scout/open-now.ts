@@ -113,14 +113,30 @@ export const placeOpenVerdict = (
     : googleOpenVerdict(place.hours, now);
 };
 
+const WEEKDAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
 // Today's line of the weekly schedule ("Tuesday: 10:00 AM – 5:30 PM"),
 // the card's fallback when the next open/close flip is too far out to
-// name.
+// name. Matched by the day NAME rather than position, because the
+// engine's ordering of the sentences is not contractual; the positional
+// read stays only as the fallback for a non-English answer.
 export const googleTodayLine = (hours: GoogleHours, now: Temporal.Instant) => {
   if (hours.weekdayText.length === 0) return null;
   const local = now.toZonedDateTimeISO("UTC").add({ minutes: hours.utcOffsetMinutes });
-  // weekdayText is Monday-first; dayOfWeek is 1 for Monday.
-  return hours.weekdayText[local.dayOfWeek - 1] ?? null;
+  const name = WEEKDAY_NAMES[local.dayOfWeek - 1];
+  return (
+    hours.weekdayText.find((line) => line.startsWith(name)) ??
+    hours.weekdayText[local.dayOfWeek - 1] ??
+    null
+  );
 };
 
 // The full sentence, for a result row and the map's popup.

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Block, Button, CaretRight, Input, MagnifyingGlass, Spinner, Text, X } from "atoms";
-import { Checkbox, ErrorNote, IconButton } from "alloys";
+import { Checkbox, ErrorNote, Eyebrow, IconButton } from "alloys";
 import { fetchPlaceSpot } from "entities/place-search";
 import { noteSearch } from "entities/scout-maps";
 import { findPlaces, MIN_QUERY_CHARS, type Finding, type SearchScope } from "../find-places";
@@ -202,7 +202,12 @@ export function QueryLine(props: {
         </Text>
       ) : null}
 
-      {line.status === "answered" && line.places.length === 0 && line.nearby.length === 0 ? (
+      {/* Not while the sweep is still out: "nothing anywhere" beside a
+          spinner would contradict itself. */}
+      {line.status === "answered" &&
+      !line.sweeping &&
+      line.places.length === 0 &&
+      line.nearby.length === 0 ? (
         <Text as="p" fontSize="xs" color="text-muted" pt="xs">
           Nothing anywhere by that name.
         </Text>
@@ -210,6 +215,7 @@ export function QueryLine(props: {
 
       {line.places.length > 0 ? (
         <Block pt="xs">
+          <Eyebrow>Places</Eyebrow>
           {line.places.map((finding) => (
             <ResultRow
               key={finding.id}

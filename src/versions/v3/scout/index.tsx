@@ -471,6 +471,14 @@ export function Scout() {
         onFocusFinding={focusFinding}
         now={now}
         mapReady={mapReady}
+        edgeCount={map.edges.length}
+        routeNotice={routeNotice}
+        onClearRoute={() => clearEdges(map.id)}
+        onUndoEdge={() => {
+          const edges = activeMap(readScoutDb()).edges;
+          const last = edges.at(-1);
+          if (last) removeEdge(map.id, last.id);
+        }}
       />
       <MapsMenu open={openSheet?.face === "maps"} onClose={() => storeOpenSheet(null)} />
       <PlaceDrawer
