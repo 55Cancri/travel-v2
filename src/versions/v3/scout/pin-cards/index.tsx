@@ -26,21 +26,14 @@ export type PinCardFacts = {
 
 type Anchor = "above" | "right" | "left" | "below";
 
-// Offset of the card's top-left from the pin's projected ground point,
-// plus where the notch sits on the card's edge.
-type Placement = {
-  dx: number;
-  dy: number;
-  notchLeft: number;
-  notchTop: number;
-};
+// Offset of the card's top-left from the pin's projected ground point.
+type Placement = { dx: number; dy: number };
 
 // The pin image is 26x34, anchored bottom, so the icon occupies
 // [-13, -34] to [13, 0] around its projected point.
 const PIN_HALF_WIDTH = 13;
 const PIN_HEIGHT = 34;
 const GAP = 7;
-const NOTCH = 8;
 
 const overlap = (
   a: { x: number; y: number; w: number; h: number },
@@ -64,20 +57,22 @@ const placementFor = (
   }
 };
 
-// The notch is a rotated square peeking out of the edge that faces the
-// pin, centered on that edge (side-anchored cards are vertically centered
-// on the pin's midpoint, so the edge's center IS the pin's height).
-const notchFor = (anchor: Anchor, w: number, h: number) => {
-  const half = NOTCH / 2;
+// The notch is a chevron SVG (two stroked slants over a fill) whose base
+// line lies exactly on the card's border row: the fill blanks the border
+// segment it straddles and the slants rise from the border's own line,
+// so the outline reads as one continuous stroke flowing around the
+// arrow. The svg box is 12x8 with the base drawn at y=1 and the tip at
+// y=7; rotation swings it to whichever edge faces the pin.
+const chevronFor = (anchor: Anchor, w: number, h: number) => {
   switch (anchor) {
     case "above":
-      return { left: w / 2 - half, top: h - half };
-    case "right":
-      return { left: -half, top: h / 2 - half };
-    case "left":
-      return { left: w - half, top: h / 2 - half };
+      return { left: w / 2 - 6, top: h - 2, rotate: 0 };
     case "below":
-      return { left: w / 2 - half, top: -half };
+      return { left: w / 2 - 6, top: -6, rotate: 180 };
+    case "right":
+      return { left: -8, top: h / 2 - 4, rotate: 90 };
+    case "left":
+      return { left: w - 4, top: h / 2 - 4, rotate: -90 };
   }
 };
 
@@ -142,32 +137,13 @@ export function PinCards(props: {
         }
         const at = placementFor(chosen, w, h);
         taken.push({ x: point.x + at.dx, y: point.y + at.dy, w, h });
-        const notch = notchFor(chosen, w, h);
-        placementsRef.current.set(card.id, {
-          dx: at.dx,
-          dy: at.dy,
-          notchLeft: notch.left,
-          notchTop: notch.top,
-        });
+        placementsRef.current.set(card.id, { dx: at.dx, dy: at.dy });
         const notchNode = node.querySelector<HTMLElement>("[data-notch]");
         if (notchNode) {
+          const notch = chevronFor(chosen, w, h);
           notchNode.style.left = `${notch.left}px`;
           notchNode.style.top = `${notch.top}px`;
-          // The rotated square shows two faces past the card's edge; only
-          // those two carry the border, so the card's outline reads as one
-          // continuous line flowing around the notch (which sits ABOVE the
-          // card and paints over the border segment it straddles).
-          const exposed: Record<Anchor, [string, string]> = {
-            above: ["borderBottom", "borderRight"],
-            below: ["borderTop", "borderLeft"],
-            right: ["borderLeft", "borderBottom"],
-            left: ["borderTop", "borderRight"],
-          };
-          notchNode.style.border = "0";
-          const edge = getComputedStyle(node).borderTopColor;
-          for (const side of exposed[chosen]) {
-            notchNode.style[side as "borderTop"] = `1px solid ${edge}`;
-          }
+          notchNode.style.transform = `rotate(${notch.rotate}deg)`;
         }
       }
       position();
@@ -227,20 +203,27 @@ export function PinCards(props: {
           maxW="14rem"
           style={{ pointerEvents: "auto", willChange: "transform", visibility: "hidden" }}
         >
-          {/* The notch: a rotated square RIDING the card's edge, placed
-              (and given its two exposed borders) with the collision
-              pass. Above the card, so its fill hides the border segment
-              it straddles and the outline flows around the arrow. */}
-          <Block
-            as="span"
+          {/* The notch chevron: placed and rotated by the collision pass
+              so its base line lies on the card's border row. */}
+          <svg
             data-notch=""
             aria-hidden="true"
-            position="absolute"
-            w="8px"
-            h="8px"
-            bg="surface-panel"
-            style={{ transform: "rotate(45deg)", zIndex: 1 }}
-          />
+            width={12}
+            height={8}
+            style={{
+              position: "absolute",
+              zIndex: 2,
+              pointerEvents: "none",
+              overflow: "visible",
+            }}
+          >
+            <path
+              d="M0.5 1 L6 7 L11.5 1"
+              fill="var(--colors-surface-panel)"
+              stroke="var(--colors-border-muted)"
+              strokeWidth={1}
+            />
+          </svg>
           <Block grid justifyItems="start" textAlign="start" minW={0}>
             <Block grid cols="auto 1fr" alignItems="center" gap="xs" minW={0}>
               <Block
