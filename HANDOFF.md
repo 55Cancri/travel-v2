@@ -38,6 +38,47 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: mobile follow-up: a tapped result becomes a pin (planned 2026-08-06)
+
+Owner, testing on his phone: after closing the search drawer nothing he
+found stands on the map, and getting back to a place means reopening the
+drawer, seeing his picks, and tapping a row again. Pins must be visible
+on the map whether or not the drawer is open.
+
+Diagnosis: ticked pins DO persist across drawer close (the line state
+lives in the screen, not the sheet). What actually happened is the
+gesture gap: on a phone the natural press is the result ROW, and a row
+press only flew the camera; the pin existed only behind the small
+checkbox. So the owner flew somewhere, nothing was pinned, and the map
+looked empty. A second fault sat underneath: the desktop panel is only
+CSS-hidden on phones, so its copies of every query line stayed mounted
+and ran duplicate searches (the promise-joined client cache absorbed the
+Google spend, but the Overpass sweep ran twice).
+
+Design, decided before implementation:
+
+- **Pressing a result row pins AND flies, one behavior on every width.**
+  The checkbox stays as the explicit toggle (and the only way to
+  UN-show), but the row press routes through the same guarded
+  ensure-shown path (in-flight set stops a double tap from un-toggling).
+- **One search surface mounted per width.** The panel mounts only on
+  wide windows (a matchMedia hook), the drawer only exists on narrow
+  ones; CSS-hiding a component whose effects fire network requests was
+  the wrong tool. Closing the drawer aborts an in-flight sweep and a
+  reopen relaunches it; the answered results and ticks live on in the
+  screen's reducer either way.
+
+- [x] query-line: ensureShown shared by tick and row press; row press
+      pins then flies; checkbox remains the un-show.
+- [x] scout index: useWideWindow hook (matchMedia, 768px), panel
+      conditionally mounted, drawer/panel never both live.
+- [x] Verified in the pane: at 375px the panel is absent from the DOM
+      and the search button shows, at 1280px the panel mounts (the hook
+      re-rendered live across the resize). Typecheck, 66 tests,
+      check:names clean. Pin persistence across sheet close follows
+      from the reducer living in the screen; the owner's phone is the
+      final check. Deployed.
+
 ## Round: scout overhaul: Google search, tooltips, drawers, connector, maps (planned 2026-08-06)
 
 Owner ask, translated to product terms, all accepted for this round:
