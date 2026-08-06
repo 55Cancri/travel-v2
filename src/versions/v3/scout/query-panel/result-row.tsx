@@ -39,7 +39,10 @@ export function ResultRow(props: {
       px="xs"
       mx="-0.25lh"
       borderRadius="xs"
-      bg={props.active ? "surface-hover" : "transparent"}
+      // accent-soft, NOT surface-hover: in dark mode surface-hover and
+      // surface-panel are the same stone step, so a highlight painted
+      // with it is invisible exactly where these rows live.
+      bg={props.active ? "accent-soft" : "transparent"}
     >
       {/* Nudged onto the first line's optical centre: the checkbox is a
           square box beside text that sits on a taller line box. */}
