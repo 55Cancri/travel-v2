@@ -93,10 +93,16 @@ export const Route = createFileRoute("/api/search")({
         // incremented value and UNDERCOUNT, so the ceiling can trip a few
         // calls late. The ceiling sits a thousand under the free tier to
         // absorb exactly that slack; two door-gated users cannot widen it
-        // meaningfully.
-        await env.PLACE_CACHE.put(counterKey, String(spent + 1), {
-          expirationTtl: 60 * 60 * 24 * 62,
-        });
+        // meaningfully. Counting is best-effort, so a KV write refusal
+        // (per-key rate limit under a typing burst) must not fail the
+        // search.
+        try {
+          await env.PLACE_CACHE.put(counterKey, String(spent + 1), {
+            expirationTtl: 60 * 60 * 24 * 62,
+          });
+        } catch (error) {
+          console.warn("[search] budget counter write failed:", error);
+        }
         const res = await fetch(AUTOCOMPLETE, {
           method: "POST",
           headers: {
