@@ -29,7 +29,7 @@ describe("googleOpenVerdict", () => {
       ]),
       wednesdayNoon,
     );
-    expect(verdict).toEqual({ phase: "open", at: "17:30" });
+    expect(verdict).toEqual({ phase: "open", at: "5:30p" });
   });
 
   test("closed now, next opening tomorrow morning is past the horizon", () => {
@@ -50,7 +50,7 @@ describe("googleOpenVerdict", () => {
       ]),
       sundaySmallHours,
     );
-    expect(verdict).toEqual({ phase: "open", at: "3:00" });
+    expect(verdict).toEqual({ phase: "open", at: "3a" });
   });
 
   test("one period with no close means always open", () => {

@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Block, Input, Text } from "atoms";
-import { FieldLabel, GhostButton, PrimaryButton, Subtext } from "alloys";
+import { Block, Input, MapPin, Text } from "atoms";
+import { FieldLabel, GhostButton, PrimaryButton } from "alloys";
 import {
   removePlace,
   savePlace,
@@ -104,24 +104,43 @@ export function PlaceDrawer(props: {
 
   return (
     <Sheet open={open} onClose={props.onClose} label="Place" size="half">
-      <Block flow="md" pt="xs">
+      {/* Two type sizes only: xs labels, md everything else. */}
+      <Block flow="lg" pt="xs">
         <Block flow="0.25lh">
-          <FieldLabel htmlFor="place-label">Name</FieldLabel>
+          <FieldLabel htmlFor="place-label" fontSize="xs">
+            Name
+          </FieldLabel>
           <Input
             id="place-label"
             value={label}
             placeholder="What do you call this place?"
             onChange={(event) => storeLabel(event.target.value)}
+            py="0.35lh"
           />
         </Block>
-        {address ? <Subtext>{address}</Subtext> : null}
-        {hoursLine ? (
-          <Text fontSize="sm" fontWeight="550" color="text-muted">
-            {hoursLine}
-          </Text>
+        {address || hoursLine ? (
+          <Block flow="sm">
+            {address ? (
+              <Block grid cols="auto 1fr" gap="sm" alignItems="start">
+                <Block color="text-muted" display="grid" placeItems="center" mt="0.2rem">
+                  <MapPin size={16} />
+                </Block>
+                <Text fontSize="md" color="text-primary">
+                  {address}
+                </Text>
+              </Block>
+            ) : null}
+            {hoursLine ? (
+              <Text fontSize="md" color="text-muted" pl={address ? "calc(16px + 0.5lh)" : undefined}>
+                {hoursLine}
+              </Text>
+            ) : null}
+          </Block>
         ) : null}
         <Block flow="0.25lh">
-          <FieldLabel as="span">Pin color</FieldLabel>
+          <FieldLabel as="span" fontSize="xs">
+            Pin color
+          </FieldLabel>
           <SwatchRow color={color} onColor={storeColor} />
         </Block>
         <Block flex gap="sm" justifyContent="end" pt="xs">
@@ -130,12 +149,34 @@ export function PlaceDrawer(props: {
               Remove from map
             </GhostButton>
           ) : null}
+          {/* Matches the input's height (same vertical padding scale) so
+              the sheet closes on two aligned rectangles. */}
           {target?.kind === "finding" ? (
-            <PrimaryButton type="button" onPress={saveFinding}>
+            <PrimaryButton
+              type="button"
+              onPress={saveFinding}
+              py="0.35lh"
+              px="lg"
+              fontSize="md"
+              bg="blue.500"
+              _dark={{ bg: "blue.400" }}
+              _hover={{ bg: "blue.600", _dark: { bg: "blue.300" } }}
+              color="white"
+            >
               Save to map
             </PrimaryButton>
           ) : (
-            <PrimaryButton type="button" onPress={props.onClose}>
+            <PrimaryButton
+              type="button"
+              onPress={props.onClose}
+              py="0.35lh"
+              px="lg"
+              fontSize="md"
+              bg="blue.500"
+              _dark={{ bg: "blue.400" }}
+              _hover={{ bg: "blue.600", _dark: { bg: "blue.300" } }}
+              color="white"
+            >
               Done
             </PrimaryButton>
           )}
