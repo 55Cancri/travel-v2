@@ -73,10 +73,10 @@ export function QueryPanel(props: {
   onFocusFinding: (finding: Finding) => void;
   now: Temporal.Instant;
   mapReady: boolean;
-  routeCount: number;
+  edgeCount: number;
   routeNotice: string | null;
   onClearRoute: () => void;
-  onUndoRoutePoint: () => void;
+  onUndoEdge: () => void;
 }) {
   // Mount with the opening frame and adopt the stored one on the client:
   // localStorage and window are both out of reach while this renders on the
@@ -208,12 +208,12 @@ export function QueryPanel(props: {
         </IconButton>
       </Block>
       <Block overflowY="auto" px="sm" pb="sm">
-        {props.routeCount > 0 ? (
+        {props.edgeCount > 0 ? (
           <RouteStrip
-            count={props.routeCount}
+            count={props.edgeCount}
             notice={props.routeNotice}
             onClear={props.onClearRoute}
-            onUndo={props.onUndoRoutePoint}
+            onUndo={props.onUndoEdge}
           />
         ) : null}
         {props.lines.map((line) => (

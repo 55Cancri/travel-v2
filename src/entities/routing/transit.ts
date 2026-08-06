@@ -147,8 +147,11 @@ export const fetchRide = async (
   to: { lng: number; lat: number },
   dateIso: string,
   signal: AbortSignal,
+  // MOTIS transit mode names (TRAM, BUS, RAIL, ...). Omitted means the
+  // router's default, every transit mode.
+  transitModes?: string[],
 ) => {
-  const key = `${from.lng},${from.lat};${to.lng},${to.lat};${dateIso}`;
+  const key = `${from.lng},${from.lat};${to.lng},${to.lat};${dateIso};${transitModes?.toSorted().join(",") ?? "TRANSIT"}`;
   const cached = rideCache.get(key);
   if (cached) return cached;
   // Depart mid-morning in the hop's own solar time: civil timezones sit
@@ -172,6 +175,7 @@ export const fetchRide = async (
     directModes: "WALK",
     maxDirectTime: "10800",
   });
+  if (transitModes?.length) query.set("transitModes", transitModes.join(","));
   const res = await fetch(`${TRANSIT_ROUTER}?${query}`, { signal });
   if (!res.ok) throw new Error(`transit router responded ${res.status}`);
   const body = (await res.json()) as {

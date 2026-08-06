@@ -1,6 +1,8 @@
 import * as React from "react";
 import { Block, Button, CaretRight, Input, MagnifyingGlass, Spinner, Text, X } from "atoms";
 import { Checkbox, ErrorNote, IconButton } from "alloys";
+import { fetchPlaceSpot } from "entities/place-search";
+import { noteSearch } from "entities/scout-maps";
 import { findPlaces, MIN_QUERY_CHARS, type Finding, type SearchScope } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
 import { ResultRow } from "./result-row";
@@ -10,8 +12,15 @@ import { ResultRow } from "./result-row";
 // debounce, one abort signal) and reports every result upward, so the panel
 // above it holds the whole picture and no answer lives in two places.
 //
-// Short, because what this delay gates is the FAST source: the geocoder
-// answers in about fifty milliseconds and caches, so this pause was the
+// Results render as two sections. "Places" is the search engine's few,
+// already ranked hits, always visible. "In this view" is the map sweep's
+// branch list, dozens deep, with the show-all tick and the disclosure that
+// folds it away. Engine hits are born without coordinates: the first
+// interaction with one (tick, or press to fly) resolves them through the
+// details route, then acts.
+//
+// Short, because what this delay gates is the FAST source: the engine
+// answers in about a hundred milliseconds and caches, so this pause was the
 // largest cost we control over the whole search. The expensive map sweep
 // holds itself back separately, inside findPlaces.
 const DEBOUNCE_MS = 150;
@@ -56,7 +65,7 @@ export function QueryLine(props: {
       launchedRef.current = attempt;
       props.dispatch({ name: "searching", id: line.id, query: text });
       try {
-        // Reports once per source, so the geocoder's answer paints while the
+        // Reports once per source, so the engine's answer paints while the
         // map sweep is still out.
         await findPlaces(text, scope, controller.signal, (results) => {
           if (controller.signal.aborted) return;
@@ -82,14 +91,59 @@ export function QueryLine(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.typed, line.runId, props.mapReady]);
 
-  const allShown = line.findings.length > 0 && line.shownIds.length === line.findings.length;
+  // An engine hit with coordinates already, or resolved on the spot. Null
+  // means the resolve failed, which the line's notice already says.
+  const located = async (finding: Finding): Promise<Finding | null> => {
+    if (finding.lng !== undefined && finding.lat !== undefined) return finding;
+    if (!finding.placeId) return null;
+    try {
+      const spot = await fetchPlaceSpot(finding.placeId, false);
+      props.dispatch({
+        name: "located",
+        id: line.id,
+        findingId: finding.id,
+        lng: spot.lng,
+        lat: spot.lat,
+        address: spot.address,
+      });
+      return { ...finding, lng: spot.lng, lat: spot.lat, address: spot.address ?? finding.address };
+    } catch (error) {
+      console.warn("[scout] place resolve failed:", error);
+      props.dispatch({ name: "locateFailed", id: line.id, findingId: finding.id });
+      return null;
+    }
+  };
+
+  const toggleFinding = async (finding: Finding) => {
+    // Unticking never needs coordinates; ticking pins, which does.
+    if (!line.shownIds.includes(finding.id)) {
+      const resolved = await located(finding);
+      if (!resolved) return;
+      // Acting on a result is what makes a search a memory: recording
+      // every debounced keystroke instead would fill the recents with
+      // fragments of phrases still being typed.
+      noteSearch(line.typed);
+    }
+    props.dispatch({ name: "toggled", id: line.id, findingId: finding.id });
+  };
+
+  const focusFinding = async (finding: Finding) => {
+    const resolved = await located(finding);
+    if (!resolved) return;
+    noteSearch(line.typed);
+    props.onFocusFinding(resolved);
+  };
+
+  const nearbyIds = line.nearby.map((finding) => finding.id);
+  const allNearbyShown =
+    nearbyIds.length > 0 && nearbyIds.every((id) => line.shownIds.includes(id));
 
   return (
     <Block py="xs">
       <Block grid cols="1fr auto" alignItems="center" gap="xs">
         <Input
           value={line.typed}
-          placeholder="Media Markt, or an address"
+          placeholder="Hotel Hoy, Media Markt, or an address"
           aria-label="What to find on the map"
           onChange={(event) =>
             props.dispatch({ name: "typed", id: line.id, text: event.target.value })
@@ -137,19 +191,34 @@ export function QueryLine(props: {
         </Text>
       ) : null}
 
-      {line.status === "answered" && line.findings.length === 0 ? (
+      {line.status === "answered" && line.places.length === 0 && line.nearby.length === 0 ? (
         <Text as="p" fontSize="xs" color="text-muted" pt="xs">
-          Nothing here by that name.
+          Nothing anywhere by that name.
         </Text>
       ) : null}
 
-      {line.findings.length > 0 ? (
+      {line.places.length > 0 ? (
+        <Block pt="xs">
+          {line.places.map((finding) => (
+            <ResultRow
+              key={finding.id}
+              finding={finding}
+              checked={line.shownIds.includes(finding.id)}
+              now={props.now}
+              onToggle={() => toggleFinding(finding)}
+              onFocus={() => focusFinding(finding)}
+            />
+          ))}
+        </Block>
+      ) : null}
+
+      {line.nearby.length > 0 ? (
         <Block pt="xs">
           <Block grid cols="auto 1fr auto" alignItems="center" gap="sm">
             <Checkbox
-              checked={allShown}
+              checked={allNearbyShown}
               onToggle={() => props.dispatch({ name: "allToggled", id: line.id })}
-              label="Show all on the map"
+              label="Show everything in this view on the map"
             />
             {/* The caret and the count are one target, the way a disclosure
                 row usually is: a bare caret is a small thing to hit. */}
@@ -182,7 +251,7 @@ export function QueryLine(props: {
                 <CaretRight size={14} />
               </Block>
               <Text fontSize="xs" fontWeight="550">
-                Show all ({line.findings.length})
+                In this view ({line.nearby.length})
               </Text>
             </Button>
             <IconButton
@@ -224,16 +293,14 @@ export function QueryLine(props: {
                 reachable, instead of burying the next question under this
                 one's answers. */}
             <Block maxH="15rem" overflowY="auto">
-              {line.findings.map((finding) => (
+              {line.nearby.map((finding) => (
                 <ResultRow
                   key={finding.id}
                   finding={finding}
                   checked={line.shownIds.includes(finding.id)}
                   now={props.now}
-                  onToggle={() =>
-                    props.dispatch({ name: "toggled", id: line.id, findingId: finding.id })
-                  }
-                  onFocus={() => props.onFocusFinding(finding)}
+                  onToggle={() => toggleFinding(finding)}
+                  onFocus={() => focusFinding(finding)}
                 />
               ))}
             </Block>
