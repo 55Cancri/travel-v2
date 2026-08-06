@@ -44,7 +44,6 @@ type WireGooglePlace = {
   location?: { latitude?: number; longitude?: number };
   formattedAddress?: string;
   regularOpeningHours?: WireGoogleHours;
-  currentOpeningHours?: WireGoogleHours;
   utcOffsetMinutes?: number;
 };
 
@@ -59,11 +58,15 @@ const monthStamp = () => {
   return `${now.year}-${String(now.month).padStart(2, "0")}`;
 };
 
-// Holiday-adjusted hours when Google has them for the coming week, the
-// regular schedule otherwise. The weekday sentences always come from the
-// regular schedule, which is the one worth reading as a whole week.
+// The REGULAR weekly schedule only, deliberately. Google's "current"
+// hours are a dated seven-day window (holiday exceptions included), and
+// replaying that window as a repeating week from a 30-day cache would
+// repeat Christmas hours into January. The regular schedule is the one
+// shape that stays true for a month. (The cached utcOffsetMinutes can go
+// stale across a DST switch and shift verdicts an hour until the cache
+// turns over; accepted for a schedule display.)
 const hoursOf = (place: WireGooglePlace): WirePlaceHours | undefined => {
-  const schedule = place.currentOpeningHours ?? place.regularOpeningHours;
+  const schedule = place.regularOpeningHours;
   const offset = place.utcOffsetMinutes;
   if (!schedule?.periods || offset === undefined) return undefined;
   const periods = [];
@@ -82,8 +85,7 @@ const hoursOf = (place: WireGooglePlace): WirePlaceHours | undefined => {
   if (periods.length === 0) return undefined;
   return {
     periods,
-    weekdayText:
-      place.regularOpeningHours?.weekdayDescriptions ?? schedule.weekdayDescriptions ?? [],
+    weekdayText: schedule.weekdayDescriptions ?? [],
     utcOffsetMinutes: offset,
   };
 };
@@ -122,16 +124,21 @@ export const Route = createFileRoute("/api/place-details")({
         // incremented value and UNDERCOUNT, so the ceiling can trip a few
         // calls late. Both ceilings sit well under their free tiers to
         // absorb exactly that slack; two door-gated users cannot widen it
-        // meaningfully.
-        await env.PLACE_CACHE.put(counterKey, String(spent + 1), {
-          expirationTtl: 60 * 60 * 24 * 62,
-        });
+        // meaningfully. Counting is best-effort, so a KV write refusal
+        // (per-key rate limit under a burst) must not fail the lookup.
+        try {
+          await env.PLACE_CACHE.put(counterKey, String(spent + 1), {
+            expirationTtl: 60 * 60 * 24 * 62,
+          });
+        } catch (error) {
+          console.warn("[place-details] budget counter write failed:", error);
+        }
         const res = await fetch(`${PLACES}${id}`, {
           headers: {
             "X-Goog-Api-Key": key,
             "X-Goog-FieldMask":
               "location,formattedAddress" +
-              (wantHours ? ",regularOpeningHours,currentOpeningHours,utcOffsetMinutes" : ""),
+              (wantHours ? ",regularOpeningHours,utcOffsetMinutes" : ""),
           },
         });
         if (!res.ok) {
