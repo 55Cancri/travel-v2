@@ -14,8 +14,10 @@ export function Sheet(props: {
   open: boolean;
   onClose: () => void;
   label: string;
-  // How much of the screen the sheet claims. Search wants most of it,
-  // an edge's mode chips only a strip.
+  // How much of the screen the sheet claims. "tall" is a FIXED height:
+  // the search sheet must stand at full size before any results exist
+  // and hold still while they stream in, never resize under a thumb.
+  // "half" hugs its content up to a ceiling, for the small editors.
   size?: "half" | "tall";
   children: React.ReactNode;
 }) {
@@ -58,7 +60,8 @@ export function Sheet(props: {
             position="absolute"
             insetInline="0"
             insetBlockEnd="0"
-            maxH={props.size === "half" ? "55dvh" : "88dvh"}
+            h={props.size === "half" ? "auto" : "85dvh"}
+            maxH={props.size === "half" ? "55dvh" : "85dvh"}
             grid
             rows="auto 1fr"
             bg="surface-panel"

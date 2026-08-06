@@ -1,4 +1,4 @@
-import { Block, Plus } from "atoms";
+import { Block, Plus, Text } from "atoms";
 import { IconButton } from "alloys";
 import type { Finding, SearchScope } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
@@ -41,21 +41,24 @@ export function SearchDrawer(props: {
           onUndo={props.onUndoEdge}
         />
       ) : null}
+      {/* A header row of its own, so the plus stands in the same corner
+          whether or not suggestions render below it. */}
       <Block grid cols="1fr auto" alignItems="center" pt="xs">
-        <SuggestionRows
-          typed={first.typed}
-          onPick={(query) => props.dispatch({ name: "typed", id: first.id, text: query })}
-        />
-        <Block alignSelf="start">
-          <IconButton
-            type="button"
-            aria-label="Add a query line"
-            onPress={() => props.dispatch({ name: "added" })}
-          >
-            <Plus size={16} />
-          </IconButton>
-        </Block>
+        <Text fontSize="sm" fontWeight="550" color="text-muted">
+          Search
+        </Text>
+        <IconButton
+          type="button"
+          aria-label="Add a query line"
+          onPress={() => props.dispatch({ name: "added" })}
+        >
+          <Plus size={16} />
+        </IconButton>
       </Block>
+      <SuggestionRows
+        typed={first.typed}
+        onPick={(query) => props.dispatch({ name: "typed", id: first.id, text: query })}
+      />
       {props.lines.map((line) => (
         <QueryLine
           key={line.id}
