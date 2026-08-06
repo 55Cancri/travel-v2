@@ -85,6 +85,12 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Third Add place nudge, LANDED: the label sat half a step right
+      because the button atom declares columnGap sm and a LONGHAND
+      outranks a consumer's gap shorthand in the style merge; columnGap
+      xs on the row closes it. Cascade trap for the standing gotchas:
+      when overriding an atom's spacing, match the atom's own property
+      form (longhand vs shorthand), or the atom wins silently. Deployed.
 - [x] Owner's second Add place correction, LANDED: the label centered
       because the BUTTON ATOM centers its slot items (justifyItems
       start on the row fixes the cell; remember this for any grid built
