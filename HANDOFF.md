@@ -38,6 +38,42 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: desktop search sidebar behind a hamburger (planned 2026-08-06)
+
+Owner: a hamburger at the top left; clicking it slides out a sidebar
+where the search input and results live. The floating panel stays for
+now. The sidebar animates out and in.
+
+Decisions before implementation:
+
+- The route strip + query lines block now renders in THREE surfaces, so
+  it extracts into one component (`query-panel/line-stack.tsx`) used by
+  the floating panel, the phone sheet, and the new sidebar.
+- Sidebar open UNMOUNTS the floating panel: two mounted copies of the
+  lines would re-run every search twice (the exact double-search bug
+  just fixed on phones), and two simultaneous search surfaces is noise.
+  Closing the sidebar brings the panel back; results and ticks live in
+  the screen reducer and survive the swap.
+- The hamburger is wide-window only (phones keep the search sheet), top
+  left above the mobile maps spot. New three-bar icon at
+  `atoms/icons/menu`. Sidebar: full height, left edge, spring in/out
+  via AnimatePresence, no backdrop (the map stays usable beside it),
+  close X in its header.
+
+- [x] atoms/icons/menu (three bars), exported through icons door AND
+      the atoms door's named list (it does not wildcard).
+- [x] line-stack.tsx extraction; the floating panel consumes it (the
+      phone sheet keeps its own arrangement around suggestions).
+- [x] search-sidebar/: 24rem, full height, left edge, spring in/out,
+      no backdrop, header with plus + close. Wired: hamburger top left
+      (wide only), `docked` state, panel renders only when
+      wide && !docked.
+- [x] typecheck, 68 tests, check:names, dev server compiles clean.
+      Pane could NOT verify visually this time: the running server is
+      the real door and agent credentials only fit the fixture door.
+      Owner is at the screen with HMR; his eyes are the visual check.
+      Deployed; on PR #38.
+
 ## Round: place-drawer polish + connect feedback (planned 2026-08-06)
 
 Owner's second phone pass, his items in his order:
