@@ -85,6 +85,14 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner: the settle still "jumped". Root cause: a MapLibre resize
+      keeps geography centered on the NEW canvas center, so the one
+      resize per toggle shifted the world by half the sidebar width.
+      The map api gained shiftBy (instant pixel pan) and both settle
+      points compensate in the same frame. The full lesson for the
+      standing gotchas: never animate a MapLibre container's layout
+      (per-frame resizes flicker), animate a transform, settle layout
+      once, and pan back half the width change at the settle.
 
 ## Round: place-drawer polish + connect feedback (planned 2026-08-06)
 
