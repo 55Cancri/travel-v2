@@ -153,6 +153,21 @@ export function PinCards(props: {
         if (notchNode) {
           notchNode.style.left = `${notch.left}px`;
           notchNode.style.top = `${notch.top}px`;
+          // The rotated square shows two faces past the card's edge; only
+          // those two carry the border, so the card's outline reads as one
+          // continuous line flowing around the notch (which sits ABOVE the
+          // card and paints over the border segment it straddles).
+          const exposed: Record<Anchor, [string, string]> = {
+            above: ["borderBottom", "borderRight"],
+            below: ["borderTop", "borderLeft"],
+            right: ["borderLeft", "borderBottom"],
+            left: ["borderTop", "borderRight"],
+          };
+          notchNode.style.border = "0";
+          const edge = getComputedStyle(node).borderTopColor;
+          for (const side of exposed[chosen]) {
+            notchNode.style[side as "borderTop"] = `1px solid ${edge}`;
+          }
         }
       }
       position();
@@ -202,7 +217,7 @@ export function PinCards(props: {
           top="0"
           left="0"
           bg="surface-panel"
-          borderRadius="sm"
+          borderRadius="xs"
           borderWidth="1px"
           borderStyle="solid"
           borderColor="border-muted"
@@ -212,8 +227,10 @@ export function PinCards(props: {
           maxW="14rem"
           style={{ pointerEvents: "auto", willChange: "transform", visibility: "hidden" }}
         >
-          {/* The notch: a rotated square tucked under the card's edge,
-              placed imperatively with the collision pass. */}
+          {/* The notch: a rotated square RIDING the card's edge, placed
+              (and given its two exposed borders) with the collision
+              pass. Above the card, so its fill hides the border segment
+              it straddles and the outline flows around the arrow. */}
           <Block
             as="span"
             data-notch=""
@@ -222,7 +239,7 @@ export function PinCards(props: {
             w="8px"
             h="8px"
             bg="surface-panel"
-            style={{ transform: "rotate(45deg)", zIndex: -1 }}
+            style={{ transform: "rotate(45deg)", zIndex: 1 }}
           />
           <Block grid justifyItems="start" textAlign="start" minW={0}>
             <Block grid cols="auto 1fr" alignItems="center" gap="xs" minW={0}>

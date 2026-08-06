@@ -13,10 +13,14 @@ export const ALL_RIDE_MODES: RideMode[] = ["walk", "bus", "tram", "train", "metr
 
 // Opening hours in whichever grammar the place's source spoke. OSM tags
 // arrive as one raw opening_hours string; the search engine returns
-// structured weekly periods plus the place's UTC offset.
+// structured weekly periods plus the place's UTC offset. "none" records
+// that the engine WAS asked and had no schedule to give, which is what
+// lets a card stop saying "Loading times...": absent hours mean the ask
+// is still out, "none" means it answered empty.
 export type PlaceHours =
   | { kind: "osm"; raw: string }
-  | ({ kind: "google" } & GoogleHours);
+  | ({ kind: "google" } & GoogleHours)
+  | { kind: "none" };
 
 export type SavedPlace = {
   id: string;

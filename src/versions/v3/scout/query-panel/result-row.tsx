@@ -2,7 +2,7 @@ import * as React from "react";
 import { Block, Button, Text } from "atoms";
 import { Checkbox } from "alloys";
 import type { Finding } from "../find-places";
-import { openLine, openVerdict } from "../open-now";
+import { findingOpenVerdict, openLine } from "../open-now";
 
 // One found place: a checkbox that puts it on the map, and a press target
 // that flies the camera to it. Three lines at most, in falling importance,
@@ -17,7 +17,7 @@ export function ResultRow(props: {
   onToggle: () => void;
   onFocus: () => void;
 }) {
-  const verdict = openVerdict(props.finding, props.now);
+  const verdict = findingOpenVerdict(props.finding, props.now);
   const hours = openLine(verdict);
   const detail = [props.finding.category, props.finding.address].filter(Boolean).join(" · ");
 
@@ -34,14 +34,15 @@ export function ResultRow(props: {
       grid
       cols="auto 1fr"
       alignItems="start"
-      gap="xs"
+      // The checkbox stands at the input's own left edge (the gutter),
+      // and the GAP absorbs the input's border + pad + dot + dot-gap
+      // minus the checkbox, which lands the row text flush with the
+      // input text.
+      gap="calc(1lh + 1px - 0.7rem)"
       py="sm"
       // Bleeds across the container's md gutter so the highlight runs
-      // edge to edge, then indents so the CHECKBOX centers under the
-      // input's color dot and the row text lands flush with the input
-      // text: gutter + input border + input pad + half dot, minus half
-      // a checkbox (the xs gap closes the remaining half pixel).
-      pl="calc(1.5lh + 1px - 0.35rem)"
+      // edge to edge.
+      pl="1lh"
       pr="1lh"
       mx="-1lh"
       // A neutral gray step, not the accent: the highlight marks a

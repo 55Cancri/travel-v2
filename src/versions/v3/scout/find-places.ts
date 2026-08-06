@@ -18,7 +18,7 @@
 // weak sources; with a real engine on top it only reintroduced the noise
 // (an Amsterdam hotel outranking the Paris hotel someone typed).
 
-import { fetchSearchHits } from "entities/place-search";
+import { fetchSearchHits, type GoogleHours } from "entities/place-search";
 import { overpassQuery } from "entities/osm";
 
 export type ViewBounds = { south: number; west: number; north: number; east: number };
@@ -36,6 +36,12 @@ export type Finding = {
   // The raw OSM opening_hours value, still in 24-hour local wall time.
   // Only sweep hits carry hours; a pinned engine hit fetches its own.
   hours?: string;
+  // The engine's structured schedule, fetched the first time the hit is
+  // ticked onto the map; hoursKnown marks that the ask has ANSWERED
+  // (with or without a schedule), which is what ends a "Loading
+  // times..." line.
+  spotHours?: GoogleHours;
+  hoursKnown?: boolean;
   website?: string;
   phone?: string;
   // What OSM calls this kind of place ("Electronics", "Supermarket").

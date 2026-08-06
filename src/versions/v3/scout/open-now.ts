@@ -112,15 +112,24 @@ export const googleOpenVerdict = (hours: GoogleHours, now: Temporal.Instant): Op
 };
 
 // One verdict for whichever grammar a saved place's hours arrived in.
+// "none" means the engine was asked and had no schedule to give.
 export const placeOpenVerdict = (
   place: { hours?: PlaceHours; lat: number; lng: number },
   now: Temporal.Instant,
 ): OpenVerdict => {
-  if (!place.hours) return { phase: "unknown" };
+  if (!place.hours || place.hours.kind === "none") return { phase: "unknown" };
   return place.hours.kind === "osm"
     ? openVerdict({ hours: place.hours.raw, lat: place.lat, lng: place.lng }, now)
     : googleOpenVerdict(place.hours, now);
 };
+
+// One verdict for a search finding: the engine's fetched schedule when a
+// tick brought one, the OSM tag otherwise.
+export const findingOpenVerdict = (
+  finding: { hours?: string; spotHours?: GoogleHours; lat?: number; lng?: number },
+  now: Temporal.Instant,
+): OpenVerdict =>
+  finding.spotHours ? googleOpenVerdict(finding.spotHours, now) : openVerdict(finding, now);
 
 const WEEKDAY_NAMES = [
   "Monday",

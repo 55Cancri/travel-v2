@@ -20,10 +20,10 @@ import { MIN_SEARCH_ZOOM, type Finding, type SearchScope } from "./find-places";
 import { lineFindings, openingLines, scoutReducer } from "./lines";
 import { MapCanvas, type ScoutMapApi, type ScoutPin } from "./map-canvas";
 import {
+  findingOpenVerdict,
   googleTodayLine,
   openLine,
   openTag,
-  openVerdict,
   placeOpenVerdict,
   useMinuteClock,
 } from "./open-now";
@@ -297,12 +297,20 @@ export function Scout() {
       lng: finding.lng,
       lat: finding.lat,
       address: finding.address,
-      hours: finding.hours ? { kind: "osm", raw: finding.hours } : undefined,
+      // Hours the tick already fetched come along; an unanswered ask is
+      // re-fired below for the document's own copy.
+      hours: finding.spotHours
+        ? { kind: "google", ...finding.spotHours }
+        : finding.hours
+          ? { kind: "osm", raw: finding.hours }
+          : finding.hoursKnown
+            ? { kind: "none" }
+            : undefined,
       sourceRef: finding.id,
     });
-    // An engine hit knows no hours until asked; entering a document is
-    // the one moment that ask is worth the priciest tier.
-    if (finding.placeId) attachGoogleHours(map.id, placeId, finding.placeId);
+    if (finding.placeId && !finding.spotHours && !finding.hours && !finding.hoursKnown) {
+      attachGoogleHours(map.id, placeId, finding.placeId);
+    }
     return placeId;
   };
 
@@ -354,7 +362,10 @@ export function Scout() {
     storeChainLength(0);
   };
 
-  const pins: ScoutPin[] = lines.flatMap((line) =>
+  // Each ticked finding yields its pin and its card TOGETHER, because the
+  // card speaks for facts the pin cannot carry (the hours ask still being
+  // out reads as "Loading times...").
+  const searchStands = lines.flatMap((line) =>
     lineFindings(line).flatMap((finding) => {
       // An engine hit that has never been interacted with has no
       // coordinates yet and cannot stand on the map.
@@ -365,26 +376,45 @@ export function Scout() {
       ) {
         return [];
       }
-      const verdict = openVerdict(finding, now);
+      const verdict = findingOpenVerdict(finding, now);
+      const hoursLine =
+        openLine(verdict) ??
+        (finding.placeId && !finding.hoursKnown
+          ? "Loading times..."
+          : finding.spotHours
+            ? googleTodayLine(finding.spotHours, now)
+            : null);
       return [
         {
-          // Two lines can find the same shop; each keeps its own pin in its
-          // own color rather than one of them silently winning.
-          id: `${line.id}:${finding.id}`,
-          lng: finding.lng,
-          lat: finding.lat,
-          color: line.color,
-          phase: verdict.phase,
-          name: finding.name,
-          tag: openTag(verdict),
-          notes: [openLine(verdict), finding.category, finding.address, finding.phone].filter(
-            (note): note is string => Boolean(note),
-          ),
-          website: finding.website,
+          pin: {
+            // Two lines can find the same shop; each keeps its own pin in
+            // its own color rather than one of them silently winning.
+            id: `${line.id}:${finding.id}`,
+            lng: finding.lng,
+            lat: finding.lat,
+            color: line.color,
+            phase: verdict.phase,
+            name: finding.name,
+            tag: openTag(verdict),
+            notes: [openLine(verdict), finding.category, finding.address, finding.phone].filter(
+              (note): note is string => Boolean(note),
+            ),
+            website: finding.website,
+          } satisfies ScoutPin,
+          card: {
+            id: `${line.id}:${finding.id}`,
+            lng: finding.lng,
+            lat: finding.lat,
+            color: line.color,
+            title: finding.name,
+            hoursLine,
+            closedNow: verdict.phase === "closed",
+          } satisfies PinCardFacts,
         },
       ];
     }),
   );
+  const pins: ScoutPin[] = searchStands.map((stand) => stand.pin);
 
   const saved: ScoutPin[] = map.placeOrder.flatMap((placeId) => {
     const place: SavedPlace | undefined = map.places[placeId];
@@ -417,6 +447,10 @@ export function Scout() {
       const verdict = placeOpenVerdict(place, now);
       const todayLine =
         place.hours?.kind === "google" ? googleTodayLine(place.hours, now) : null;
+      // Absent hours on an engine-sourced place mean the ask is still
+      // out; "none" is its answered-empty ending.
+      const awaiting =
+        place.hours === undefined && place.sourceRef?.startsWith("google:") === true;
       return [
         {
           id: place.id,
@@ -424,24 +458,12 @@ export function Scout() {
           lat: place.lat,
           color: place.color,
           title: place.label,
-          hoursLine: openLine(verdict) ?? todayLine,
+          hoursLine: openLine(verdict) ?? todayLine ?? (awaiting ? "Loading times..." : null),
           closedNow: verdict.phase === "closed",
         },
       ];
     })
-    .concat(
-      cardsCoverSearch
-        ? pins.map((pin) => ({
-            id: pin.id,
-            lng: pin.lng,
-            lat: pin.lat,
-            color: pin.color,
-            title: pin.name,
-            hoursLine: pin.tag,
-            closedNow: pin.phase === "closed",
-          }))
-        : [],
-    );
+    .concat(cardsCoverSearch ? searchStands.map((stand) => stand.card) : []);
 
   const onCardPress = (id: string) => {
     // Search-pin cards carry the line-scoped id; a bare id is a saved
