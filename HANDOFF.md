@@ -85,6 +85,19 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner's results-list design pass: highlight is a neutral gray
+      (surface-muted) running EDGE TO EDGE (rows bleed the md gutter,
+      floating panel body moved sm to md so all three search surfaces
+      share the geometry), address/hours lines xs -> sm, checkbox
+      thinned (1.5px border, 3-unit tick) to match text stroke, and a
+      RESERVED status line under the input ("Looking for
+      suggestions...", sweep notice, failure + retry, empty verdict)
+      that holds its space when silent so results never jump. The
+      surface-hover flag below is RESOLVED: dark value dropped to
+      stone.700. HELD for owner: darkening surface-panel in dark mode
+      (inputs/popovers share the token and would lose their step
+      against the page); revisit if dark panels still read washed out
+      with the new highlight.
 - [x] Owner: "arrows do nothing". They did everything invisibly: in
       dark mode surface-hover and surface-panel are the SAME stone.800,
       so the active-row highlight had zero contrast exactly where the
