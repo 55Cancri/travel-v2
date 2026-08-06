@@ -85,6 +85,13 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner: arrow keys walk the visible result rows while focus stays
+      in the input, Enter is ONE action per row (unchecked: check and
+      fly; checked: uncheck, camera still). Highlight resets keyed on
+      row IDS, not array identity, because resolving a google hit's
+      coordinates replaces the array mid-flow and would otherwise wipe
+      the highlight between the check and the uncheck. Active row shows
+      surface-hover and scrolls itself into view in the branch list.
 - [x] Owner: placeholder de-noised to "Search places", and the plus/X
       pair truly matched at last: the X was a FILLED Phosphor-bold
       shape beside a 2px-stroke plus, so equal nominal sizes could
