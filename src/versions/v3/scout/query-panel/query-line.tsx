@@ -114,15 +114,26 @@ export function QueryLine(props: {
     }
   };
 
+  // Ticks whose resolve is still in flight. A double tap would otherwise
+  // pass the "not shown yet" test twice, queue two toggles behind one
+  // network answer, and the pin would flash on and straight back off.
+  const tickingRef = React.useRef(new Set<string>());
+
   const toggleFinding = async (finding: Finding) => {
     // Unticking never needs coordinates; ticking pins, which does.
     if (!line.shownIds.includes(finding.id)) {
-      const resolved = await located(finding);
-      if (!resolved) return;
-      // Acting on a result is what makes a search a memory: recording
-      // every debounced keystroke instead would fill the recents with
-      // fragments of phrases still being typed.
-      noteSearch(line.typed);
+      if (tickingRef.current.has(finding.id)) return;
+      tickingRef.current.add(finding.id);
+      try {
+        const resolved = await located(finding);
+        if (!resolved) return;
+        // Acting on a result is what makes a search a memory: recording
+        // every debounced keystroke instead would fill the recents with
+        // fragments of phrases still being typed.
+        noteSearch(line.typed);
+      } finally {
+        tickingRef.current.delete(finding.id);
+      }
     }
     props.dispatch({ name: "toggled", id: line.id, findingId: finding.id });
   };
