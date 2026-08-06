@@ -89,7 +89,11 @@ export const Route = createFileRoute("/api/search")({
         if (spent >= MONTHLY_CALL_CEILING) {
           return jsonBody({ hits: [], reason: "budget exhausted" });
         }
-        // Not atomic, but a lost increment only stops the month EARLIER.
+        // Not atomic: simultaneous requests can each write the same
+        // incremented value and UNDERCOUNT, so the ceiling can trip a few
+        // calls late. The ceiling sits a thousand under the free tier to
+        // absorb exactly that slack; two door-gated users cannot widen it
+        // meaningfully.
         await env.PLACE_CACHE.put(counterKey, String(spent + 1), {
           expirationTtl: 60 * 60 * 24 * 62,
         });
