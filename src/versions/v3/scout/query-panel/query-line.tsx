@@ -165,6 +165,46 @@ export function QueryLine(props: {
   const allNearbyShown =
     nearbyIds.length > 0 && nearbyIds.every((id) => line.shownIds.includes(id));
 
+  // The keyboard highlight walks the VISIBLE rows (a folded sweep list is
+  // not walkable) while focus stays in the input; -1 is "in the field,
+  // nothing highlighted". A fresh answer resets it, because index N of
+  // the old results and index N of the new ones are strangers.
+  const [activeIdx, storeActiveIdx] = React.useState(-1);
+  const walkable = line.expanded ? line.places.concat(line.nearby) : line.places;
+  // Keyed on the row IDS, not the arrays: resolving a hit's coordinates
+  // replaces the array without changing what the rows ARE, and resetting
+  // then would wipe the highlight in the middle of check-then-uncheck.
+  const walkableSig = walkable.map((finding) => finding.id).join("|");
+  React.useEffect(() => {
+    storeActiveIdx(-1);
+  }, [walkableSig]);
+
+  // Enter is one action, not two: an unchecked row checks AND flies, a
+  // checked row unchecks and holds the camera still.
+  const onSearchKeys = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      storeActiveIdx((idx) => Math.min(idx + 1, walkable.length - 1));
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      storeActiveIdx((idx) => Math.max(idx - 1, -1));
+      return;
+    }
+    if (event.key !== "Enter") return;
+    const finding = walkable[activeIdx];
+    if (!finding) return;
+    event.preventDefault();
+    if (line.shownIds.includes(finding.id)) {
+      props.dispatch({ name: "toggled", id: line.id, findingId: finding.id });
+      return;
+    }
+    ensureShown(finding).then((shown) => {
+      if (shown) props.onFocusFinding(shown);
+    });
+  };
+
   return (
     <Block py="xs">
       <Block grid cols="1fr auto" alignItems="center" gap="xs">
@@ -176,6 +216,7 @@ export function QueryLine(props: {
           onChange={(event) =>
             props.dispatch({ name: "typed", id: line.id, text: event.target.value })
           }
+          onKeyDown={onSearchKeys}
           start={
             <Block
               w="0.6rem"
@@ -233,11 +274,12 @@ export function QueryLine(props: {
       {line.places.length > 0 ? (
         <Block pt="xs">
           <Eyebrow>Places</Eyebrow>
-          {line.places.map((finding) => (
+          {line.places.map((finding, i) => (
             <ResultRow
               key={finding.id}
               finding={finding}
               checked={line.shownIds.includes(finding.id)}
+              active={activeIdx === i}
               now={props.now}
               onToggle={() => toggleFinding(finding)}
               onFocus={() => focusFinding(finding)}
@@ -327,11 +369,12 @@ export function QueryLine(props: {
                 reachable, instead of burying the next question under this
                 one's answers. */}
             <Block maxH="15rem" overflowY="auto">
-              {line.nearby.map((finding) => (
+              {line.nearby.map((finding, i) => (
                 <ResultRow
                   key={finding.id}
                   finding={finding}
                   checked={line.shownIds.includes(finding.id)}
+                  active={activeIdx === line.places.length + i}
                   now={props.now}
                   onToggle={() => toggleFinding(finding)}
                   onFocus={() => focusFinding(finding)}
