@@ -74,10 +74,17 @@ Decisions before implementation:
       Owner is at the screen with HMR; his eyes are the visual check.
       Deployed; on PR #38.
 - [x] Owner follow-up mid-round: the sidebar must PUSH the map right,
-      not overlay it. The map wrapper's left edge now animates to the
-      sidebar's 24rem on the same 300ms cubic-bezier the sidebar
-      tweens on (spring dropped: it would lag its own wall), and the
-      canvas's resize observer keeps MapLibre sized through the slide.
+      not overlay it. First cut animated the wrapper's left edge, which
+      the owner immediately caught flickering: a layout animation makes
+      the resize observer call map.resize() EVERY FRAME of the slide.
+      The push now animates as a pure transform (zero resizes
+      mid-slide) and settles into real layout at the boundary, exactly
+      one resize per toggle, interruption-safe in both directions. A
+      gotcha worth keeping: never animate a MapLibre container's
+      layout, animate a transform and settle once.
+- [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
+      Cmd+S reading), ignored while focus is in an input, textarea, or
+      contenteditable.
 
 ## Round: place-drawer polish + connect feedback (planned 2026-08-06)
 
