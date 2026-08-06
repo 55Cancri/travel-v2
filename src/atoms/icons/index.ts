@@ -25,6 +25,7 @@ export { Ticket } from "./ticket";
 export { Indent } from "./indent";
 export { Outdent } from "./outdent";
 export { ListBullets } from "./list-bullets";
+export { Menu } from "./menu";
 export { ListChecks } from "./list-checks";
 export { ListNumbers } from "./list-numbers";
 export { TextB } from "./text-b";

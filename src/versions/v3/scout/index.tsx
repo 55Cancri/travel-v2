@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Block, Compass, ListBullets, MagnifyingGlass, Text } from "atoms";
+import { Block, Compass, ListBullets, MagnifyingGlass, Menu, Text } from "atoms";
 import { IconButton } from "alloys";
 import {
   activeMap,
@@ -34,6 +34,7 @@ import { PlaceDrawer, type PlaceDrawerTarget } from "./place-drawer";
 import { QueryPanel } from "./query-panel";
 import { planEdges, type RouteLeg } from "./route";
 import { SearchDrawer } from "./search-drawer";
+import { SearchSidebar } from "./search-sidebar";
 import { useWideWindow } from "./use-wide-window";
 import { UiVersionPicker } from "../../picker";
 
@@ -74,6 +75,9 @@ export function Scout() {
   // status chip: the ref below is the working tail, but a ref cannot
   // repaint the chip.
   const [chainLength, storeChainLength] = React.useState(0);
+  // The docked search sidebar (wide windows). While it is out, the
+  // floating panel unmounts, so the query lines are never mounted twice.
+  const [docked, storeDocked] = React.useState(false);
   // One surface open at a time: the phone's search sheet, the maps menu,
   // a place's editor, or a connection's editor.
   const [openSheet, storeOpenSheet] = React.useState<
@@ -374,7 +378,7 @@ export function Scout() {
           conditionally, not CSS-hidden: the panel's query lines carry
           live search effects, and a hidden copy of them on a phone ran
           every search twice behind the drawer's back. */}
-      {wide ? (
+      {wide && !docked ? (
         <QueryPanel
           lines={lines}
           scopeOf={scopeOf}
@@ -392,9 +396,9 @@ export function Scout() {
           }}
         />
       ) : null}
-      {/* The maps menu lives top-left on every width (it is the only way
-          to switch documents). */}
-      <Block position="absolute" top="sm" insetInlineStart="sm" zIndex={20}>
+      {/* Top left: the phone's maps button, and on wide windows the
+          hamburger that slides the docked search sidebar out. */}
+      <Block position="absolute" top="sm" insetInlineStart="sm" zIndex={20} grid gap="xs">
         <Block
           display={{ base: "block", md: "none" }}
           borderRadius="sm"
@@ -407,6 +411,21 @@ export function Scout() {
             onPress={() => storeOpenSheet({ face: "maps" })}
           >
             <ListBullets size={18} />
+          </IconButton>
+        </Block>
+        <Block
+          display={{ base: "none", md: "block" }}
+          borderRadius="sm"
+          bg="surface-panel"
+          boxShadow="0 2px 10px rgba(0, 0, 0, 0.18)"
+        >
+          <IconButton
+            type="button"
+            aria-label={docked ? "Close the search sidebar" : "Open the search sidebar"}
+            aria-pressed={docked}
+            onPress={() => storeDocked((was) => !was)}
+          >
+            <Menu size={18} />
           </IconButton>
         </Block>
       </Block>
@@ -517,6 +536,24 @@ export function Scout() {
         </Block>
       ) : null}
 
+      <SearchSidebar
+        open={wide && docked}
+        onClose={() => storeDocked(false)}
+        lines={lines}
+        scopeOf={scopeOf}
+        dispatch={dispatch}
+        onFocusFinding={focusFinding}
+        now={now}
+        mapReady={mapReady}
+        edgeCount={map.edges.length}
+        routeNotice={routeNotice}
+        onClearRoute={() => clearEdges(map.id)}
+        onUndoEdge={() => {
+          const edges = activeMap(readScoutDb()).edges;
+          const last = edges.at(-1);
+          if (last) removeEdge(map.id, last.id);
+        }}
+      />
       <SearchDrawer
         open={openSheet?.face === "search"}
         onClose={() => storeOpenSheet(null)}

@@ -23,6 +23,7 @@ export {
   Google,
   Indent,
   ListBullets,
+  Menu,
   ListChecks,
   ListNumbers,
   Lock,
