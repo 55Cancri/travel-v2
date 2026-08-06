@@ -1,3 +1,4 @@
+import * as React from "react";
 import { AnimatePresence } from "framer-motion";
 import { Block, Plus, Text, X } from "atoms";
 import { IconButton } from "alloys";
@@ -26,10 +27,19 @@ export function SearchSidebar(props: {
   onClearRoute: () => void;
   onUndoEdge: () => void;
 }) {
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Opening the sidebar is a request to type: the first query input takes
+  // focus the moment the panel mounts.
+  React.useEffect(() => {
+    if (props.open) rootRef.current?.querySelector("input")?.focus();
+  }, [props.open]);
+
   return (
     <AnimatePresence>
       {props.open ? (
         <Block
+          ref={rootRef}
           role="complementary"
           aria-label="Search the map"
           position="absolute"
@@ -52,8 +62,11 @@ export function SearchSidebar(props: {
             transition: { duration: 0.3, ease: [0.32, 0.72, 0, 1] },
           }}
         >
-          <Block grid cols="1fr auto auto" alignItems="center" gap="xs" pl="md" pr="sm" pt="sm" pb="xs">
-            <Text fontSize="sm" fontWeight="550" color="text-muted">
+          {/* One type treatment across the header (md, 550) and glyphs at
+              one size; the close button's own inset is margined away so
+              its glyph lines up with the input's right edge below. */}
+          <Block grid cols="1fr auto auto" alignItems="center" gap="xs" px="md" pt="sm" pb="xs">
+            <Text fontSize="md" fontWeight="550" color="text-muted">
               Search
             </Text>
             <IconButton
@@ -61,10 +74,15 @@ export function SearchSidebar(props: {
               aria-label="Add a query line"
               onPress={() => props.dispatch({ name: "added" })}
             >
-              <Plus size={16} />
+              <Plus size={18} />
             </IconButton>
-            <IconButton type="button" aria-label="Close the search sidebar" onPress={props.onClose}>
-              <X size={16} />
+            <IconButton
+              type="button"
+              aria-label="Close the search sidebar"
+              onPress={props.onClose}
+              mr="calc((18px - 1.5rlh) / 2)"
+            >
+              <X size={18} />
             </IconButton>
           </Block>
           <Block overflowY="auto" px="md" pb="md" style={{ overscrollBehavior: "contain" }}>
