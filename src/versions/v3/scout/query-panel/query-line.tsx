@@ -286,7 +286,11 @@ export function QueryLine(props: {
         zIndex={2}
         bg="surface-shell"
         py="xs"
-        my="-0.25lh"
+        // The strip bleeds the same gutter the row highlights do: a
+        // content-width strip carved a notch out of the first row's
+        // highlight and would let scrolled rows peek out at the edges.
+        px="1lh"
+        mx="-1lh"
       >
         <Input
           value={line.typed}
