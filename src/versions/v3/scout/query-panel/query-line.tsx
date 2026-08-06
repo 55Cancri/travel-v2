@@ -172,6 +172,7 @@ export function QueryLine(props: {
           value={line.typed}
           placeholder="Hotel Hoy, Media Markt, or an address"
           aria-label="What to find on the map"
+          py="0.35lh"
           onChange={(event) =>
             props.dispatch({ name: "typed", id: line.id, text: event.target.value })
           }
