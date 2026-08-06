@@ -151,7 +151,7 @@ export const fetchRide = async (
   // router's default, every transit mode.
   transitModes?: string[],
 ) => {
-  const key = `${from.lng},${from.lat};${to.lng},${to.lat};${dateIso};${transitModes?.toSorted().join(",") ?? "TRANSIT"}`;
+  const key = `${from.lng},${from.lat};${to.lng},${to.lat};${dateIso};${transitModes?.length ? transitModes.toSorted().join(",") : "TRANSIT"}`;
   const cached = rideCache.get(key);
   if (cached) return cached;
   // Depart mid-morning in the hop's own solar time: civil timezones sit
