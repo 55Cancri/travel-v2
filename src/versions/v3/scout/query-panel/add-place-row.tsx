@@ -1,10 +1,29 @@
+import { css } from "panda/css";
 import { Block, Button, Command, KeyReturn, Plus, Text } from "atoms";
 
-// The list's growing edge: a ghost row under the last query line that
-// appends a fresh one, with the keycap hint for the same move from the
-// keyboard (Cmd+Enter inside any query input). The plus stands in the
-// checkbox column and the label lands flush with the row text above it,
-// so the ghost reads as the next entry rather than a control.
+// The compact affordance under the input (inside its sticky strip, above
+// the results): press it, or Cmd+Enter from the input, to append a fresh
+// query line. Its geometry mirrors the INPUT's interior, not the result
+// rows: the plus centers under the input's color dot, the label sits
+// flush with the input text, and the keycap hints end flush with the
+// input's right edge.
+
+// A raised key: thin sides, a thick bottom edge, and a whisper of drop,
+// the way a keycap catches light.
+const keycapCss = css({
+  display: "grid",
+  placeItems: "center",
+  width: "1.4rem",
+  height: "1.4rem",
+  borderRadius: "xs",
+  borderWidth: "1px",
+  borderBottomWidth: "3px",
+  borderStyle: "solid",
+  borderColor: "border-muted",
+  background: "surface-panel",
+  boxShadow: "0 1px 1px rgba(0, 0, 0, 0.18)",
+});
+
 export function AddPlaceRow(props: { onAdd: () => void }) {
   return (
     <Button
@@ -14,16 +33,19 @@ export function AddPlaceRow(props: { onAdd: () => void }) {
       minW={0}
       grid
       cols="auto 1fr auto"
-      gap="calc(1lh + 1px - 0.7rem)"
+      gridAutoColumns="unset"
+      gap="xs"
       alignItems="center"
       justifyContent="start"
-      gridAutoColumns="unset"
-      py="sm"
-      px="1lh"
-      mx="-1lh"
-      borderRadius="0"
+      // The plus slot's center lands on the input dot's center: the
+      // input's border + pad + half a dot, minus half this slot.
+      pl="calc(0.5lh + 1px - 0.35rem)"
+      pr="0"
+      pt="xs"
+      pb="0.1lh"
       color="text-muted"
-      _hover={{ "@media (hover: hover)": { bg: "surface-muted", color: "text-primary" } }}
+      borderRadius="xs"
+      _hover={{ "@media (hover: hover)": { color: "text-primary" } }}
     >
       <Block as="span" w="1.3rem" display="grid" placeItems="center">
         <Plus size={16} />
@@ -31,32 +53,14 @@ export function AddPlaceRow(props: { onAdd: () => void }) {
       <Text as="span" fontSize="sm" fontWeight="550" textAlign="start">
         Add place
       </Text>
-      <Block as="span" grid cols="auto auto" gap="0.15lh" alignItems="center">
-        {/* Keycaps, not buttons: the shortcut spelled in hardware. */}
-        <Block
-          as="span"
-          grid
-          placeItems="center"
-          w="1.3rem"
-          h="1.3rem"
-          borderRadius="xs"
-          borderWidth="1px"
-          borderStyle="solid"
-          borderColor="border-muted"
-        >
+      <Block as="span" flex gap="0.15lh" alignItems="center">
+        <Block as="span" className={keycapCss}>
           <Command size={12} />
         </Block>
-        <Block
-          as="span"
-          grid
-          placeItems="center"
-          w="1.3rem"
-          h="1.3rem"
-          borderRadius="xs"
-          borderWidth="1px"
-          borderStyle="solid"
-          borderColor="border-muted"
-        >
+        <Text as="span" fontSize="xs" fontWeight="550">
+          +
+        </Text>
+        <Block as="span" className={keycapCss}>
           <KeyReturn size={12} />
         </Block>
       </Block>

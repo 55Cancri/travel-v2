@@ -2,12 +2,11 @@ import * as React from "react";
 import { Block } from "atoms";
 import type { Finding, SearchScope } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
-import { AddPlaceRow } from "./add-place-row";
 import { QueryLine } from "./query-line";
 import { RouteStrip } from "./route-strip";
 
-// The route summary, the query lines, and the "+ Add place" growing edge:
-// the search surfaces' shared body. The floating panel and the slide-out
+// The route summary and the query lines, the search surfaces' shared
+// body (each stack's last line carries the Add place affordance). The floating panel and the slide-out
 // sidebar render exactly this (the phone sheet arranges its own copy
 // around its suggestions).
 export function LineStack(props: {
@@ -56,11 +55,11 @@ export function LineStack(props: {
           dispatch={props.dispatch}
           onFocusFinding={props.onFocusFinding}
           onAddLine={addLine}
+          growingEdge={i === props.lines.length - 1}
           now={props.now}
           mapReady={props.mapReady}
         />
       ))}
-      <AddPlaceRow onAdd={addLine} />
     </Block>
   );
 }
