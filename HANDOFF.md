@@ -85,6 +85,17 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner: "arrows do nothing". They did everything invisibly: in
+      dark mode surface-hover and surface-panel are the SAME stone.800,
+      so the active-row highlight had zero contrast exactly where the
+      rows live. Highlight now rides accent-soft (the app's established
+      highlighted-row token). FLAGGED for an owner decision, standing
+      issue: every surface-hover fill on a PANEL surface is invisible
+      in dark mode app-wide (icon-button hover wells in sheets, the
+      sidebar, popovers). Fix candidates: darken surface-hover's dark
+      value one step (stone.700, but that collides with surface-muted)
+      or introduce a panel-hover token. Do not change silently, the
+      token is used across the whole app.
 - [x] Owner: arrow keys walk the visible result rows while focus stays
       in the input, Enter is ONE action per row (unchecked: check and
       fly; checked: uncheck, camera still). Highlight resets keyed on
