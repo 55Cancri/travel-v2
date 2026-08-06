@@ -85,6 +85,12 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner screenshot pass on the sidebar header: Escape closes the
+      sidebar (deferring to any open sheet's own Escape), opening
+      autofocuses the first query input, ONE type treatment on the
+      header (md 550, phone sheet matched), both glyphs 18 (plus was
+      visibly smaller), and the close button's inset margined away so
+      its glyph aligns with the input's right edge.
 - [x] Owner: the settle still "jumped". Root cause: a MapLibre resize
       keeps geography centered on the NEW canvas center, so the one
       resize per toggle shifted the world by half the sidebar width.
