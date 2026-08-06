@@ -85,6 +85,32 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner's third pass, ALL LANDED (69 tests incl. a regression test
+      for (a); deployed): (a) BUG, the checked pin vanished
+      when the sweep landed/failed: each source's answer replaces the
+      sections wholesale and the replacements are coordinate-less
+      copies, so the tick survived but the pin could not stand; the
+      reducer now carries resolved facts (coords, address, hours) over
+      by id. (b) Ticking a google hit now fetches its HOURS (Enterprise
+      flavor, one per tick, 30d cached): the card said nothing and the
+      owner expected times; while the ask is out the card says "Loading
+      times...". Finding gains spotHours + hoursKnown, verdicts unify
+      in findingOpenVerdict, saves prefer spotHours and a no-hours
+      answer writes hours {kind:"none"} so loading ends. (c) Card
+      cosmetics: radius down a step, the notch gets a REAL border on
+      its two exposed faces and sits above the card edge so the outline
+      reads continuous around the arrow. (d) Checkbox slides back left
+      to the input's left edge (text stays flush with input text, the
+      gap absorbs the difference). (e) The input row turns sticky in
+      the scroll body, so results can never scroll the input away.
+      (f) Mid-round owner catch: unchecked boxes went BLACK, a
+      pass-through trap now fixed in the alloy: a caller's ternary
+      passes borderColor undefined on its idle branch, the spread
+      overrode the alloy's ladder with undefined, and CSS's default
+      border-color is currentColor. The alloy peels borderColor off and
+      falls back to its ladder when the override is undefined. Lesson
+      for every alloy: explicit-undefined consumer props must not
+      clobber computed defaults.
 - [x] Owner's second results pass, ALL LANDED (details below):
       (a) input dot gets symmetric spacing (edge->dot = dot->text, gap
       rises to the pad's 0.5lh); (b) checkbox centers under the input's
