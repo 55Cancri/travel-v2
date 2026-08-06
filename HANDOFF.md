@@ -85,6 +85,13 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner correction on the Add place row, LANDED: it is input
+      furniture, not a list row. It moved INTO the sticky strip under
+      the input (above the results, outside the arrow-key walk), on the
+      last line only. Plus centers under the color dot, label flush
+      with input text, keycap hints flush with the input's right edge,
+      keycaps raised (1px sides, 3px bottom, drop shadow) with a "+"
+      between Command and Return. Deployed.
 - [x] Owner: an "+ Add place" ghost row below the lines, LANDED (70
       tests incl. append-order; deployed): the
       row (or Cmd+Enter from an input) appends a NEW query line and
