@@ -55,6 +55,28 @@ describe("answered", () => {
     expect(line.shownIds).toEqual(["osm:node/a"]);
   });
 
+  test("resolved coordinates survive the slow source's later answer", () => {
+    // The owner's vanishing pin: tick a resolved engine hit while the
+    // sweep is still out, then the sweep's answer (success or failure)
+    // replaces the section with coordinate-less copies. The tick
+    // survived by id, but a pin cannot stand without its ground.
+    let line = typedLine("hotel hoy");
+    line = answered(line, "hotel hoy", { places: [engineHit("hoy")], sweeping: true });
+    line = scoutReducer([line], {
+      name: "located",
+      id: line.id,
+      findingId: "google:hoy",
+      lng: 2.34,
+      lat: 48.88,
+      address: "68 Rue des Martyrs",
+    })[0];
+    line = scoutReducer([line], { name: "toggled", id: line.id, findingId: "google:hoy" })[0];
+    line = answered(line, "hotel hoy", { places: [engineHit("hoy")] });
+    expect(line.shownIds).toEqual(["google:hoy"]);
+    expect(line.places[0].lng).toBe(2.34);
+    expect(line.places[0].address).toBe("68 Rue des Martyrs");
+  });
+
   test("an answer for words no longer asked changes nothing", () => {
     let line = typedLine("media markt");
     const before = line;

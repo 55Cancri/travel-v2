@@ -89,10 +89,18 @@ export function PlaceDrawer(props: {
       lng: finding.lng,
       lat: finding.lat,
       address: finding.address,
-      hours: finding.hours ? { kind: "osm", raw: finding.hours } : undefined,
+      hours: finding.spotHours
+        ? { kind: "google", ...finding.spotHours }
+        : finding.hours
+          ? { kind: "osm", raw: finding.hours }
+          : finding.hoursKnown
+            ? { kind: "none" }
+            : undefined,
       sourceRef: finding.id,
     });
-    if (finding.placeId) attachGoogleHours(props.mapId, placeId, finding.placeId);
+    if (finding.placeId && !finding.spotHours && !finding.hours && !finding.hoursKnown) {
+      attachGoogleHours(props.mapId, placeId, finding.placeId);
+    }
     props.onClose();
   };
 

@@ -135,6 +135,25 @@ export function QueryLine(props: {
       // fragments of phrases still being typed.
       noteSearch(line.typed);
       props.dispatch({ name: "toggled", id: line.id, findingId: finding.id });
+      // A pin on the map wants its times: the priciest lookup flavor,
+      // spent only on a deliberate tick and answered onto the card as
+      // soon as it lands ("Loading times..." until then).
+      if (finding.placeId && !finding.hoursKnown) {
+        fetchPlaceSpot(finding.placeId, true)
+          .then((spot) => {
+            props.dispatch({
+              name: "hoursArrived",
+              id: line.id,
+              findingId: finding.id,
+              hours: spot.hours,
+            });
+          })
+          .catch((error: unknown) => {
+            console.warn("[scout] hours fetch failed:", error);
+            // Answered empty-handed: the card's loading line must end.
+            props.dispatch({ name: "hoursArrived", id: line.id, findingId: finding.id });
+          });
+      }
       return resolved;
     } finally {
       tickingRef.current.delete(finding.id);
@@ -254,7 +273,21 @@ export function QueryLine(props: {
 
   return (
     <Block py="xs">
-      <Block grid cols="1fr auto" alignItems="center" gap="xs">
+      {/* Sticky within the surface's scroll body: however deep the
+          results run, the field stays reachable at the top, results
+          sliding under its own shell-colored strip. */}
+      <Block
+        grid
+        cols="1fr auto"
+        alignItems="center"
+        gap="xs"
+        position="sticky"
+        insetBlockStart="0"
+        zIndex={2}
+        bg="surface-shell"
+        py="xs"
+        my="-0.25lh"
+      >
         <Input
           value={line.typed}
           placeholder="Search places"

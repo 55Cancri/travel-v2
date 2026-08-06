@@ -16,7 +16,10 @@ export function Checkbox(props: {
   /** Toggling never moves focus here, so an editor's caret and keyboard survive the tap. */
   preservesFocus?: boolean;
 } & Omit<ButtonProps<"button">, "checked" | "onToggle" | "label">) {
-  const { checked, muted, onToggle, label, preservesFocus, ...rest } = props;
+  // borderColor peels off separately: a caller passing undefined (the
+  // idle half of its own ternary) must fall back to the ladder below,
+  // not override it into the CSS default (currentColor, near black).
+  const { checked, muted, onToggle, label, preservesFocus, borderColor, ...rest } = props;
   return (
     <Button
       type="button"
@@ -33,7 +36,15 @@ export function Checkbox(props: {
       borderRadius="xs"
       borderWidth="1.5px"
       borderStyle="solid"
-      borderColor={checked ? "accent" : muted ? "border-muted" : "border-strong"}
+      borderColor={
+        borderColor !== undefined
+          ? borderColor
+          : checked
+            ? "accent"
+            : muted
+              ? "border-muted"
+              : "border-strong"
+      }
       bg={checked ? "accent" : "transparent"}
       color="text-on-accent"
       transition="background-color 200ms ease, border-color 200ms ease"

@@ -5,6 +5,7 @@
 // edits a LIST of them, where a stray partial update is how ghost results
 // survive.
 
+import type { GoogleHours } from "entities/place-search";
 import { PIN_COLORS } from "entities/scout-maps";
 import type { Finding, LineResults } from "./find-places";
 
@@ -68,6 +69,9 @@ export type ScoutAction =
   // back into the finding so pins and flights can use them.
   | { name: "located"; id: string; findingId: string; lng: number; lat: number; address?: string }
   | { name: "locateFailed"; id: string; findingId: string }
+  // The engine answered a ticked hit's hours ask, possibly empty-handed;
+  // either way the asking is over.
+  | { name: "hoursArrived"; id: string; findingId: string; hours?: GoogleHours }
   | { name: "added" }
   | { name: "removed"; id: string };
 
@@ -79,6 +83,26 @@ const withLine = (lines: ScoutLine[], id: string, change: (line: ScoutLine) => S
 // after the network already replied would otherwise let an overtaken
 // result paint over a newer one.
 const stillAsking = (line: ScoutLine, query: string) => line.typed.trim() === query;
+
+// One search reports per source, and each report replaces the sections
+// with FRESH copies of the findings. Facts resolved onto the old copies
+// (coordinates, street address, fetched hours) carry over by id, or a
+// ticked pin would lose its ground the moment the slow source landed.
+const carryResolved = (fresh: Finding[], known: Finding[]) =>
+  fresh.map((finding) => {
+    const resolved = known.find(
+      (entry) => entry.id === finding.id && entry.lng !== undefined,
+    );
+    if (!resolved) return finding;
+    return {
+      ...finding,
+      lng: resolved.lng,
+      lat: resolved.lat,
+      address: resolved.address ?? finding.address,
+      spotHours: resolved.spotHours,
+      hoursKnown: resolved.hoursKnown,
+    };
+  });
 
 export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine[] => {
   switch (action.name) {
@@ -97,7 +121,7 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
         return {
           ...line,
           status: "answered",
-          places: action.results.places,
+          places: carryResolved(action.results.places, line.places),
           nearby: action.results.nearby,
           notice: action.results.notice,
           sweeping: action.results.sweeping,
@@ -188,6 +212,15 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
                 lat: action.lat,
                 address: action.address ?? finding.address,
               }
+            : finding,
+        ),
+      }));
+    case "hoursArrived":
+      return withLine(lines, action.id, (line) => ({
+        ...line,
+        places: line.places.map((finding) =>
+          finding.id === action.findingId
+            ? { ...finding, spotHours: action.hours, hoursKnown: true }
             : finding,
         ),
       }));
