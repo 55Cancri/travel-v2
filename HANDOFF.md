@@ -85,6 +85,14 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner's fourth pass: the notch is REBUILT as a chevron svg whose
+      base line lies on the card's border row (fill blanks the border
+      segment, stroked slants rise from the line itself, rotated per
+      anchor); the rotated-square approach could never truly meet the
+      outline and is gone. And a never-closing door says "Open 24
+      hours" / "24 hours" via an `always` flag on the verdict, from
+      both grammars (Google one-period-no-close, OSM no-next-flip).
+      Tested; deployed. Owner's eyes still owed to the chevron.
 - [x] Owner's third pass, ALL LANDED (69 tests incl. a regression test
       for (a); deployed): (a) BUG, the checked pin vanished
       when the sweep landed/failed: each source's answer replaces the
