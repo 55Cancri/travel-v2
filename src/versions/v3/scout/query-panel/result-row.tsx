@@ -37,12 +37,16 @@ export function ResultRow(props: {
         // The button centres its slots by default, which would let each
         // row's left edge drift with the length of its text.
         justifyContent="start"
+        // The button's own slot track is max-content, which would size
+        // the row to its longest address and overflow sideways; a
+        // clamped track makes long addresses WRAP instead.
+        gridAutoColumns="minmax(0, 1fr)"
         borderRadius="xs"
         title="Centre the map here"
       >
         {/* The button lays its own slots out in a column, so the row's
             lines stack inside one child of it. */}
-        <Block grid justifyItems="start" minW={0} textAlign="start">
+        <Block grid justifyItems="start" minW={0} w="100%" textAlign="start">
           <Text fontSize="sm" fontWeight="550" color="text-primary">
             {props.finding.name}
           </Text>
