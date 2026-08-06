@@ -9,7 +9,7 @@
 
 import * as React from "react";
 import tzLookup from "tz-lookup";
-import { clockLabel, isOpenAt, nextChange, parseOpeningHours } from "entities/osm";
+import { isOpenAt, nextChange, parseOpeningHours } from "entities/osm";
 import type { GoogleHours, HoursPoint } from "entities/place-search";
 import type { PlaceHours } from "entities/scout-maps";
 
@@ -25,6 +25,15 @@ export type OpenVerdict = {
 // Past half a day out, the next flip stops being useful to a person
 // standing on the map today.
 const HORIZON_MINUTES = 12 * 60;
+
+// The shortest clock a card can carry: "5p", "5:30p", "12p", "9a".
+export const compactClock = (hour: number, minute: number) => {
+  const half = hour < 12 ? "a" : "p";
+  const twelve = hour % 12 === 0 ? 12 : hour % 12;
+  return minute === 0
+    ? `${twelve}${half}`
+    : `${twelve}:${String(minute).padStart(2, "0")}${half}`;
+};
 
 // Takes any spot-shaped value (a search finding, a saved place's OSM
 // hours): raw opening_hours plus where the place stands. Engine hits carry
@@ -44,7 +53,7 @@ export const openVerdict = (
   const soon = flipAt !== null && moment.until(flipAt).total({ unit: "minutes" }) <= HORIZON_MINUTES;
   return {
     phase: isOpenAt(rules, moment) ? "open" : "closed",
-    at: soon && flipAt !== null ? clockLabel(flipAt) : undefined,
+    at: soon && flipAt !== null ? compactClock(flipAt.hour, flipAt.minute) : undefined,
   };
 };
 
@@ -53,7 +62,7 @@ const WEEK_MINUTES = 7 * 24 * 60;
 const minutesOfWeek = (day: number, hour: number, minute: number) =>
   (day * 24 + hour) * 60 + minute;
 
-const clockOf = (point: HoursPoint) => `${point.hour}:${String(point.minute).padStart(2, "0")}`;
+const clockOf = (point: HoursPoint) => compactClock(point.hour, point.minute);
 
 // The engine's schedule speaks in weekly periods and a UTC offset, so the
 // verdict needs no timezone database: the place's wall clock is now plus

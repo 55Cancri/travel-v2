@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Block, Compass, ListBullets, MagnifyingGlass } from "atoms";
+import { Block, Compass, ListBullets, MagnifyingGlass, Text } from "atoms";
 import { IconButton } from "alloys";
 import {
   activeMap,
@@ -70,6 +70,10 @@ export function Scout() {
   const [route, storeRoute] = React.useState<RouteLeg[]>([]);
   const [routeNotice, storeRouteNotice] = React.useState<string | null>(null);
   const [connecting, storeConnecting] = React.useState(false);
+  // How many nodes this connect session has chained, purely for the
+  // status chip: the ref below is the working tail, but a ref cannot
+  // repaint the chip.
+  const [chainLength, storeChainLength] = React.useState(0);
   // One surface open at a time: the phone's search sheet, the maps menu,
   // a place's editor, or a connection's editor.
   const [openSheet, storeOpenSheet] = React.useState<
@@ -144,6 +148,7 @@ export function Scout() {
     if (mapIdRef.current === map.id) return;
     mapIdRef.current = map.id;
     lastNodeRef.current = null;
+    storeChainLength(0);
     const camera = map.camera ?? { ...home, zoom: OPENING_ZOOM };
     mapApiRef.current?.jumpTo(camera);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,8 +175,10 @@ export function Scout() {
   // starts the chain.
   const chainTo = (placeId: string) => {
     const tail = lastNodeRef.current;
-    if (tail && tail !== placeId) addEdge(map.id, tail, placeId);
+    if (tail === placeId) return;
+    if (tail) addEdge(map.id, tail, placeId);
     lastNodeRef.current = placeId;
+    storeChainLength((count) => count + 1);
   };
 
   // A ticked search pin entering the graph becomes a saved place first
@@ -243,6 +250,7 @@ export function Scout() {
       if (was) lastNodeRef.current = null;
       return !was;
     });
+    storeChainLength(0);
   };
 
   const pins: ScoutPin[] = lines.flatMap((line) =>
@@ -423,21 +431,6 @@ export function Scout() {
           <UiVersionPicker />
         </Block>
         <Block
-          borderRadius="sm"
-          bg={connecting ? "accent" : "surface-panel"}
-          color={connecting ? "text-on-accent" : "text-primary"}
-          boxShadow="0 2px 10px rgba(0, 0, 0, 0.18)"
-        >
-          <IconButton
-            type="button"
-            aria-label={connecting ? "Stop connecting places" : "Connect places into a route"}
-            aria-pressed={connecting}
-            onPress={toggleConnecting}
-          >
-            <Compass size={18} />
-          </IconButton>
-        </Block>
-        <Block
           display={{ base: "block", md: "none" }}
           borderRadius="sm"
           bg="surface-panel"
@@ -449,6 +442,30 @@ export function Scout() {
             onPress={() => storeOpenSheet({ face: "search" })}
           >
             <MagnifyingGlass size={18} />
+          </IconButton>
+        </Block>
+        {/* Active connect mode wears the interaction blue, white icon: a
+            MODE has to look pressed, and the accent read as one more
+            idle tile. */}
+        <Block
+          borderRadius="sm"
+          bg={connecting ? "blue.500" : "surface-panel"}
+          _dark={{ bg: connecting ? "blue.400" : "surface-panel" }}
+          color={connecting ? "white" : "text-primary"}
+          boxShadow="0 2px 10px rgba(0, 0, 0, 0.18)"
+        >
+          <IconButton
+            type="button"
+            aria-label={connecting ? "Stop connecting places" : "Connect places into a route"}
+            aria-pressed={connecting}
+            onPress={toggleConnecting}
+          >
+            {/* Colored on a wrapper of its own: the button's pressed-state
+                color outranks a color prop, and the glyph inherits from
+                the nearest ancestor instead. */}
+            <Block as="span" display="grid" placeItems="center" color={connecting ? "white" : "text-primary"}>
+              <Compass size={18} />
+            </Block>
           </IconButton>
         </Block>
         <Block
@@ -466,6 +483,39 @@ export function Scout() {
           </IconButton>
         </Block>
       </Block>
+
+      {/* The connect session's voice: what to do, how far the chain is,
+          and the routing notice, which otherwise renders only inside
+          surfaces that are closed while pins are being tapped. */}
+      {connecting ? (
+        <Block
+          position="absolute"
+          insetBlockEnd="lg"
+          insetInlineStart="50%"
+          zIndex={20}
+          maxW="85vw"
+          px="md"
+          py="xs"
+          borderRadius="md"
+          bg="surface-panel"
+          boxShadow="0 2px 10px rgba(0, 0, 0, 0.18)"
+          textAlign="center"
+          style={{ transform: "translateX(-50%)" }}
+        >
+          <Text fontSize="sm" fontWeight="550">
+            {chainLength === 0
+              ? "Tap pins to connect them"
+              : chainLength === 1
+                ? "1 place in the chain · tap the next"
+                : `${chainLength} places connected`}
+          </Text>
+          {routeNotice ? (
+            <Text as="p" fontSize="xs" color="danger" pt="0.1lh">
+              {routeNotice}
+            </Text>
+          ) : null}
+        </Block>
+      ) : null}
 
       <SearchDrawer
         open={openSheet?.face === "search"}

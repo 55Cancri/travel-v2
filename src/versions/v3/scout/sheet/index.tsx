@@ -82,8 +82,9 @@ export function Sheet(props: {
               },
             }}
           >
-            {/* The grab handle: the sheet's one drag affordance. */}
-            <Block grid placeItems="center" py="xs" cursor="grab" touchAction="none">
+            {/* The grab handle: the sheet's one drag affordance, with real
+                clearance from the top edge so a thumb finds it. */}
+            <Block grid placeItems="center" pt="sm" pb="xs" cursor="grab" touchAction="none">
               <Block
                 w="2.5rem"
                 h="0.3rem"
