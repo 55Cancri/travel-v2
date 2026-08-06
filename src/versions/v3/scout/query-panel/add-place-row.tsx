@@ -37,18 +37,23 @@ export function AddPlaceRow(props: { onAdd: () => void }) {
       gap="xs"
       alignItems="center"
       justifyContent="start"
+      // The button atom centers its slot items; this row's label must
+      // hug its cell's left edge to sit flush with the input text.
+      justifyItems="start"
       // The plus slot's center lands on the input dot's center: the
-      // input's border + pad + half a dot, minus half this slot.
+      // input's border + pad + half a dot, minus half this slot. The
+      // keycaps end at the input's inner right edge (its pad), not the
+      // outer one.
       pl="calc(0.5lh + 1px - 0.35rem)"
-      pr="0"
-      pt="xs"
+      pr="calc(0.5lh + 1px)"
+      pt="sm"
       pb="0.1lh"
       color="text-muted"
       borderRadius="xs"
       _hover={{ "@media (hover: hover)": { color: "text-primary" } }}
     >
       <Block as="span" w="1.3rem" display="grid" placeItems="center">
-        <Plus size={16} />
+        <Plus size={18} />
       </Block>
       <Text as="span" fontSize="sm" fontWeight="550" textAlign="start">
         Add place
