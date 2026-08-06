@@ -119,26 +119,42 @@ export function QueryLine(props: {
   // network answer, and the pin would flash on and straight back off.
   const tickingRef = React.useRef(new Set<string>());
 
-  const toggleFinding = async (finding: Finding) => {
-    // Unticking never needs coordinates; ticking pins, which does.
-    if (!line.shownIds.includes(finding.id)) {
-      if (tickingRef.current.has(finding.id)) return;
-      tickingRef.current.add(finding.id);
-      try {
-        const resolved = await located(finding);
-        if (!resolved) return;
-        // Acting on a result is what makes a search a memory: recording
-        // every debounced keystroke instead would fill the recents with
-        // fragments of phrases still being typed.
-        noteSearch(line.typed);
-      } finally {
-        tickingRef.current.delete(finding.id);
-      }
+  // Resolves the finding and puts its pin on the map, once. Null when
+  // the resolve failed or the same finding is already mid-flight.
+  const ensureShown = async (finding: Finding): Promise<Finding | null> => {
+    if (tickingRef.current.has(finding.id)) return null;
+    tickingRef.current.add(finding.id);
+    try {
+      const resolved = await located(finding);
+      if (!resolved) return null;
+      // Acting on a result is what makes a search a memory: recording
+      // every debounced keystroke instead would fill the recents with
+      // fragments of phrases still being typed.
+      noteSearch(line.typed);
+      props.dispatch({ name: "toggled", id: line.id, findingId: finding.id });
+      return resolved;
+    } finally {
+      tickingRef.current.delete(finding.id);
     }
-    props.dispatch({ name: "toggled", id: line.id, findingId: finding.id });
   };
 
+  const toggleFinding = (finding: Finding) => {
+    // Unticking never needs coordinates; ticking pins, which does.
+    if (line.shownIds.includes(finding.id)) {
+      props.dispatch({ name: "toggled", id: line.id, findingId: finding.id });
+      return;
+    }
+    ensureShown(finding);
+  };
+
+  // A row press means "show me this place": the pin drops AND the camera
+  // goes. The checkbox stays the way to take a pin back off.
   const focusFinding = async (finding: Finding) => {
+    if (!line.shownIds.includes(finding.id)) {
+      const shown = await ensureShown(finding);
+      if (shown) props.onFocusFinding(shown);
+      return;
+    }
     const resolved = await located(finding);
     if (!resolved) return;
     noteSearch(line.typed);

@@ -34,6 +34,7 @@ import { PlaceDrawer, type PlaceDrawerTarget } from "./place-drawer";
 import { QueryPanel } from "./query-panel";
 import { planEdges, type RouteLeg } from "./route";
 import { SearchDrawer } from "./search-drawer";
+import { useWideWindow } from "./use-wide-window";
 import { UiVersionPicker } from "../../picker";
 
 // Generation v3: the map IS the screen, and the plan floats over it. A line
@@ -62,6 +63,7 @@ export function Scout() {
   const db = useDb();
   const scoutDb = useScoutDb();
   const map = activeMap(scoutDb);
+  const wide = useWideWindow();
   const [lines, dispatch] = React.useReducer(scoutReducer, undefined, openingLines);
   const now = useMinuteClock();
   const [mapReady, storeMapReady] = React.useState(false);
@@ -360,8 +362,11 @@ export function Scout() {
         apiRef={mapApiRef}
       />
       {/* The floating panel is the wide-window search surface; a phone
-          reaches the same lines through the search sheet instead. */}
-      <Block display={{ base: "none", md: "block" }}>
+          reaches the same lines through the search sheet instead. MOUNTED
+          conditionally, not CSS-hidden: the panel's query lines carry
+          live search effects, and a hidden copy of them on a phone ran
+          every search twice behind the drawer's back. */}
+      {wide ? (
         <QueryPanel
           lines={lines}
           scopeOf={scopeOf}
@@ -378,7 +383,7 @@ export function Scout() {
             if (last) removeEdge(map.id, last.id);
           }}
         />
-      </Block>
+      ) : null}
       {/* The maps menu lives top-left on every width (it is the only way
           to switch documents). */}
       <Block position="absolute" top="sm" insetInlineStart="sm" zIndex={20}>
