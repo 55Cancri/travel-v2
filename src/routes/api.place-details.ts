@@ -118,7 +118,11 @@ export const Route = createFileRoute("/api/place-details")({
         if (spent >= ceiling) {
           return jsonBody({ lng: 0, lat: 0, reason: "budget exhausted" });
         }
-        // Not atomic, but a lost increment only stops the month EARLIER.
+        // Not atomic: simultaneous requests can each write the same
+        // incremented value and UNDERCOUNT, so the ceiling can trip a few
+        // calls late. Both ceilings sit well under their free tiers to
+        // absorb exactly that slack; two door-gated users cannot widen it
+        // meaningfully.
         await env.PLACE_CACHE.put(counterKey, String(spent + 1), {
           expirationTtl: 60 * 60 * 24 * 62,
         });
