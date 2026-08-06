@@ -321,12 +321,36 @@ Phase F, drawers + mobile chrome:
 Phase G, round close:
 - [x] typecheck clean, 66 tests pass, check:names clean, em dash grep
       clean over every touched file.
-- [ ] Sol review (neutral three-verdict prompt) + gemini stdin review
-      BOTH RUNNING in background as of this writing; reports land in
-      the session scratchpad (sol-scout-review.md /
-      gemini-scout-review.md). Findings still need folding in or
-      written push-back. NOTE for a fresh agent: `codex exec --search`
+- [x] Sol review (167k tokens) + gemini review both ran; every finding
+      dispositioned. NOTE for a fresh agent: `codex exec --search`
       fails, the flag goes BEFORE exec (`codex --search exec`).
+      FIXED (committed on slices 36/38, merged, redeployed): Google
+      current-hours misuse (regular weekly schedule only now, a dated
+      holiday window must not repeat from a 30 day cache), budget
+      counter comment had the failure direction backwards + counter
+      writes are try/caught so a KV per-key write refusal cannot 500 a
+      search, double-tap tick race, stale-answer reducer guards
+      (toggled/locateFailed/allToggled ignore findings a newer answer
+      replaced), walk-only itineraries rejected on edges whose modes
+      exclude walking, total-failure judged against sources that ran,
+      budget notice no longer promises sweep results that failed,
+      "Nothing anywhere" waits out the sweep, Places eyebrow, pin cards
+      born hidden until placed + canvas-bounds anchor choice + side
+      notch centered, promise-holding caches (simultaneous identical
+      asks join one paid call), weekday line matched by name, transit
+      cache key empty-list fallback, mobile route strip in the search
+      drawer.
+      PUSHED BACK (accepted risks, named): no Durable Object for atomic
+      budget counting (two door-gated users, ceilings sit 1000/200
+      under the free tiers, the undercount slack is the design); hours
+      fetched only when a place enters a document (owner's cost
+      decision, ticked-but-unsaved pins show OSM hours or none); the
+      12-pin card cap falling back to labels is deliberate; no schema
+      validation on the scout store (same trust level as the trips
+      store); no per-card ResizeObserver; no languageCode/regionCode
+      forwarding (two English users; queue if that ever changes); the
+      defensive source-implies-layer rebuild checks (failure mode
+      requires a mid-add throw that has never been observed).
 - [x] Sliced and pushed as a stack on slice/35-scout-search-speed:
       PR #36 (search API), PR #37 (scout documents store), PR #38
       (scout overhaul: search rework + graph + cards + drawers, big by
