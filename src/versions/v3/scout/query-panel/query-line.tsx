@@ -170,7 +170,7 @@ export function QueryLine(props: {
       <Block grid cols="1fr auto" alignItems="center" gap="xs">
         <Input
           value={line.typed}
-          placeholder="Hotel Hoy, Media Markt, or an address"
+          placeholder="Search places"
           aria-label="What to find on the map"
           py="0.35lh"
           onChange={(event) =>
