@@ -40,6 +40,10 @@ export type ScoutMapApi = {
   flyTo: (target: { lng: number; lat: number }, zoom?: number) => void;
   // A cut, not a flight: how a map switch lands on the other map's camera.
   jumpTo: (camera: MapCamera) => void;
+  // Instant pixel pan. A canvas resize keeps the geography centered on
+  // the NEW canvas center, so the sidebar push compensates by half the
+  // pushed width to hold the world still on screen.
+  shiftBy: (xPx: number) => void;
 };
 
 const PIN_LAYER = "scout-pins";
@@ -331,6 +335,7 @@ export function MapCanvas(props: {
           map.easeTo({ center: [target.lng, target.lat], zoom: zoom ?? map.getZoom() }),
         jumpTo: (camera) =>
           map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom }),
+        shiftBy: (xPx) => map.panBy([xPx, 0], { duration: 0 }),
       };
     })();
     return () => {
