@@ -67,6 +67,7 @@ export function SearchDrawer(props: {
           primary={i === 0}
           scopeOf={props.scopeOf}
           dispatch={props.dispatch}
+          onAddLine={() => props.dispatch({ name: "added" })}
           onFocusFinding={(finding) => {
             // Flying somewhere is the point of the tap; the sheet would
             // only hide the landing.

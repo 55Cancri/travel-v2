@@ -34,6 +34,9 @@ export function QueryLine(props: {
   scopeOf: () => SearchScope | null;
   dispatch: (action: ScoutAction) => void;
   onFocusFinding: (finding: Finding) => void;
+  // Appends a fresh query line below (the "+ Add place" move), reachable
+  // from the keyboard as Cmd+Enter without leaving this input.
+  onAddLine?: () => void;
   now: Temporal.Instant;
   mapReady: boolean;
 }) {
@@ -232,7 +235,17 @@ export function QueryLine(props: {
       stepHighlight(event.key === "ArrowDown" ? 1 : -1);
       return;
     }
-    if (event.key === "Enter" && actOnActive()) event.preventDefault();
+    if (event.key !== "Enter") return;
+    // Before the plain-Enter branch: Cmd+Enter grows the list and must
+    // never fall through to toggling the highlighted row.
+    if (event.metaKey || event.ctrlKey) {
+      if (props.onAddLine) {
+        event.preventDefault();
+        props.onAddLine();
+      }
+      return;
+    }
+    if (actOnActive()) event.preventDefault();
   };
 
   // The surface-wide keyboard: the same walk without the input focused,

@@ -85,6 +85,17 @@ describe("answered", () => {
   });
 });
 
+describe("added", () => {
+  test("appends the fresh line below, in a fresh color", () => {
+    const first = typedLine("hotel hoy");
+    const lines = scoutReducer([first], { name: "added" });
+    expect(lines.length).toBe(2);
+    expect(lines[0].id).toBe(first.id);
+    expect(lines[1].typed).toBe("");
+    expect(lines[1].color).not.toBe(first.color);
+  });
+});
+
 describe("allToggled", () => {
   test("covers the sweep section and leaves engine ticks alone", () => {
     let line = typedLine("nemo");
