@@ -5,6 +5,7 @@ import { fetchPlaceSpot } from "entities/place-search";
 import { noteSearch } from "entities/scout-maps";
 import { findPlaces, MIN_QUERY_CHARS, type Finding, type SearchScope } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
+import { AddPlaceRow } from "./add-place-row";
 import { ResultRow } from "./result-row";
 
 // One line of the panel: what was typed, what it found, and which of those
@@ -37,6 +38,9 @@ export function QueryLine(props: {
   // Appends a fresh query line below (the "+ Add place" move), reachable
   // from the keyboard as Cmd+Enter without leaving this input.
   onAddLine?: () => void;
+  // The stack's LAST line carries the visible Add place affordance in
+  // its sticky strip; the shortcut works from every line regardless.
+  growingEdge?: boolean;
   now: Temporal.Instant;
   mapReady: boolean;
 }) {
@@ -287,13 +291,10 @@ export function QueryLine(props: {
   return (
     <Block py="xs">
       {/* Sticky within the surface's scroll body: however deep the
-          results run, the field stays reachable at the top, results
-          sliding under its own shell-colored strip. */}
+          results run, the field (and the growing edge's Add place
+          affordance) stays reachable at the top, results sliding under
+          the shell-colored strip. */}
       <Block
-        grid
-        cols="1fr auto"
-        alignItems="center"
-        gap="xs"
         position="sticky"
         insetBlockStart="0"
         zIndex={2}
@@ -305,41 +306,46 @@ export function QueryLine(props: {
         px="1lh"
         mx="-1lh"
       >
-        <Input
-          value={line.typed}
-          placeholder="Search places"
-          aria-label="What to find on the map"
-          py="0.35lh"
-          // The dot's gaps are symmetric: edge to dot equals dot to text
-          // (both the input's own 0.5lh pad). A darker well than the
-          // shell it sits on, so the field reads as the surface's one
-          // place to type.
-          columnGap="sm"
-          bg="surface-page"
-          onChange={(event) =>
-            props.dispatch({ name: "typed", id: line.id, text: event.target.value })
-          }
-          onKeyDown={onSearchKeys}
-          start={
-            <Block
-              w="0.6rem"
-              h="0.6rem"
-              borderRadius="9999px"
-              flexShrink={0}
-              style={{ background: line.color }}
-            />
-          }
-          end={isSearching || line.sweeping ? <Spinner size={16} /> : undefined}
-        />
-        {props.canRemove ? (
-          <IconButton
-            type="button"
-            aria-label="Remove this line"
-            onPress={() => props.dispatch({ name: "removed", id: line.id })}
-          >
-            <X size={16} />
-          </IconButton>
-        ) : null}
+        <Block grid cols="1fr auto" alignItems="center" gap="xs">
+            <Input
+            value={line.typed}
+            placeholder="Search places"
+            aria-label="What to find on the map"
+            py="0.35lh"
+            // The dot's gaps are symmetric: edge to dot equals dot to text
+            // (both the input's own 0.5lh pad). A darker well than the
+            // shell it sits on, so the field reads as the surface's one
+            // place to type.
+            columnGap="sm"
+            bg="surface-page"
+            onChange={(event) =>
+              props.dispatch({ name: "typed", id: line.id, text: event.target.value })
+            }
+            onKeyDown={onSearchKeys}
+            start={
+              <Block
+                w="0.6rem"
+                h="0.6rem"
+                borderRadius="9999px"
+                flexShrink={0}
+                style={{ background: line.color }}
+              />
+            }
+            end={isSearching || line.sweeping ? <Spinner size={16} /> : undefined}
+          />
+          {props.canRemove ? (
+            <IconButton
+              type="button"
+              aria-label="Remove this line"
+              onPress={() => props.dispatch({ name: "removed", id: line.id })}
+            >
+              <X size={16} />
+            </IconButton>
+          ) : null}
+        </Block>
+        {/* The growing edge's affordance lives with the input, above the
+            results, never among them (arrow keys walk results only). */}
+        {props.growingEdge && props.onAddLine ? <AddPlaceRow onAdd={props.onAddLine} /> : null}
       </Block>
 
       {/* The status line owns a RESERVED row under the input: searching,
