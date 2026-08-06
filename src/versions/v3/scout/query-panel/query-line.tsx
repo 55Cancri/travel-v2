@@ -239,37 +239,41 @@ export function QueryLine(props: {
         ) : null}
       </Block>
 
-      {line.failure ? (
-        // A failed line keeps the words that failed, so retyping them is not
-        // a change and would never search again. The retry lives here
-        // because the results block below it does not exist to hold one.
-        <Block grid cols="1fr auto" alignItems="center" gap="sm" pt="xs">
-          <ErrorNote fontSize="xs">{line.failure}</ErrorNote>
-          <IconButton
-            type="button"
-            aria-label="Try this search again"
-            onPress={() => props.dispatch({ name: "refreshed", id: line.id })}
-          >
-            <MagnifyingGlass size={16} />
-          </IconButton>
-        </Block>
-      ) : null}
-      {line.notice ? (
-        <Text as="p" fontSize="xs" color="text-muted" pt="xs">
-          {line.notice}
-        </Text>
-      ) : null}
-
-      {/* Not while the sweep is still out: "nothing anywhere" beside a
-          spinner would contradict itself. */}
-      {line.status === "answered" &&
-      !line.sweeping &&
-      line.places.length === 0 &&
-      line.nearby.length === 0 ? (
-        <Text as="p" fontSize="xs" color="text-muted" pt="xs">
-          Nothing anywhere by that name.
-        </Text>
-      ) : null}
+      {/* The status line owns a RESERVED row under the input: searching,
+          sweeping, failures, and the empty verdict all speak here, and
+          when nothing does the space stays, so results never jump. */}
+      <Block minH="1lh" pt="xs">
+        {line.failure ? (
+          // A failed line keeps the words that failed, so retyping them
+          // is not a change and would never search again. The retry
+          // lives here because the results block below it does not
+          // exist to hold one.
+          <Block grid cols="1fr auto" alignItems="center" gap="sm">
+            <ErrorNote fontSize="xs">{line.failure}</ErrorNote>
+            <IconButton
+              type="button"
+              aria-label="Try this search again"
+              onPress={() => props.dispatch({ name: "refreshed", id: line.id })}
+            >
+              <MagnifyingGlass size={16} />
+            </IconButton>
+          </Block>
+        ) : (
+          <Text as="p" fontSize="xs" color="text-muted">
+            {line.notice ??
+              (isSearching
+                ? "Looking for suggestions..."
+                : line.status === "answered" &&
+                    !line.sweeping &&
+                    line.places.length === 0 &&
+                    line.nearby.length === 0
+                  ? // Not while the sweep is still out: "nothing anywhere"
+                    // beside a spinner would contradict itself.
+                    "Nothing anywhere by that name."
+                  : "")}
+          </Text>
+        )}
+      </Block>
 
       {line.places.length > 0 ? (
         <Block pt="xs">

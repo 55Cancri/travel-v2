@@ -29,7 +29,7 @@ export function Checkbox(props: {
       h="1.3rem"
       p={0}
       borderRadius="xs"
-      borderWidth="2px"
+      borderWidth="1.5px"
       borderStyle="solid"
       borderColor={
         props.checked
@@ -46,7 +46,7 @@ export function Checkbox(props: {
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={4}
+        strokeWidth={3}
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden="true"

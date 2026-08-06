@@ -36,13 +36,13 @@ export function ResultRow(props: {
       alignItems="start"
       gap="sm"
       py="sm"
-      px="xs"
-      mx="-0.25lh"
-      borderRadius="xs"
-      // accent-soft, NOT surface-hover: in dark mode surface-hover and
-      // surface-panel are the same stone step, so a highlight painted
-      // with it is invisible exactly where these rows live.
-      bg={props.active ? "accent-soft" : "transparent"}
+      // Bleeds across the container's gutter so the highlight runs edge
+      // to edge (every search surface carries md gutters).
+      px="1lh"
+      mx="-1lh"
+      // A neutral gray step, not the accent: the highlight marks a
+      // keyboard POSITION, not a selection.
+      bg={props.active ? "surface-muted" : "transparent"}
     >
       {/* Nudged onto the first line's optical centre: the checkbox is a
           square box beside text that sits on a taller line box. */}
@@ -77,7 +77,7 @@ export function ResultRow(props: {
           </Text>
           {hours ? (
             <Text
-              fontSize="xs"
+              fontSize="sm"
               fontWeight="550"
               color={verdict.phase === "closed" ? "danger" : "text-muted"}
             >
@@ -85,7 +85,7 @@ export function ResultRow(props: {
             </Text>
           ) : null}
           {detail ? (
-            <Text fontSize="xs" color="text-muted">
+            <Text fontSize="sm" color="text-muted">
               {detail}
             </Text>
           ) : null}

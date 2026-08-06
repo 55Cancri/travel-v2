@@ -108,7 +108,9 @@ export default defineConfig({
         // Hover fill for small round controls — darker than surface-muted in
         // dark mode so the circle doesn't flash bright behind icons.
         "surface-hover": {
-          value: { base: "{colors.stone.100}", _dark: "{colors.stone.800}" },
+          // Dark sits one step above the panel, or a hover well painted on
+          // a panel surface is invisible (stone.800 on stone.800).
+          value: { base: "{colors.stone.100}", _dark: "{colors.stone.700}" },
         },
         "surface-focus": {
           value: { base: "{colors.stone.200}", _dark: "{colors.stone.800}" },

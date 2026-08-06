@@ -206,7 +206,9 @@ export function QueryPanel(props: {
           <Plus size={16} />
         </IconButton>
       </Block>
-      <Block overflowY="auto" px="sm" pb="sm">
+      {/* md gutters like the sheet and sidebar: the result rows' edge to
+          edge highlight bleeds exactly one md and must not overshoot. */}
+      <Block overflowY="auto" px="md" pb="sm">
         <LineStack
           lines={props.lines}
           scopeOf={props.scopeOf}
