@@ -85,6 +85,13 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner's second Add place correction, LANDED: the label centered
+      because the BUTTON ATOM centers its slot items (justifyItems
+      start on the row fixes the cell; remember this for any grid built
+      inside Button), keycaps end at the input's INNER right edge, the
+      row drops an sm rhythm step below the input, and the Plus GLYPH
+      itself tightened from a 14 to a 12 unit span to match the X's
+      diagonals, evening every plus/X pairing in the app. Deployed.
 - [x] Owner correction on the Add place row, LANDED: it is input
       furniture, not a list row. It moved INTO the sticky strip under
       the input (above the results, outside the arrow-key walk), on the
