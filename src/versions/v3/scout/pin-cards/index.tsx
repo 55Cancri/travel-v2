@@ -65,17 +65,17 @@ const placementFor = (
 };
 
 // The notch is a rotated square peeking out of the edge that faces the
-// pin, centered on the pin's position along that edge (clamped into the
-// card so a corner anchor never pushes it off the end).
+// pin, centered on that edge (side-anchored cards are vertically centered
+// on the pin's midpoint, so the edge's center IS the pin's height).
 const notchFor = (anchor: Anchor, w: number, h: number) => {
   const half = NOTCH / 2;
   switch (anchor) {
     case "above":
       return { left: w / 2 - half, top: h - half };
     case "right":
-      return { left: -half, top: h / 2 + (PIN_HEIGHT / 2 - half) - h / 2 };
+      return { left: -half, top: h / 2 - half };
     case "left":
-      return { left: w - half, top: h / 2 + (PIN_HEIGHT / 2 - half) - h / 2 };
+      return { left: w - half, top: h / 2 - half };
     case "below":
       return { left: w / 2 - half, top: -half };
   }
@@ -101,12 +101,20 @@ export function PinCards(props: {
         if (!node || !placement) continue;
         const point = map.project([card.lng, card.lat]);
         node.style.transform = `translate(${Math.round(point.x + placement.dx)}px, ${Math.round(point.y + placement.dy)}px)`;
+        // Born hidden (see the render below): a card is only shown once
+        // it has a real position, never stacked at the origin while the
+        // map is still constructing.
+        node.style.visibility = "visible";
       }
     };
 
     // Greedy pass in list order: earlier cards (saved places first) claim
-    // space, later ones route around them and every pin icon.
+    // space, later ones route around them, every pin icon, and the edges
+    // of the canvas (a card hanging past the clipped overlay would be
+    // unreadable and unpressable).
     const place = () => {
+      const canvas = map.getContainer();
+      const bounds = { w: canvas.clientWidth, h: canvas.clientHeight };
       const taken: Array<{ x: number; y: number; w: number; h: number }> = cards.map(
         (card) => {
           const point = map.project([card.lng, card.lat]);
@@ -125,7 +133,9 @@ export function PinCards(props: {
         for (const anchor of anchors) {
           const at = placementFor(anchor, w, h);
           const rect = { x: point.x + at.dx, y: point.y + at.dy, w, h };
-          if (!taken.some((other) => overlap(rect, other))) {
+          const onCanvas =
+            rect.x >= 0 && rect.y >= 0 && rect.x + w <= bounds.w && rect.y + h <= bounds.h;
+          if (onCanvas && !taken.some((other) => overlap(rect, other))) {
             chosen = anchor;
             break;
           }
@@ -200,7 +210,7 @@ export function PinCards(props: {
           px="sm"
           py="0.2lh"
           maxW="14rem"
-          style={{ pointerEvents: "auto", willChange: "transform" }}
+          style={{ pointerEvents: "auto", willChange: "transform", visibility: "hidden" }}
         >
           {/* The notch: a rotated square tucked under the card's edge,
               placed imperatively with the collision pass. */}

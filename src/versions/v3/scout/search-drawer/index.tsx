@@ -3,6 +3,7 @@ import { IconButton } from "alloys";
 import type { Finding, SearchScope } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
 import { QueryLine } from "../query-panel/query-line";
+import { RouteStrip } from "../query-panel/route-strip";
 import { Sheet } from "../sheet";
 import { SuggestionRows } from "./suggestion-rows";
 
@@ -21,11 +22,25 @@ export function SearchDrawer(props: {
   onFocusFinding: (finding: Finding) => void;
   now: Temporal.Instant;
   mapReady: boolean;
+  // The route summary the desktop panel carries; the phone reads it here
+  // or nowhere.
+  edgeCount: number;
+  routeNotice: string | null;
+  onClearRoute: () => void;
+  onUndoEdge: () => void;
 }) {
   const first = props.lines[0];
 
   return (
     <Sheet open={props.open} onClose={props.onClose} label="Search the map" size="tall">
+      {props.edgeCount > 0 ? (
+        <RouteStrip
+          count={props.edgeCount}
+          notice={props.routeNotice}
+          onClear={props.onClearRoute}
+          onUndo={props.onUndoEdge}
+        />
+      ) : null}
       <Block grid cols="1fr auto" alignItems="center" pt="xs">
         <SuggestionRows
           typed={first.typed}

@@ -79,6 +79,13 @@ const planEdge = async (
     return [{ line: road.line, mode: "walk", edgeId: edge.id }];
   }
   const ride = await fetchRide(from, to, dateIso, signal, rideModes);
+  // The transit router answers a walk-only itinerary when nothing under
+  // the allowed modes runs. For an edge whose modes EXCLUDE walking that
+  // answer is a wrong answer, and a straight line with the could-not-be-
+  // routed notice is the honest drawing.
+  if (!walkAllowed && ride.every((leg) => leg.mode === "walk")) {
+    throw new Error("no ride matched the edge's allowed modes");
+  }
   return ride.map((leg) => ({
     line: leg.line,
     mode: leg.mode,

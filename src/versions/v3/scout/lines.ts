@@ -141,18 +141,29 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
       // wherever the map is looking.
       return withLine(lines, action.id, (line) => ({ ...line, runId: line.runId + 1 }));
     case "toggled":
-      return withLine(lines, action.id, (line) => ({
-        ...line,
-        shownIds: line.shownIds.includes(action.findingId)
-          ? line.shownIds.filter((id) => id !== action.findingId)
-          : line.shownIds.concat(action.findingId),
-      }));
+      return withLine(lines, action.id, (line) => {
+        if (line.shownIds.includes(action.findingId)) {
+          return { ...line, shownIds: line.shownIds.filter((id) => id !== action.findingId) };
+        }
+        // A tick resolves coordinates first, and the answer set can have
+        // been replaced while that request was out. A finding no longer
+        // in either section is a stale press, not a pin.
+        if (!lineFindings(line).some((finding) => finding.id === action.findingId)) {
+          return line;
+        }
+        return { ...line, shownIds: line.shownIds.concat(action.findingId) };
+      });
     case "allToggled":
       // "Show all" is the sweep's control (paint every branch); the
       // engine's few hits keep their individual ticks either way.
       return withLine(lines, action.id, (line) => {
         const nearbyIds = line.nearby.map((finding) => finding.id);
-        const engineTicks = line.shownIds.filter((id) => !nearbyIds.includes(id));
+        // Intersected with the engine section rather than "everything not
+        // in the sweep", so an id from a superseded answer can never ride
+        // along forever.
+        const engineTicks = line.shownIds.filter((id) =>
+          line.places.some((finding) => finding.id === id),
+        );
         const wasAll =
           nearbyIds.length > 0 && nearbyIds.every((id) => line.shownIds.includes(id));
         return {
@@ -181,10 +192,13 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
         ),
       }));
     case "locateFailed":
-      return withLine(lines, action.id, (line) => ({
-        ...line,
-        notice: "That place could not be resolved just now.",
-      }));
+      // A failure for a hit that a newer answer already replaced must not
+      // stamp its notice over that newer answer.
+      return withLine(lines, action.id, (line) =>
+        line.places.some((finding) => finding.id === action.findingId)
+          ? { ...line, notice: "That place could not be resolved just now." }
+          : line,
+      );
     case "added":
       // Newest line on top: the panel grows toward the reader instead of
       // pushing the next question below the last one's answers.

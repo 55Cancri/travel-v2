@@ -308,7 +308,13 @@ export const findPlaces = async (
     });
 
   await Promise.all([engine, sweep]);
-  if (failures.length >= 2) throw new Error("Neither the search engine nor the map sweep answered.");
+  // Thrown only when every source that RAN failed: at low zoom the sweep
+  // never runs, and an engine failure there is a total failure, not a
+  // quiet empty answer.
+  const attempted = scope.scanMap ? 2 : 1;
+  if (failures.length >= attempted) {
+    throw new Error("Neither the search engine nor the map sweep answered.");
+  }
 };
 
 const noticeFor = (
@@ -318,7 +324,11 @@ const noticeFor = (
   engineReason: string | undefined,
 ) => {
   if (engineReason === "budget exhausted") {
-    return "This month's search budget is spent, so this is the map sweep only.";
+    // Both halves can be gone at once, and the notice must not promise
+    // sweep results that never came.
+    return failures.includes("overpass")
+      ? "This month's search budget is spent and the map sweep did not answer."
+      : "This month's search budget is spent, so this is the map sweep only.";
   }
   if (engineReason === "no key") return "Place search is not configured on this server.";
   if (failures.includes("engine")) return "The search engine did not answer, map sweep only.";
