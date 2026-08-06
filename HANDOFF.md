@@ -85,6 +85,22 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [x] Owner's second results pass, ALL LANDED (details below):
+      (a) input dot gets symmetric spacing (edge->dot = dot->text, gap
+      rises to the pad's 0.5lh); (b) checkbox centers under the input's
+      dot and the row text sits FLUSH with the input text (indent
+      calc(0.5lh + 1px - 0.35rem) from the gutter, row gap xs, the
+      arithmetic lands within half a px); (c) arrows work WITHOUT input
+      focus too, plus j/k (document listener on the primary line only,
+      editable targets ignored so typing never triggers it, Enter acts
+      unfocused as well), and ArrowUp clamps at the first row instead
+      of walking off it; (d) checkbox border lifts to text-muted while
+      its row is highlighted (border-strong drowns on the gray);
+      (e) OWNER DECIDED the dark shell: new surface-shell token
+      (white / #211E1B) for the big search surfaces (sidebar, sheets,
+      floating panel), one step deeper than panel; (f) the search input
+      digs a darker well (bg surface-page) so it stands out on the
+      shell; (g) the stale "Centre the map here" title tooltip goes.
 - [x] Owner's results-list design pass: highlight is a neutral gray
       (surface-muted) running EDGE TO EDGE (rows bleed the md gutter,
       floating panel body moved sm to md so all three search surfaces
