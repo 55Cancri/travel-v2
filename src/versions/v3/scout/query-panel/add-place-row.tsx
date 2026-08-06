@@ -34,7 +34,9 @@ export function AddPlaceRow(props: { onAdd: () => void }) {
       grid
       cols="auto 1fr auto"
       gridAutoColumns="unset"
-      gap="xs"
+      // columnGap, not the gap shorthand: the button atom declares its
+      // own columnGap longhand, which outranks a shorthand in the merge.
+      columnGap="xs"
       alignItems="center"
       justifyContent="start"
       // The button atom centers its slot items; this row's label must
