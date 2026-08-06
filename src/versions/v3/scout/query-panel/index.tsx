@@ -3,8 +3,7 @@ import { Block, DotsSixVertical, haptic, Plus, Text } from "atoms";
 import { IconButton } from "alloys";
 import type { Finding, SearchScope } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
-import { QueryLine } from "./query-line";
-import { RouteStrip } from "./route-strip";
+import { LineStack } from "./line-stack";
 
 // The floating frame the query lines live in: dragged by its grip row,
 // resized from its bottom corner, and remembered across reloads so a scout
@@ -208,26 +207,18 @@ export function QueryPanel(props: {
         </IconButton>
       </Block>
       <Block overflowY="auto" px="sm" pb="sm">
-        {props.edgeCount > 0 ? (
-          <RouteStrip
-            count={props.edgeCount}
-            notice={props.routeNotice}
-            onClear={props.onClearRoute}
-            onUndo={props.onUndoEdge}
-          />
-        ) : null}
-        {props.lines.map((line) => (
-          <QueryLine
-            key={line.id}
-            line={line}
-            canRemove={props.lines.length > 1}
-            scopeOf={props.scopeOf}
-            dispatch={props.dispatch}
-            onFocusFinding={props.onFocusFinding}
-            now={props.now}
-            mapReady={props.mapReady}
-          />
-        ))}
+        <LineStack
+          lines={props.lines}
+          scopeOf={props.scopeOf}
+          dispatch={props.dispatch}
+          onFocusFinding={props.onFocusFinding}
+          now={props.now}
+          mapReady={props.mapReady}
+          edgeCount={props.edgeCount}
+          routeNotice={props.routeNotice}
+          onClearRoute={props.onClearRoute}
+          onUndoEdge={props.onUndoEdge}
+        />
       </Block>
       <Block
         position="absolute"
