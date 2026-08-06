@@ -1,6 +1,6 @@
 # Agent handoff: travel-2
 
-_Updated 2026-07-11 after the UI-versioning + house-rules round._
+_Updated 2026-08-06, MID-ROUND: the scout overhaul below is in progress. Resume from its checklist._
 
 ## How this file works (read me first)
 
@@ -37,6 +37,321 @@ alongside it. Maintain it like this:
 - **Standing sections** (gotchas, preferences, locked decisions, repo
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
+
+## Round: scout overhaul: Google search, tooltips, drawers, connector, maps (planned 2026-08-06)
+
+Owner ask, translated to product terms, all accepted for this round:
+
+1. **Search must localize.** Typing "Hotel Hoy Paris" while the map sits on
+   Amsterdam must surface the Paris hotel, never a wall of Amsterdam
+   hotels. A city name in the query scopes results there. Fresh results
+   replace stale ones wholesale, nothing accumulates.
+2. **Search must feel like a payment form's address field** (instant,
+   typo tolerant, name or address, "281" starts completing a street).
+   DECIDED by owner 2026-08-06: Google Places Autocomplete (New) becomes
+   the primary engine, proxied through our worker with KV cache and
+   monthly ceilings exactly like the ratings route. Overpass keeps only
+   its real job, "every branch inside this view", demoted to a clearly
+   labeled second section. Photon leaves scout (v1 planner keeps it).
+3. **Every shown pin carries a persistent mini tooltip card**: name line
+   (custom label wins, then resolved place name, then street), and an
+   hours line ("Closes 21:00", or the day's hours). Cards dodge each
+   other but always point at their pin. DECIDED: hours come from OSM tags
+   for free, plus one Google hours fetch when a place gets pinned (own
+   small ceiling, 30 day KV cache).
+4. **Mobile gets drawers** (bottom sheets animating up). A search icon
+   opens the search drawer: results stream as you type, and until typing
+   starts it suggests saved, recent, and common searches (typing filters
+   them). Tapping a pin or its card opens the place drawer: rename,
+   color swatches, save into the current map. DECIDED: desktop keeps the
+   floating panel, mobile gets the drawers, internals shared.
+5. **Connector mode**: a mode toggle, then tapping pin A then pin B draws
+   a routed edge between them. Tapping an edge opens a drawer to filter
+   its transport modes (walk, bus, tram, train, metro, ferry) and the
+   route redraws under that filter. Verified against the MOTIS spec: the
+   plan endpoint takes `transitModes` (comma separated, e.g. TRAM,BUS).
+6. **Multiple named maps**: a menu lists them, create, rename, drag to
+   reorder, delete with confirm. Saved searches persist across maps.
+
+### Design decided before implementation
+
+**Billing shape (verified against Google pricing docs 2026-08-06):**
+
+- NO autocomplete session tokens, deliberately. A session terminated by a
+  Pro or Enterprise details call bills at the priciest SKU (Enterprise +
+  Atmosphere, only 1k free events per month). Sessionless autocomplete
+  keystrokes ride the Essentials tier (10k free per month) and the KV
+  cache absorbs repeats. At two users this stays at $0.
+- Autocomplete field mask asks only for placeId, text, structuredFormat,
+  types. The suggestion's mainText IS the display name, so details never
+  needs displayName (that would move details from Essentials to Pro).
+- Details come in two flavors on one route: `locate` (location +
+  formattedAddress, Essentials SKU, 10k free) fetched when a Google row
+  is ticked, tapped, or flown to, and `hours` (adds regularOpeningHours,
+  currentOpeningHours, utcOffsetMinutes, Enterprise SKU, 1k free)
+  fetched ONCE when a place is pinned into a map. Separate monthly
+  ceilings: autocomplete 9000, locate 9000, hours 800. All cached 30
+  days in the existing PLACE_CACHE KV.
+
+**Search result model:** `Finding` gains `source: "google"`, a `placeId`,
+and OPTIONAL coordinates (Google suggestions carry none until a details
+call). Ranking across sources dies: Google ranks itself, so the panel and
+drawer render two sections, "Places" (Google, replaces wholesale per
+answer) then "In this view" (Overpass sweep, replaces wholesale when it
+lands). No cross-source merge, no cross-source dedupe against hits that
+have no coordinates yet. Result rows without coordinates resolve them on
+first interaction, then fly.
+
+**Hours become a two-format union** (`PlaceHours`): `{ kind: "osm", raw }`
+keeps the existing opening_hours grammar and parser, `{ kind: "google",
+periods, utcOffsetMinutes, weekdayText }` wraps what details returns.
+`open-now.ts` grows a verdict path for the google kind. One display shape
+(OpenVerdict) feeds rows, cards, and drawers.
+
+**Scout documents** (new store `entities/scout-maps`, localStorage key
+`travel2:scout:v1`, same module-store pattern as trips, mutation surface
+is the future sync seam):
+
+- Shape: `{ version: 1, activeMapId, mapOrder, maps, searches }`.
+- `ScoutMap = { id, name, camera?, places: Record<id, SavedPlace>,
+  placeOrder: string[], edges: Edge[] }`.
+- `SavedPlace = { id, label, color, lng, lat, address?, hours?,
+  sourceRef?, savedAtMs }` (sourceRef keeps the google placeId or osm id
+  for a later hours refresh).
+- `Edge = { id, fromId, toId, modes: RideMode[] }`,
+  `RideMode = walk | bus | tram | train | metro | ferry`.
+- `searches = { saved: SavedSearch[], recents: { query, lastMs, count }[] }`.
+  Recents cap at 30. "Common" is derived, count >= 3 by count desc, no
+  separate storage.
+- Ephemeral search lines and ticks stay in the session reducer, NOT in
+  the document. Saving via the place drawer promotes a pin into the map.
+  Becoming a connector endpoint ALSO promotes it (an edge needs stable
+  endpoints), with the line color and its found name as defaults.
+
+**Route graph replaces the waypoint chain** (rule zero). Cmd-click on
+desktop drops a "spot" node (a SavedPlace with a generic label) and
+chains an edge from the previous node, exactly what connector taps do on
+mobile, one model. Each edge routes independently: walkable distance and
+walk-only modes go to the foot router, longer hops go to Transitous with
+`transitModes` derived from the edge's modes (bus -> BUS,COACH, tram ->
+TRAM, metro -> SUBWAY, train -> HIGHSPEED_RAIL,LONG_DISTANCE,NIGHT_RAIL,
+REGIONAL_RAIL,SUBURBAN, ferry -> FERRY). Edges are clickable (a wider
+invisible hit layer under the drawn line) and open the edge drawer.
+
+**Pin cards** render as absolutely positioned HTML in an overlay div over
+the canvas (NOT maplibre markers, batch collision math needs them all in
+one place). Projected via map.project on every map move (cheap under ~60
+pins) plus data changes. Greedy anchor pick per card (above, right, left,
+below) against already placed rects, saved places first. A card that fits
+nowhere overlaps above its pin rather than vanishing. Cards carry the
+name and hours lines and a notch pointing at the pin. The symbol layer
+keeps icon-only pins (its text labels and the hover popup retire, the
+cards replace both). Tap a card or pin: place drawer.
+
+**Sheet primitive** at `versions/v3/scout/sheet/` (framer-motion spring,
+backdrop, drag handle, dismiss on backdrop tap and Escape), used by the
+search, place, and edge drawers and the maps menu. Desktop keeps the
+floating panel for SEARCH, but place, edge, and maps UI use the same
+sheets on both platforms (desktop has no equivalent surface today).
+
+**Mobile chrome** (below md breakpoint the floating panel hides): map
+menu button top left, search + connector buttons top right under the
+version picker.
+
+### Checklist (live, check off as each lands, top to bottom)
+
+Phase A, worker search routes:
+- [x] `src/routes/api.search.ts`: GET q + lat/lng bias, door-gated,
+      Places New `places:autocomplete` (sessionless), locationBias
+      circle 20km, KV cache `google:ac:{q}:{lat.2}:{lng.2}` 30d,
+      ceiling counter `google:ac:{yyyy-mm}` cap 9000, wire shape
+      `{ hits: [{ placeId, name, area, kinds }] }` (area = secondaryText).
+- [x] `src/routes/api.place-details.ts`: GET id + wantHours flag,
+      door-gated, locate mask location,formattedAddress (+ hours mask
+      regularOpeningHours,currentOpeningHours,utcOffsetMinutes when
+      asked), KV cache `google:pd:{id}:{0|1}` 30d, ceilings
+      `google:pd:{yyyy-mm}` 9000 / `google:hours:{yyyy-mm}` 800, wire
+      shape `{ lng, lat, address, hours? }`.
+- [x] Verified live in dev against the real key, through the agent door:
+      "hotel hoy paris" with an Amsterdam bias returns Hôtel HoY (Rue
+      des Martyrs, Paris) FIRST (the owner's exact failing case),
+      "nemo science" returns NEMO Science Museum first, "281 Rue Saint"
+      completes house numbers instantly. Locate flavor returns
+      coords + address; hours flavor returns 7 periods + weekdayText +
+      utcOffsetMinutes 120 for NEMO. Noted in passing: current (holiday
+      adjusted) hours can disagree with the regular weekday sentences
+      (NEMO opens summer Mondays), which is exactly why verdicts use
+      periods and the week overview uses weekdayText.
+
+Phase B, search rework (desktop panel immediately benefits):
+- [x] `entities/place-search`: client fetchers for both routes with
+      in-memory caches (a hours answer also satisfies later bare
+      locates), signal optional on the spot fetcher.
+- [x] `find-places.ts`: google primary + overpass sweep, two sections
+      (`places` + `nearby` on LineResults), wholesale replacement per
+      source, cross-source rank/merge deleted. `Finding` gains placeId +
+      optional coords (engine hits are born without them). Photon left
+      scout; `entities/geocode` stays for the v1 planner only.
+- [x] `lines.ts`: sections on the line, ticks survive re-answers only
+      for findings that returned, `allToggled` scopes to the sweep and
+      leaves engine ticks alone, new `located`/`locateFailed` actions
+      write resolved coords back into the hit. `lineFindings` helper.
+- [x] `query-line.tsx`: Places rows always visible, sweep rows under an
+      "In this view (N)" disclosure, first interaction (tick or fly)
+      resolves coords through the details route then acts.
+      `open-now.ts` returns unknown for hits without coords/hours.
+- [x] Unit tests: lines.test.ts (replacement, tick survival, allToggled
+      scoping, located write-back), 13 pass with find-places tests.
+- [x] Live check PASSED, screenshots taken: map on Amsterdam, typed
+      "hotel hoy paris", Hôtel HoY (Rue des Martyrs, Paris) is the sole
+      Places hit while 120 Amsterdam sweep matches sit folded under
+      "In this view". Ticking resolved the real street address, pinned
+      it, and flying landed the camera in Paris.
+
+Phase C, scout documents store:
+- [x] `entities/scout-maps`: types + store + mutations (createMap,
+      renameMap, moveMap, deleteMap, switchMap, rememberMapCamera,
+      savePlace, updatePlace (shallow merge, the drawer's write path),
+      removePlace (drops touching edges), addEdge (directional, dedupes,
+      refuses self), setEdgeModes (never empty), removeEdge, noteSearch,
+      saveSearch, forgetSearch, commonSearches, activeMap, readScoutDb),
+      localStorage key `travel2:scout:v1`, useScoutDb hook, PIN_COLORS
+      is now the ONE palette (lines.ts LINE_COLORS deleted in its favor).
+- [x] Unit tests (store.test.ts, 8): edge cleanup on place removal,
+      delete falls back to a survivor and the last map self-replaces,
+      recents bump case-insensitively, common excludes saved queries.
+      Suite at 60 pass, typecheck clean.
+
+Phase D, route graph + edge modes:
+- [x] `route.ts` reworked: planEdges routes each document edge on its
+      own (walk-only or short+walk-allowed goes to the foot router,
+      otherwise Transitous restricted to the edge's modes via the
+      MOTIS_MODES table), legs carry edgeId, straight-line fallback
+      counts into the notice. `transit.ts` fetchRide takes transitModes
+      and keys its cache on them. VERIFIED LIVE against Transitous by
+      hand (curl with a UA header, python urllib gets 403 without one):
+      default answered a Sprinter train, BUS forced buses 42+65, TRAM
+      answered empty for that pair (the straight-fallback case).
+- [x] `map-canvas.tsx`: two pin populations (search + saved) through one
+      paint path with saved under search, route drawn from edge legs
+      with an invisible 22px hit twin (opacity 0.001, fully transparent
+      lines can be culled from hit testing), presses report upward
+      (search pin, saved pin, edge, Cmd-click spot drop with pin hits
+      excluded), per-document camera (opening prop + onCameraRest, the
+      old travel2:scout-camera localStorage key is gone), api gains
+      jumpTo for map switches.
+- [x] `index.tsx`: scout documents wired (useScoutDb + activeMap),
+      route replans keyed on a routing-only signature (camera rests and
+      renames must not replan), connect-mode compass toggle under the
+      version picker, chain ref (Cmd-click and connect taps share it,
+      reset on toggle-off and map switch), search pins promote to saved
+      places on connect (reusing a place already promoted via
+      sourceRef), spot nodes get "Spot N" labels and cycling colors,
+      RouteStrip now counts connections (Clear = clearEdges, Undo =
+      last edge), recents record on tick/fly (not on keystrokes, which
+      would fill recents with fragments). `open-now.ts` verdicts take
+      any spot-shaped value so saved places reuse them.
+- [ ] BLOCKED ON VISIBLE PANE: live checks of Cmd-click spot chaining,
+      connect-mode taps, edge press, per-map camera. The preview pane
+      went hidden mid-round (document.hidden true, the known rAF freeze,
+      maps cannot finish loading). Code is typecheck-clean and 60 tests
+      pass. When the pane is visible again: reload localhost:5006, v3,
+      Cmd-click two spots, expect a routed line + Route strip, press
+      the line (selection state exists, drawer lands in Phase F),
+      compass toggle then tap two pins.
+
+Phase E, pin cards:
+- [x] `versions/v3/scout/pin-cards/`: overlay of persistent mini cards
+      (name + hours line + color dot + notch), imperative positioning
+      (React renders on data change only, transforms written straight
+      to the DOM per rAF-coalesced map move, greedy anchor pass
+      above/right/left/below at rest). Rendered inside MapCanvas over
+      the map div. DECIDED: saved places always get cards; shown search
+      pins join only while total shown pins <= 12 (CARD_CAP), else a
+      big sweep keeps the old symbol labels + hover popup (cards would
+      wallpaper the map). Saved pins never carry symbol text. Card
+      press routes like a pin press (connect chains, else the place
+      drawer once it exists).
+- [x] Google hours: `attach-google-hours.ts` fires once when an engine
+      hit is promoted into a document (fire and forget, card gains its
+      line when the answer lands). `open-now.ts` gained
+      googleOpenVerdict (weekly periods + UTC offset, no tz database,
+      handles week wrap and the no-close always-open convention),
+      placeOpenVerdict (both grammars), googleTodayLine (card fallback
+      line). 6 new tests incl. the Saturday-night week wrap. Suite 66
+      pass, typecheck + check:names clean ("common" is a banned stem,
+      the store exports are frequentSearches / FREQUENT_SEARCH_FLOOR).
+- [ ] BLOCKED ON VISIBLE PANE: visual check of card placement,
+      collision dodging, and notch orientation.
+
+Phase F, drawers + mobile chrome:
+- [x] `sheet/`: bottom sheet primitive (backdrop, spring up, grab
+      handle with real drag-down dismiss, Escape + backdrop close,
+      half/tall sizes).
+- [x] `search-drawer/`: the SAME line state as the desktop panel in a
+      tall sheet, suggestion sections on top (Saved with forget ✕,
+      Often searched, Recent, all filtered live by the typed text, plus
+      a "Save ... for later" row), tapping a result to fly closes the
+      sheet so the landing is visible.
+- [x] `place-drawer/`: two lives, one editor: a SAVED place edits the
+      document per keystroke (name, swatch color, remove), a search
+      FINDING is a draft that enters the document on "Save to map"
+      (with the google hours fetch riding along). Address + live hours
+      line shown.
+- [x] `edge-drawer/`: "A to B" title, mode chips (walk/bus/tram/train/
+      metro/ferry) writing setEdgeModes immediately so the route
+      redraws behind the sheet, last-chip-stays-lit matching the
+      store's never-empty rule, remove connection.
+- [x] `maps-menu/`: list with place counts, + New map, active map
+      renames inline, other rows switch on press, delete confirms with
+      the place count (instant when empty, same shape as city delete).
+- [x] Chrome wiring: pin/card presses open the place drawer when not
+      connecting (search pins open the finding draft), edge press opens
+      the edge drawer, search + maps icon buttons on narrow windows
+      (panel hidden below md), maps button also on wide windows (only
+      way to switch documents), one sheet open at a time.
+- [ ] RAISED, needs a decision: drag-to-reorder maps in the menu is NOT
+      built. The only drag-reorder hook lives inside the v1 planner and
+      reaching across generations for it would be an import reach-back;
+      promoting it to a shared module is its own small round. The menu
+      ships without reorder (create/rename/switch/delete all work).
+- [ ] BLOCKED ON VISIBLE PANE: visual pass over all four sheets, mobile
+      breakpoint check, connect-mode gesture run-through.
+
+Phase G, round close:
+- [x] typecheck clean, 66 tests pass, check:names clean, em dash grep
+      clean over every touched file.
+- [ ] Sol review (neutral three-verdict prompt) + gemini stdin review
+      BOTH RUNNING in background as of this writing; reports land in
+      the session scratchpad (sol-scout-review.md /
+      gemini-scout-review.md). Findings still need folding in or
+      written push-back. NOTE for a fresh agent: `codex exec --search`
+      fails, the flag goes BEFORE exec (`codex --search exec`).
+- [x] Sliced and pushed as a stack on slice/35-scout-search-speed:
+      PR #36 (search API), PR #37 (scout documents store), PR #38
+      (scout overhaul: search rework + graph + cards + drawers, big by
+      necessity: the lines.ts section-shape change ripples through
+      canvas and screen, so splitting further would leave mid-stack
+      commits that do not compile). Stack merged back into
+      bleeding-edge.
+- [x] Deployed prod (https://travel-v2.leaftime.workers.dev), only the
+      known-benign website-build churn, no other [deleting] lines.
+- [x] TODO.md: 8 scout lines checked + the maps-reorder follow-up
+      added, Progress 54 / 91.
+- [ ] Close this round entry after the peer findings are handled and
+      the owner's visual pass happens (pane was hidden all round after
+      Phase B, see the BLOCKED items above).
+
+### Resume protocol for this round
+
+Work happens in the working tree on `bleeding-edge`, uncommitted until a
+phase is complete, then sliced into a PR branch per the workflow rules.
+If you are a fresh agent picking this up mid-round: `git status` to see
+which files are in flight, diff them against this checklist, finish the
+first unchecked item, and keep checking things off. The owner expects
+frequent interruptions this round (laptop closing, connectivity), so
+after EVERY completed checklist item, update this file in the same edit
+batch as the code.
 
 ## Round: make scout search feel instant (planned 2026-07-29)
 

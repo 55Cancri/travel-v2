@@ -1,6 +1,6 @@
 # travel-2 — checklist
 
-**Progress: 46 / 82**  _(update both numbers as tasks are checked / added / removed)_
+**Progress: 54 / 91**  _(update both numbers as tasks are checked / added / removed)_
 
 ## Phase 0 — Scaffold
 - [x] Scaffold TanStack Start + React 19 + Vite project
@@ -68,11 +68,21 @@
 - [x] Resizable split divider between outline and map (persisted width)
 - [x] Camera only refits on scope change; plain pin click never moves it; ⌘-click = street zoom
 - [x] Pin palette rework: terracotta/berry/teal/steel + theme-adaptive ring (no white halo)
-- [ ] Geocode as you type (Google Places) → confirm → pin drops
-- [ ] Real walking/transit legs (Transitous) + cached timetable snapshots
-- [ ] Opening-hours chip + "open now" pin state
+- [x] Scout search on Google Places Autocomplete (worker-proxied, KV-cached, budget-capped);
+      "hotel hoy paris" from Amsterdam finds the Paris hotel
+- [x] Scout results in two sections: engine hits on top, "In this view" sweep folded below
+- [x] Persistent pin tooltip cards: name + live hours ("Open · closes 17:30"), collision-dodging
+- [x] Opening hours from OSM tags + one Google hours fetch per pinned place (30d cache)
+- [x] Scout maps are documents: named maps, saved places (rename + color swatches), per-map camera
+- [x] Connections: connect mode / Cmd-click chain pins into edges, per-edge transport
+      mode filters (walk/bus/tram/train/metro/ferry) via Transitous
+- [x] Scout mobile drawers: search (saved/often/recent suggestions), place editor,
+      edge editor, maps menu
+- [ ] Maps menu: drag to reorder (needs the drag hook promoted out of v1 first)
+- [ ] Geocode as you type in the PLANNER (Google Places) → confirm → pin drops
+- [ ] Real walking/transit legs for the planner day route + cached timetable snapshots
 - [ ] Desktop: map expand to full-screen
-- [ ] Upgrade mobile toggle → draggable bottom sheet (peek/half/full)
+- [ ] Upgrade planner mobile toggle → draggable bottom sheet (peek/half/full)
 
 ## Phase 4 — Offline PWA (delayed, by choice)
 - [ ] Manifest + service worker, installable
