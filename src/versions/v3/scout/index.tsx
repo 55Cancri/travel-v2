@@ -59,6 +59,8 @@ const FOCUS_ZOOM = 16;
 // results (a 120-branch sweep under cards would wallpaper the map) and
 // fall back to the symbol labels; saved places keep their cards always.
 const CARD_CAP = 12;
+// The docked sidebar's width, which is also how far the map gets pushed.
+const SIDEBAR_WIDTH = "24rem";
 
 export function Scout() {
   const db = useDb();
@@ -78,6 +80,82 @@ export function Scout() {
   // The docked search sidebar (wide windows). While it is out, the
   // floating panel unmounts, so the query lines are never mounted twice.
   const [docked, storeDocked] = React.useState(false);
+  const shoveRef = React.useRef<HTMLDivElement | null>(null);
+  const shovedRef = React.useRef(false);
+
+  // The sidebar PUSHES the map, but the push animates as a pure
+  // TRANSFORM and only settles into real layout at the end: animating
+  // the wrapper's left edge instead resized (and repainted) the canvas
+  // on every frame of the slide, which read as flicker. Each toggle
+  // costs exactly one real resize, at the slide's boundary.
+  React.useEffect(() => {
+    const el = shoveRef.current;
+    const shoved = wide && docked;
+    if (!el || shoved === shovedRef.current) return;
+    shovedRef.current = shoved;
+    const controller = new AbortController();
+    const curve = "transform 300ms cubic-bezier(0.32, 0.72, 0, 1)";
+    if (shoved) {
+      el.style.transition = curve;
+      el.style.transform = `translateX(${SIDEBAR_WIDTH})`;
+      el.addEventListener(
+        "transitionend",
+        () => {
+          // Settle: hand the pushed width to layout in one step, so the
+          // right edge stops hanging off screen. The single resize.
+          el.style.transition = "none";
+          el.style.transform = "";
+          el.style.left = SIDEBAR_WIDTH;
+        },
+        { once: true, signal: controller.signal },
+      );
+    } else {
+      // Give the width back FIRST (the single resize), then slide home
+      // on transform alone. A close that interrupts a still-running
+      // open keeps its partial transform and tweens from there.
+      const settled = el.style.left === SIDEBAR_WIDTH;
+      el.style.transition = "none";
+      el.style.left = "0";
+      if (settled) el.style.transform = `translateX(${SIDEBAR_WIDTH})`;
+      el.getBoundingClientRect();
+      el.style.transition = curve;
+      el.style.transform = "translateX(0)";
+      el.addEventListener(
+        "transitionend",
+        () => {
+          el.style.transition = "none";
+          el.style.transform = "";
+        },
+        { once: true, signal: controller.signal },
+      );
+    }
+    return () => controller.abort();
+  }, [wide, docked]);
+
+  // A bare "s" toggles the docked sidebar, but never while typing: a
+  // key press whose target is editable belongs to the text field.
+  React.useEffect(() => {
+    if (!wide) return;
+    const controller = new AbortController();
+    document.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key !== "s" || event.metaKey || event.ctrlKey || event.altKey) return;
+        const target = event.target as HTMLElement;
+        if (
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+        event.preventDefault();
+        storeDocked((was) => !was);
+      },
+      { signal: controller.signal },
+    );
+    return () => controller.abort();
+  }, [wide]);
   // One surface open at a time: the phone's search sheet, the maps menu,
   // a place's editor, or a connection's editor.
   const [openSheet, storeOpenSheet] = React.useState<
@@ -357,18 +435,10 @@ export function Scout() {
 
   return (
     <Block position="fixed" inset="0" overflow="hidden">
-      {/* The docked sidebar PUSHES the map instead of covering it: the
-          map's left edge follows the sidebar's width (the canvas's own
-          resize observer keeps MapLibre correct through the slide). The
-          curve matches the sidebar's, so the two move as one seam. */}
-      <Block
-        position="absolute"
-        inset="0"
-        style={{
-          left: wide && docked ? "24rem" : 0,
-          transition: "left 300ms cubic-bezier(0.32, 0.72, 0, 1)",
-        }}
-      >
+      {/* The docked sidebar PUSHES the map instead of covering it. The
+          shove effect above owns this wrapper's styles imperatively:
+          transform during the slide, one layout settle at the end. */}
+      <Block ref={shoveRef} position="absolute" inset="0">
         <MapCanvas
           pins={pins}
           saved={saved}
