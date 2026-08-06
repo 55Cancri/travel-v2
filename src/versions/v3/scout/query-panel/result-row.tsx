@@ -34,11 +34,15 @@ export function ResultRow(props: {
       grid
       cols="auto 1fr"
       alignItems="start"
-      gap="sm"
+      gap="xs"
       py="sm"
-      // Bleeds across the container's gutter so the highlight runs edge
-      // to edge (every search surface carries md gutters).
-      px="1lh"
+      // Bleeds across the container's md gutter so the highlight runs
+      // edge to edge, then indents so the CHECKBOX centers under the
+      // input's color dot and the row text lands flush with the input
+      // text: gutter + input border + input pad + half dot, minus half
+      // a checkbox (the xs gap closes the remaining half pixel).
+      pl="calc(1.5lh + 1px - 0.35rem)"
+      pr="1lh"
       mx="-1lh"
       // A neutral gray step, not the accent: the highlight marks a
       // keyboard POSITION, not a selection.
@@ -51,6 +55,9 @@ export function ResultRow(props: {
           checked={props.checked}
           onToggle={props.onToggle}
           label={`Show ${props.finding.name} on the map`}
+          // border-strong drowns on the highlight's gray; the box
+          // borrows the text's own step while its row is lit.
+          borderColor={props.active && !props.checked ? "text-muted" : undefined}
         />
       </Block>
       <Button
@@ -67,7 +74,6 @@ export function ResultRow(props: {
         // clamped track makes long addresses WRAP instead.
         gridAutoColumns="minmax(0, 1fr)"
         borderRadius="xs"
-        title="Centre the map here"
       >
         {/* The button lays its own slots out in a column, so the row's
             lines stack inside one child of it. */}

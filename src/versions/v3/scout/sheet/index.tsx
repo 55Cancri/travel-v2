@@ -64,7 +64,7 @@ export function Sheet(props: {
             maxH={props.size === "half" ? "55dvh" : "85dvh"}
             grid
             rows="auto 1fr"
-            bg="surface-panel"
+            bg="surface-shell"
             borderTopRadius="md"
             boxShadow="0 -8px 30px rgba(0, 0, 0, 0.25)"
             _motion={{
