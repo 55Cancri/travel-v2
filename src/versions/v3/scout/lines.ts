@@ -1,9 +1,11 @@
 // The panel's query lines: what each one holds, and every way it can change.
 // A reducer rather than a drawer of useStates because a line's fields move
-// together (an arriving answer sets the status, the findings, the notice, and
-// the text they answer to in one step), and because the panel edits a LIST of
-// them, where a stray partial update is how ghost results survive.
+// together (an arriving answer sets the status, both result sections, the
+// notice, and the text they answer to in one step), and because the panel
+// edits a LIST of them, where a stray partial update is how ghost results
+// survive.
 
+import { PIN_COLORS } from "entities/scout-maps";
 import type { Finding, LineResults } from "./find-places";
 
 export type LineStatus = "idle" | "searching" | "answered" | "failed";
@@ -13,7 +15,10 @@ export type ScoutLine = {
   color: string;
   typed: string;
   status: LineStatus;
-  findings: Finding[];
+  // The engine's hits ("Places") and the view sweep's ("In this view").
+  // Two sections, each replaced wholesale by its own source's answers.
+  places: Finding[];
+  nearby: Finding[];
   // The slow half of the search is still out, so the rows on screen are
   // not yet the whole answer.
   sweeping: boolean;
@@ -24,31 +29,21 @@ export type ScoutLine = {
   // second press while a search is already running a silent no-op, since
   // the value it clears is already empty.
   runId: number;
-  // Whether the result rows are showing. Painting everything is the moment
-  // the rows stop earning their height, so showing all folds them away and
-  // the caret brings them back.
+  // Whether the sweep's rows are showing. The engine's few hits are always
+  // visible; it is the sweep's dozens of branches that fold away once
+  // everything is painted.
   expanded: boolean;
   notice?: string;
   failure?: string;
 };
 
-// The same register as the map's other overlays: saturated enough to hold
-// against pale streets, light enough to stay visible on the dark canvas.
-export const LINE_COLORS = [
-  "#E11D48",
-  "#0EA5E9",
-  "#16A34A",
-  "#8B5CF6",
-  "#F59E0B",
-  "#0D9488",
-];
-
 const freshLine = (taken: string[]): ScoutLine => ({
   id: crypto.randomUUID(),
-  color: LINE_COLORS.find((color) => !taken.includes(color)) ?? LINE_COLORS[taken.length % LINE_COLORS.length],
+  color: PIN_COLORS.find((color) => !taken.includes(color)) ?? PIN_COLORS[taken.length % PIN_COLORS.length],
   typed: "",
   status: "idle",
-  findings: [],
+  places: [],
+  nearby: [],
   shownIds: [],
   sweeping: false,
   runId: 0,
@@ -56,6 +51,8 @@ const freshLine = (taken: string[]): ScoutLine => ({
 });
 
 export const openingLines = () => [freshLine([])];
+
+export const lineFindings = (line: ScoutLine) => line.places.concat(line.nearby);
 
 export type ScoutAction =
   | { name: "typed"; id: string; text: string }
@@ -67,6 +64,10 @@ export type ScoutAction =
   | { name: "toggled"; id: string; findingId: string }
   | { name: "allToggled"; id: string }
   | { name: "disclosed"; id: string }
+  // An engine hit resolved its coordinates (and street address). Written
+  // back into the finding so pins and flights can use them.
+  | { name: "located"; id: string; findingId: string; lng: number; lat: number; address?: string }
+  | { name: "locateFailed"; id: string; findingId: string }
   | { name: "added" }
   | { name: "removed"; id: string };
 
@@ -90,34 +91,36 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
         failure: undefined,
       }));
     case "answered":
-      return withLine(lines, action.id, (line) =>
-        !stillAsking(line, action.query) ? line : {
+      return withLine(lines, action.id, (line) => {
+        if (!stillAsking(line, action.query)) return line;
+        const arrived = action.results.places.concat(action.results.nearby);
+        return {
           ...line,
           status: "answered",
-          findings: action.results.findings,
+          places: action.results.places,
+          nearby: action.results.nearby,
           notice: action.results.notice,
           sweeping: action.results.sweeping,
           failure: undefined,
           // Ticks are kept for findings that came back, and dropped for
-          // the rest. One search now reports twice (the fast source, then
-          // the map sweep), so clearing here would un-tick whatever was
-          // picked between the two. Ids identify a place, so a kept tick
-          // always refers to the same place.
-          shownIds: line.shownIds.filter((id) =>
-            action.results.findings.some((finding) => finding.id === id),
-          ),
+          // the rest. One search reports twice (the engine, then the map
+          // sweep), so clearing here would un-tick whatever was picked
+          // between the two. Ids identify a place, so a kept tick always
+          // refers to the same place.
+          shownIds: line.shownIds.filter((id) => arrived.some((finding) => finding.id === id)),
           // Open, or a search run after folding the last one away would
           // land its results behind a closed disclosure.
           expanded: true,
-        },
-      );
+        };
+      });
     case "failed":
       return withLine(lines, action.id, (line) =>
         !stillAsking(line, action.query) ? line : {
           ...line,
           status: "failed",
           failure: action.failure,
-          findings: [],
+          places: [],
+          nearby: [],
           shownIds: [],
           sweeping: false,
         },
@@ -126,7 +129,8 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
       return withLine(lines, action.id, (line) => ({
         ...line,
         status: "idle",
-        findings: [],
+        places: [],
+        nearby: [],
         shownIds: [],
         sweeping: false,
         notice: undefined,
@@ -144,11 +148,16 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
           : line.shownIds.concat(action.findingId),
       }));
     case "allToggled":
+      // "Show all" is the sweep's control (paint every branch); the
+      // engine's few hits keep their individual ticks either way.
       return withLine(lines, action.id, (line) => {
-        const wasAll = line.shownIds.length === line.findings.length;
+        const nearbyIds = line.nearby.map((finding) => finding.id);
+        const engineTicks = line.shownIds.filter((id) => !nearbyIds.includes(id));
+        const wasAll =
+          nearbyIds.length > 0 && nearbyIds.every((id) => line.shownIds.includes(id));
         return {
           ...line,
-          shownIds: wasAll ? [] : line.findings.map((finding) => finding.id),
+          shownIds: wasAll ? engineTicks : engineTicks.concat(nearbyIds),
           // Turning everything on makes the rows redundant, so they fold
           // away; turning it back off is the start of picking individually,
           // which needs them.
@@ -157,6 +166,25 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
       });
     case "disclosed":
       return withLine(lines, action.id, (line) => ({ ...line, expanded: !line.expanded }));
+    case "located":
+      return withLine(lines, action.id, (line) => ({
+        ...line,
+        places: line.places.map((finding) =>
+          finding.id === action.findingId
+            ? {
+                ...finding,
+                lng: action.lng,
+                lat: action.lat,
+                address: action.address ?? finding.address,
+              }
+            : finding,
+        ),
+      }));
+    case "locateFailed":
+      return withLine(lines, action.id, (line) => ({
+        ...line,
+        notice: "That place could not be resolved just now.",
+      }));
     case "added":
       // Newest line on top: the panel grows toward the reader instead of
       // pushing the next question below the last one's answers.
