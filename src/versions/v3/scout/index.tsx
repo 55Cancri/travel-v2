@@ -95,6 +95,11 @@ export function Scout() {
     shovedRef.current = shoved;
     const controller = new AbortController();
     const curve = "transform 300ms cubic-bezier(0.32, 0.72, 0, 1)";
+    // Resizing keeps the geography centered on the NEW canvas center,
+    // which shifts everything by half the width change: the settle
+    // pans that half back (in the same frame) so the world holds still.
+    const halfShift = () =>
+      (24 * parseFloat(getComputedStyle(document.documentElement).fontSize)) / 2;
     if (shoved) {
       el.style.transition = curve;
       el.style.transform = `translateX(${SIDEBAR_WIDTH})`;
@@ -106,17 +111,22 @@ export function Scout() {
           el.style.transition = "none";
           el.style.transform = "";
           el.style.left = SIDEBAR_WIDTH;
+          mapApiRef.current?.shiftBy(-halfShift());
         },
         { once: true, signal: controller.signal },
       );
     } else {
       // Give the width back FIRST (the single resize), then slide home
       // on transform alone. A close that interrupts a still-running
-      // open keeps its partial transform and tweens from there.
+      // open keeps its partial transform and tweens from there, with
+      // nothing to compensate because nothing resized.
       const settled = el.style.left === SIDEBAR_WIDTH;
       el.style.transition = "none";
       el.style.left = "0";
-      if (settled) el.style.transform = `translateX(${SIDEBAR_WIDTH})`;
+      if (settled) {
+        el.style.transform = `translateX(${SIDEBAR_WIDTH})`;
+        mapApiRef.current?.shiftBy(halfShift());
+      }
       el.getBoundingClientRect();
       el.style.transition = curve;
       el.style.transform = "translateX(0)";
