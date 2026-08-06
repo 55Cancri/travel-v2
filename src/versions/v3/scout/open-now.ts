@@ -20,6 +20,9 @@ export type OpenVerdict = {
   phase: "open" | "closed" | "unknown";
   // Wall clock of the next flip, when it is near enough to act on.
   at?: string;
+  // The door never shuts at all, which is worth saying outright: a bare
+  // "Open" reads as "open right now, hours unstated".
+  always?: boolean;
 };
 
 // Past half a day out, the next flip stops being useful to a person
@@ -51,9 +54,12 @@ export const openVerdict = (
   const moment = now.toZonedDateTimeISO(tzLookup(spot.lat, spot.lng));
   const flipAt = nextChange(rules, moment);
   const soon = flipAt !== null && moment.until(flipAt).total({ unit: "minutes" }) <= HORIZON_MINUTES;
+  const open = isOpenAt(rules, moment);
   return {
-    phase: isOpenAt(rules, moment) ? "open" : "closed",
+    phase: open ? "open" : "closed",
     at: soon && flipAt !== null ? compactClock(flipAt.hour, flipAt.minute) : undefined,
+    // Open with no flip EVER coming is a 24/7 door, not a quiet "Open".
+    always: open && flipAt === null ? true : undefined,
   };
 };
 
@@ -78,7 +84,7 @@ export const googleOpenVerdict = (hours: GoogleHours, now: Temporal.Instant): Op
   let opensIn = Infinity;
   let opensAt: HoursPoint | null = null;
   for (const period of hours.periods) {
-    if (!period.close) return { phase: "open" };
+    if (!period.close) return { phase: "open", always: true };
     const start = minutesOfWeek(period.open.day, period.open.hour, period.open.minute);
     let end = minutesOfWeek(period.close.day, period.close.hour, period.close.minute);
     // A period that closes past the week's wrap (Saturday night into
@@ -160,7 +166,10 @@ export const googleTodayLine = (hours: GoogleHours, now: Temporal.Instant) => {
 // The full sentence, for a result row and the map's popup.
 export const openLine = (verdict: OpenVerdict) => {
   if (verdict.phase === "unknown") return null;
-  if (verdict.phase === "open") return verdict.at ? `Open · closes ${verdict.at}` : "Open";
+  if (verdict.phase === "open") {
+    if (verdict.always) return "Open 24 hours";
+    return verdict.at ? `Open · closes ${verdict.at}` : "Open";
+  }
   return verdict.at ? `Closed · opens ${verdict.at}` : "Closed";
 };
 
@@ -168,7 +177,10 @@ export const openLine = (verdict: OpenVerdict) => {
 // with the map underneath.
 export const openTag = (verdict: OpenVerdict) => {
   if (verdict.phase === "unknown") return null;
-  if (verdict.phase === "open") return verdict.at ? `closes ${verdict.at}` : null;
+  if (verdict.phase === "open") {
+    if (verdict.always) return "24 hours";
+    return verdict.at ? `closes ${verdict.at}` : null;
+  }
   return verdict.at ? `closed · opens ${verdict.at}` : "closed";
 };
 

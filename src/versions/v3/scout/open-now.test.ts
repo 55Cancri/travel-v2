@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import "temporal-polyfill/global";
 import type { GoogleHours } from "entities/place-search";
-import { googleOpenVerdict, googleTodayLine } from "./open-now";
+import { googleOpenVerdict, googleTodayLine, openLine } from "./open-now";
 
 // The engine-hours verdict: weekly periods plus a UTC offset, no timezone
 // database. The traps worth testing are the week wrap (Saturday night
@@ -53,12 +53,14 @@ describe("googleOpenVerdict", () => {
     expect(verdict).toEqual({ phase: "open", at: "3a" });
   });
 
-  test("one period with no close means always open", () => {
+  test("one period with no close means open 24 hours, said outright", () => {
     const verdict = googleOpenVerdict(
       schedule([{ open: { day: 0, hour: 0, minute: 0 } }]),
       wednesdayNoon,
     );
-    expect(verdict).toEqual({ phase: "open" });
+    expect(verdict).toEqual({ phase: "open", always: true });
+    // A bare "Open" would read as "hours unstated".
+    expect(openLine(verdict)).toBe("Open 24 hours");
   });
 
   test("no periods at all is unknown, never closed", () => {
