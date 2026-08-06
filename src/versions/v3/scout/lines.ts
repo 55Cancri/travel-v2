@@ -233,9 +233,10 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
           : line,
       );
     case "added":
-      // Newest line on top: the panel grows toward the reader instead of
-      // pushing the next question below the last one's answers.
-      return [freshLine(lines.map((line) => line.color))].concat(lines);
+      // Appended BELOW: the fresh input lands under its predecessor,
+      // right where the "+ Add place" row invited it, and shift+tab
+      // walks back up in reading order.
+      return lines.concat(freshLine(lines.map((line) => line.color)));
     case "removed":
       // The last line never leaves: an empty panel offers no way back.
       return lines.length === 1 ? lines : lines.filter((line) => line.id !== action.id);
