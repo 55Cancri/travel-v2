@@ -253,13 +253,18 @@ export const findPlaces = async (
   scope: SearchScope,
   signal: AbortSignal,
   onResults: (results: LineResults) => void,
+  // The sweep runs only when the owner asked this query for it: it is
+  // slow, view-bound, and uninvited it read as noise beside the
+  // engine's answers.
+  wantSweep: boolean,
 ) => {
   const phrase = query.trim().toLowerCase();
   const words = wordsOf(query);
+  const sweepDue = wantSweep && scope.scanMap;
   let places: Finding[] = [];
   let nearby: Finding[] = [];
   let engineReason: string | undefined;
-  let sweeping = scope.scanMap;
+  let sweeping = sweepDue;
   const failures: string[] = [];
 
   const emit = () => {
@@ -267,7 +272,7 @@ export const findPlaces = async (
     onResults({
       places,
       nearby,
-      notice: noticeFor(scope, failures, sweeping, engineReason),
+      notice: noticeFor(scope, failures, sweeping, engineReason, wantSweep),
       sweeping,
     });
   };
@@ -292,7 +297,7 @@ export const findPlaces = async (
     .then(emit);
 
   const sweep = (async () => {
-    if (!scope.scanMap) return;
+    if (!sweepDue) return;
     // Aborted by the next keystroke, which is exactly the point.
     await rest(SWEEP_DELAY_MS, signal);
     // The caller's abort OR the deadline, whichever comes first.
@@ -314,10 +319,10 @@ export const findPlaces = async (
     });
 
   await Promise.all([engine, sweep]);
-  // Thrown only when every source that RAN failed: at low zoom the sweep
-  // never runs, and an engine failure there is a total failure, not a
-  // quiet empty answer.
-  const attempted = scope.scanMap ? 2 : 1;
+  // Thrown only when every source that RAN failed: an unasked or
+  // out-of-zoom sweep never runs, and an engine failure there is a
+  // total failure, not a quiet empty answer.
+  const attempted = sweepDue ? 2 : 1;
   if (failures.length >= attempted) {
     throw new Error("Neither the search engine nor the map sweep answered.");
   }
@@ -328,6 +333,7 @@ const noticeFor = (
   failures: string[],
   sweeping: boolean,
   engineReason: string | undefined,
+  wantSweep: boolean,
 ) => {
   if (engineReason === "budget exhausted") {
     // Both halves can be gone at once, and the notice must not promise
@@ -341,7 +347,10 @@ const noticeFor = (
   if (failures.includes("overpass")) {
     return "The map sweep did not answer, so this is search hits only. Press the glass to retry.";
   }
-  if (!scope.scanMap) return "Zoom in to also sweep the map for every branch here.";
+  // Sweep talk only reaches someone who asked for a sweep.
+  if (wantSweep && !scope.scanMap) {
+    return "Zoom in closer to sweep the map for every match here.";
+  }
   if (sweeping) return "Still sweeping the map for more matches...";
   return undefined;
 };

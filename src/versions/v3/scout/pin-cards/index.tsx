@@ -63,16 +63,21 @@ const placementFor = (
 // so the outline reads as one continuous stroke flowing around the
 // arrow. The svg box is 12x8 with the base drawn at y=1 and the tip at
 // y=7; rotation swings it to whichever edge faces the pin.
+//
+// Every offset carries a -1: absolute children position from the PADDING
+// box, one border-width inside the card's h and w, and without it the
+// base sat one row shy of the border, which stayed visible as a line
+// running straight across the notch.
 const chevronFor = (anchor: Anchor, w: number, h: number) => {
   switch (anchor) {
     case "above":
-      return { left: w / 2 - 6, top: h - 2, rotate: 0 };
+      return { left: w / 2 - 6 - 1, top: h - 3, rotate: 0 };
     case "below":
-      return { left: w / 2 - 6, top: -6, rotate: 180 };
+      return { left: w / 2 - 6 - 1, top: -7, rotate: 180 };
     case "right":
-      return { left: -8, top: h / 2 - 4, rotate: 90 };
+      return { left: -9.5, top: h / 2 - 4 - 1, rotate: 90 };
     case "left":
-      return { left: w - 4, top: h / 2 - 4, rotate: -90 };
+      return { left: w - 4.5, top: h / 2 - 4 - 1, rotate: -90 };
   }
 };
 

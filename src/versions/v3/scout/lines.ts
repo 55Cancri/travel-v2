@@ -26,6 +26,9 @@ export type ScoutLine = {
   // Which findings are painted on the map. Ids rather than the findings
   // themselves, so a fresh search cannot leave a stale copy pinned.
   shownIds: string[];
+  // The view sweep runs only when asked for, per query: typing anything
+  // new withdraws the ask.
+  sweepAsked: boolean;
   // Bumped by every refresh press. Clearing `query` alone would make a
   // second press while a search is already running a silent no-op, since
   // the value it clears is already empty.
@@ -47,11 +50,20 @@ const freshLine = (taken: string[]): ScoutLine => ({
   nearby: [],
   shownIds: [],
   sweeping: false,
+  sweepAsked: false,
   runId: 0,
   expanded: true,
 });
 
-export const openingLines = () => [freshLine([])];
+// The set of lines plus which one the results region speaks for: every
+// input keeps searching, but only the ACTIVE line's results render (the
+// map stays the aggregate of every line's ticked pins).
+export type LineSet = { lines: ScoutLine[]; activeId: string };
+
+export const openingLines = (): LineSet => {
+  const first = freshLine([]);
+  return { lines: [first], activeId: first.id };
+};
 
 export const lineFindings = (line: ScoutLine) => line.places.concat(line.nearby);
 
@@ -73,10 +85,16 @@ export type ScoutAction =
   // either way the asking is over.
   | { name: "hoursArrived"; id: string; findingId: string; hours?: GoogleHours }
   | { name: "added" }
-  | { name: "removed"; id: string };
+  | { name: "removed"; id: string }
+  // An input took focus: its results own the region below the inputs.
+  | { name: "focused"; id: string }
+  // The owner asked this query for the every-match view sweep.
+  | { name: "sweepAsked"; id: string };
 
-const withLine = (lines: ScoutLine[], id: string, change: (line: ScoutLine) => ScoutLine) =>
-  lines.map((line) => (line.id === id ? change(line) : line));
+const withLine = (set: LineSet, id: string, change: (line: ScoutLine) => ScoutLine): LineSet => ({
+  ...set,
+  lines: set.lines.map((line) => (line.id === id ? change(line) : line)),
+});
 
 // An answer only counts if it answers what the line is currently asking.
 // The searcher aborts a run it has superseded, but an abort that lands
@@ -104,18 +122,23 @@ const carryResolved = (fresh: Finding[], known: Finding[]) =>
     };
   });
 
-export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine[] => {
+export const scoutReducer = (set: LineSet, action: ScoutAction): LineSet => {
   switch (action.name) {
     case "typed":
-      return withLine(lines, action.id, (line) => ({ ...line, typed: action.text }));
+      return withLine(set, action.id, (line) => ({
+        ...line,
+        typed: action.text,
+        // A new phrase is a new question; the old sweep ask dies with it.
+        sweepAsked: line.typed.trim() === action.text.trim() ? line.sweepAsked : false,
+      }));
     case "searching":
-      return withLine(lines, action.id, (line) => ({
+      return withLine(set, action.id, (line) => ({
         ...line,
         status: "searching",
         failure: undefined,
       }));
     case "answered":
-      return withLine(lines, action.id, (line) => {
+      return withLine(set, action.id, (line) => {
         if (!stillAsking(line, action.query)) return line;
         const arrived = action.results.places.concat(action.results.nearby);
         return {
@@ -138,7 +161,7 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
         };
       });
     case "failed":
-      return withLine(lines, action.id, (line) =>
+      return withLine(set, action.id, (line) =>
         !stillAsking(line, action.query) ? line : {
           ...line,
           status: "failed",
@@ -150,7 +173,7 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
         },
       );
     case "emptied":
-      return withLine(lines, action.id, (line) => ({
+      return withLine(set, action.id, (line) => ({
         ...line,
         status: "idle",
         places: [],
@@ -163,9 +186,9 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
     case "refreshed":
       // A new run id is what makes the same words search again, now against
       // wherever the map is looking.
-      return withLine(lines, action.id, (line) => ({ ...line, runId: line.runId + 1 }));
+      return withLine(set, action.id, (line) => ({ ...line, runId: line.runId + 1 }));
     case "toggled":
-      return withLine(lines, action.id, (line) => {
+      return withLine(set, action.id, (line) => {
         if (line.shownIds.includes(action.findingId)) {
           return { ...line, shownIds: line.shownIds.filter((id) => id !== action.findingId) };
         }
@@ -180,7 +203,7 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
     case "allToggled":
       // "Show all" is the sweep's control (paint every branch); the
       // engine's few hits keep their individual ticks either way.
-      return withLine(lines, action.id, (line) => {
+      return withLine(set, action.id, (line) => {
         const nearbyIds = line.nearby.map((finding) => finding.id);
         // Intersected with the engine section rather than "everything not
         // in the sweep", so an id from a superseded answer can never ride
@@ -200,9 +223,9 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
         };
       });
     case "disclosed":
-      return withLine(lines, action.id, (line) => ({ ...line, expanded: !line.expanded }));
+      return withLine(set, action.id, (line) => ({ ...line, expanded: !line.expanded }));
     case "located":
-      return withLine(lines, action.id, (line) => ({
+      return withLine(set, action.id, (line) => ({
         ...line,
         places: line.places.map((finding) =>
           finding.id === action.findingId
@@ -216,7 +239,7 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
         ),
       }));
     case "hoursArrived":
-      return withLine(lines, action.id, (line) => ({
+      return withLine(set, action.id, (line) => ({
         ...line,
         places: line.places.map((finding) =>
           finding.id === action.findingId
@@ -227,18 +250,39 @@ export const scoutReducer = (lines: ScoutLine[], action: ScoutAction): ScoutLine
     case "locateFailed":
       // A failure for a hit that a newer answer already replaced must not
       // stamp its notice over that newer answer.
-      return withLine(lines, action.id, (line) =>
+      return withLine(set, action.id, (line) =>
         line.places.some((finding) => finding.id === action.findingId)
           ? { ...line, notice: "That place could not be resolved just now." }
           : line,
       );
-    case "added":
+    case "added": {
       // Appended BELOW: the fresh input lands under its predecessor,
-      // right where the "+ Add place" row invited it, and shift+tab
-      // walks back up in reading order.
-      return lines.concat(freshLine(lines.map((line) => line.color)));
-    case "removed":
+      // right where the "+ Add place" row invited it, takes the active
+      // slot (adding is an intent to type), and shift+tab walks back up
+      // in reading order.
+      const fresh = freshLine(set.lines.map((line) => line.color));
+      return { lines: set.lines.concat(fresh), activeId: fresh.id };
+    }
+    case "removed": {
       // The last line never leaves: an empty panel offers no way back.
-      return lines.length === 1 ? lines : lines.filter((line) => line.id !== action.id);
+      if (set.lines.length === 1) return set;
+      const at = set.lines.findIndex((line) => line.id === action.id);
+      const lines = set.lines.filter((line) => line.id !== action.id);
+      return {
+        lines,
+        // A removed active line hands the region to its next-door
+        // neighbor rather than leaving it speaking for a ghost.
+        activeId:
+          set.activeId === action.id
+            ? (lines[Math.min(at, lines.length - 1)] ?? lines[0]).id
+            : set.activeId,
+      };
+    }
+    case "focused":
+      return set.lines.some((line) => line.id === action.id)
+        ? { ...set, activeId: action.id }
+        : set;
+    case "sweepAsked":
+      return withLine(set, action.id, (line) => ({ ...line, sweepAsked: true }));
   }
 };

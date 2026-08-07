@@ -67,7 +67,7 @@ export function Scout() {
   const scoutDb = useScoutDb();
   const map = activeMap(scoutDb);
   const wide = useWideWindow();
-  const [lines, dispatch] = React.useReducer(scoutReducer, undefined, openingLines);
+  const [view, dispatch] = React.useReducer(scoutReducer, undefined, openingLines);
   const now = useMinuteClock();
   const [mapReady, storeMapReady] = React.useState(false);
   const [route, storeRoute] = React.useState<RouteLeg[]>([]);
@@ -318,7 +318,7 @@ export function Scout() {
     const splitAt = pinId.indexOf(":");
     const lineId = pinId.slice(0, splitAt);
     const findingId = pinId.slice(splitAt + 1);
-    const line = lines.find((entry) => entry.id === lineId);
+    const line = view.lines.find((entry) => entry.id === lineId);
     const finding = line ? lineFindings(line).find((entry) => entry.id === findingId) : undefined;
     if (!line || !finding) return;
     if (connecting) {
@@ -365,7 +365,7 @@ export function Scout() {
   // Each ticked finding yields its pin and its card TOGETHER, because the
   // card speaks for facts the pin cannot carry (the hours ask still being
   // out reads as "Loading times...").
-  const searchStands = lines.flatMap((line) =>
+  const searchStands = view.lines.flatMap((line) =>
     lineFindings(line).flatMap((finding) => {
       // An engine hit that has never been interacted with has no
       // coordinates yet and cannot stand on the map.
@@ -504,7 +504,7 @@ export function Scout() {
           every search twice behind the drawer's back. */}
       {wide && !docked ? (
         <QueryPanel
-          lines={lines}
+          view={view}
           scopeOf={scopeOf}
           dispatch={dispatch}
           onFocusFinding={focusFinding}
@@ -663,7 +663,7 @@ export function Scout() {
       <SearchSidebar
         open={wide && docked}
         onClose={() => storeDocked(false)}
-        lines={lines}
+        view={view}
         scopeOf={scopeOf}
         dispatch={dispatch}
         onFocusFinding={focusFinding}
@@ -681,7 +681,7 @@ export function Scout() {
       <SearchDrawer
         open={openSheet?.face === "search"}
         onClose={() => storeOpenSheet(null)}
-        lines={lines}
+        view={view}
         scopeOf={scopeOf}
         dispatch={dispatch}
         onFocusFinding={focusFinding}

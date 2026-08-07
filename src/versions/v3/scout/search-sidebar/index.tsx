@@ -3,7 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import { Block, Plus, Text, X } from "atoms";
 import { IconButton } from "alloys";
 import type { Finding, SearchScope } from "../find-places";
-import type { ScoutAction, ScoutLine } from "../lines";
+import type { LineSet, ScoutAction } from "../lines";
 import { LineStack } from "../query-panel/line-stack";
 
 // The docked search surface: a full-height panel sliding in from the left
@@ -16,7 +16,7 @@ import { LineStack } from "../query-panel/line-stack";
 export function SearchSidebar(props: {
   open: boolean;
   onClose: () => void;
-  lines: ScoutLine[];
+  view: LineSet;
   scopeOf: () => SearchScope | null;
   dispatch: (action: ScoutAction) => void;
   onFocusFinding: (finding: Finding) => void;
@@ -87,7 +87,7 @@ export function SearchSidebar(props: {
           </Block>
           <Block overflowY="auto" px="md" pb="md" style={{ overscrollBehavior: "contain" }}>
             <LineStack
-              lines={props.lines}
+              view={props.view}
               scopeOf={props.scopeOf}
               dispatch={props.dispatch}
               onFocusFinding={props.onFocusFinding}
