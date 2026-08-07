@@ -85,6 +85,38 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
+- [ ] Round: scoped results + on-demand sweep + chevron border math
+      (planned 2026-08-07). Owner flagged three things and endorsed the
+      focused-input design ("results scoped to which input is
+      focused"). Decisions:
+      (a) INPUTS GROUP AT THE TOP, one results region below shows the
+      ACTIVE line's results only. The map stays the aggregate (every
+      line's ticked pins persist in their line colors), the list is the
+      active query's workspace, the input color dots carry the mapping.
+      Active line lives IN THE REDUCER (state becomes
+      { lines, activeId }, new "focused" action; added activates the
+      new line; removed falls back to a neighbor). The line's search
+      effect stays with its input (all lines keep searching), only
+      results RENDER for the active line. query-line.tsx splits:
+      query-input.tsx (input row, search effect, Cmd+Enter, focus
+      announce) + query-results.tsx (status line, sections, row
+      handlers, tickingRef, highlight + keyboard). The keyboard
+      listener moves to query-results (exactly one mounted, replacing
+      the `primary` prop): document-level, arrows/Enter also accepted
+      when the target IS a query input (aria-label match), j/k only
+      outside editables. The sticky strip becomes the whole input
+      GROUP + Add place row, in line-stack. The phone sheet adopts the
+      same composition (suggestions, inputs, active results).
+      (b) The Overpass sweep goes ON-DEMAND: no automatic sweep, no
+      surprise "In this view" section. A ghost row under the engine's
+      results ("Find every match in this view") asks for it per query;
+      line gains sweepAsked (reset by typing), findPlaces gains a
+      wantSweep gate, sweep notices only when asked.
+      (c) Chevron gap root cause: absolute children position from the
+      PADDING box, so every offset sat 1px (the card border) low,
+      leaving one border row visible across the notch base. Offsets
+      get the border baked in (above h-3, below -7, right base -9.5,
+      left w-4.5).
 - [x] Third Add place nudge, LANDED: the label sat half a step right
       because the button atom declares columnGap sm and a LONGHAND
       outranks a consumer's gap shorthand in the style merge; columnGap
