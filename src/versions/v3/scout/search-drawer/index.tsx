@@ -53,6 +53,9 @@ export function SearchDrawer(props: {
           type="button"
           aria-label="Add a query line"
           onPress={() => props.dispatch({ name: "added" })}
+          // Glyph flush with the content edge, same vertical line as the
+          // row remove glyphs below.
+          mr="calc((18px - 1.5rlh) / 2)"
         >
           <Plus size={18} />
         </IconButton>
