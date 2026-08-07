@@ -228,8 +228,12 @@ export function PinCards(props: {
               overflow: "visible",
             }}
           >
+            {/* Both subpaths wind the same (clockwise) direction on
+                purpose: under the nonzero fill rule, opposite windings
+                cancel where the rect and triangle overlap, leaving the
+                border row transparent along that strip. */}
             <path
-              d="M0.5 0 L11.5 0 L11.5 4 L0.5 4 Z M0.5 3.5 L6 9.5 L11.5 3.5 Z"
+              d="M0.5 0 L11.5 0 L11.5 4 L0.5 4 Z M0.5 3.5 L11.5 3.5 L6 9.5 Z"
               fill="var(--colors-surface-panel)"
             />
             <path
