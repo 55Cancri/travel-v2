@@ -81,9 +81,20 @@ Checklist:
       9f2d458 on slice/38-scout-overhaul (pushed), merged to
       bleeding-edge
 - [x] deployed to prod (website updated, travel-v2.leaftime.workers.dev)
-- [ ] Sol read-only review of 9f2d458 in flight (note: `--search` goes
-      BEFORE `exec` in the codex CLI or it errors); collate its
-      verdicts when it lands
+- [x] Sol review of 9f2d458 landed (note: `--search` goes BEFORE `exec`
+      in the codex CLI or it errors). It caught a REAL blocker: the two
+      fill subpaths wound in opposite directions, and the nonzero fill
+      rule cancels opposite windings where shapes overlap, so the outer
+      half of the border row stayed transparent across the notch base.
+      Fixed by winding the triangle with the rect (6428fc5, with the
+      three straggler X's: route-strip and suggestion-rows joined the
+      18px edge-flush column, maps-menu X went 18). Verified by
+      shoelace signs, not just Sol's word. Sol's remaining note, NOT
+      acted on: on classic-scrollbar systems the sidebar rows sit
+      inside the scroller while the header is outside, so a visible
+      scrollbar would shift row X's left of the header X. Owner is on
+      macOS overlay scrollbars; revisit only if a Windows/Linux user
+      appears. v1's X size={11} left alone (older surface, deliberate).
 - [ ] report with shortcut suggestions (Cmd+B or Cmd+\ for sidebar,
       Cmd+0 for fit-all; Shift+letter cannot work inside inputs since
       it types capitals; no single unmodified key works inside inputs)
