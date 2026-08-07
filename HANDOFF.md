@@ -85,8 +85,8 @@ Decisions before implementation:
 - [x] Owner: a bare "s" toggles the sidebar (he corrected an initial
       Cmd+S reading), ignored while focus is in an input, textarea, or
       contenteditable.
-- [ ] Round: scoped results + on-demand sweep + chevron border math
-      (planned 2026-08-07). Owner flagged three things and endorsed the
+- [x] Round: scoped results + on-demand sweep + chevron border math
+      (planned AND LANDED 2026-08-07, 72 tests, deployed). Owner flagged three things and endorsed the
       focused-input design ("results scoped to which input is
       focused"). Decisions:
       (a) INPUTS GROUP AT THE TOP, one results region below shows the
