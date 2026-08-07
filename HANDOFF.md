@@ -38,7 +38,66 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
-## Round: desktop search sidebar behind a hamburger (planned 2026-08-06)
+## Round: chevron as one bubble outline + aligned X column (planned 2026-08-07)
+
+Owner feedback (screenshots): (1) the pin-card arrow STILL reads as its
+own bordered shape, the card border runs behind it; (2) in the sidebar
+the header X and the input remove X's are different sizes and not on
+one vertical line ("inputs can move a little more right"); (3) wants
+shortcut SUGGESTIONS ONLY (no implementation yet) for two chords that
+work while focused in an input: toggle sidebar (replacing bare "s") and
+toggle zoom-all-pins vs zoom-to-focused. Constraints: Dia browser owns
+Cmd+S; Cmd+F/Z/X/C/V/W/T/N are out; he prefers Cmd+letter-ish, dislikes
+Ctrl.
+
+Design decided before implementation:
+
+- Chevron root cause: the old svg's fill was only the triangle BELOW its
+  base line and the stroke straddled the border row, so the border's
+  lower half stayed visible across the notch no matter the offset. New
+  design: the fill is a rect straddling the border (3px into the card
+  interior through the full border row, spanning the slant endpoints)
+  PLUS the triangle, so the crossed border segment is genuinely blanked;
+  a separate stroke path draws only the two slants, endpoints on the
+  border's centerline, round caps/joins. Svg becomes 12x10, offsets
+  recomputed per anchor (padding-box coords, so each carries the 1px
+  border conversion).
+- X column: remove-X goes 16 -> 18 (all X's and pluses now 18) and the
+  remove IconButton gets the same negative right margin the sidebar
+  header X already uses (glyph flush with the content edge), which also
+  widens the input toward the right edge, exactly the owner's hunch.
+  The drawer's header plus gets the same margin so the phone sheet's
+  corner glyph aligns with its rows too. AddPlaceRow keycaps stay: they
+  are tuned against the single-line (full-width input) geometry, which
+  this does not change.
+
+Checklist:
+
+- [x] pin-cards: new chevron geometry (fill blanks the border, slants
+      stroke from its centerline), offsets for all four anchors
+- [x] query-input: X 18 + edge-flush margin; drawer plus margin;
+      sidebar header comment updated
+- [x] typecheck + 72 tests + check:names + em-dash grep, committed
+      9f2d458 on slice/38-scout-overhaul (pushed), merged to
+      bleeding-edge
+- [x] deployed to prod (website updated, travel-v2.leaftime.workers.dev)
+- [ ] Sol read-only review of 9f2d458 in flight (note: `--search` goes
+      BEFORE `exec` in the codex CLI or it errors); collate its
+      verdicts when it lands
+- [ ] report with shortcut suggestions (Cmd+B or Cmd+\ for sidebar,
+      Cmd+0 for fit-all; Shift+letter cannot work inside inputs since
+      it types capitals; no single unmodified key works inside inputs)
+
+Resume notes for a fresh agent: the working tree lives on bleeding-edge
+(HANDOFF edits stay here; code went to the slice via the stash dance:
+`git stash push HANDOFF.md`, checkout slice, commit, push, checkout
+bleeding-edge, merge, `git stash pop`). The owner's dev server runs via
+the `travel-2` launch entry on port 5006; it has died between rounds
+twice this session, restart it if down. All three launch entries pin
+port 5006, so the agent-door server cannot run beside the owner's:
+visual verification of the notch is delegated to the owner's HMR
+session. Shortcuts are SUGGESTIONS ONLY this round, owner picks before
+any implementation.
 
 Owner: a hamburger at the top left; clicking it slides out a sidebar
 where the search input and results live. The floating panel stays for
