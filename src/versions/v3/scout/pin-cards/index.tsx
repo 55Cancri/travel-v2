@@ -57,27 +57,32 @@ const placementFor = (
   }
 };
 
-// The notch is a chevron SVG (two stroked slants over a fill) whose base
-// line lies exactly on the card's border row: the fill blanks the border
-// segment it straddles and the slants rise from the border's own line,
-// so the outline reads as one continuous stroke flowing around the
-// arrow. The svg box is 12x8 with the base drawn at y=1 and the tip at
-// y=7; rotation swings it to whichever edge faces the pin.
+// The notch svg (12x10) STRADDLES the card's border instead of abutting
+// it. Its fill is two shapes in card color: a rect running from 3px
+// inside the card interior through the whole border row (y 0..4, with
+// the border row itself at y 3..4), which blanks the border segment the
+// notch crosses, and the triangle to the tip (base on the border's
+// centerline y 3.5, tip y 9.5). A separate path strokes ONLY the two
+// slants, endpoints on that same centerline where the blanked border
+// ends, so the card outline hands off to the slants and reads as one
+// continuous stroke. A base-only fill under a stroke on the base line
+// cannot do this: the stroke half-covers the border row and its lower
+// half stays visible across the notch.
 //
-// Every offset carries a -1: absolute children position from the PADDING
-// box, one border-width inside the card's h and w, and without it the
-// base sat one row shy of the border, which stayed visible as a line
-// running straight across the notch.
+// Offsets are padding-box coordinates (absolute children position from
+// the PADDING box, one border-width inside the card), so each carries a
+// 1px conversion on top of aligning the svg's border-row band, after
+// rotation about the box center, with the card's own border row.
 const chevronFor = (anchor: Anchor, w: number, h: number) => {
   switch (anchor) {
     case "above":
-      return { left: w / 2 - 6 - 1, top: h - 3, rotate: 0 };
+      return { left: w / 2 - 7, top: h - 5, rotate: 0 };
     case "below":
-      return { left: w / 2 - 6 - 1, top: -7, rotate: 180 };
+      return { left: w / 2 - 7, top: -7, rotate: 180 };
     case "right":
-      return { left: -9.5, top: h / 2 - 4 - 1, rotate: 90 };
+      return { left: -8, top: h / 2 - 6, rotate: 90 };
     case "left":
-      return { left: w - 4.5, top: h / 2 - 4 - 1, rotate: -90 };
+      return { left: w - 6, top: h / 2 - 6, rotate: -90 };
   }
 };
 
@@ -209,12 +214,13 @@ export function PinCards(props: {
           style={{ pointerEvents: "auto", willChange: "transform", visibility: "hidden" }}
         >
           {/* The notch chevron: placed and rotated by the collision pass
-              so its base line lies on the card's border row. */}
+              so its border-blanking band lies over the card's border row
+              (geometry documented at chevronFor). */}
           <svg
             data-notch=""
             aria-hidden="true"
             width={12}
-            height={8}
+            height={10}
             style={{
               position: "absolute",
               zIndex: 2,
@@ -223,10 +229,16 @@ export function PinCards(props: {
             }}
           >
             <path
-              d="M0.5 1 L6 7 L11.5 1"
+              d="M0.5 0 L11.5 0 L11.5 4 L0.5 4 Z M0.5 3.5 L6 9.5 L11.5 3.5 Z"
               fill="var(--colors-surface-panel)"
+            />
+            <path
+              d="M0.5 3.5 L6 9.5 L11.5 3.5"
+              fill="none"
               stroke="var(--colors-border-muted)"
               strokeWidth={1}
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
           <Block grid justifyItems="start" textAlign="start" minW={0}>

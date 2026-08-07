@@ -64,7 +64,8 @@ export function SearchSidebar(props: {
         >
           {/* One type treatment across the header (md, 550) and glyphs at
               one size; the close button's own inset is margined away so
-              its glyph lines up with the input's right edge below. */}
+              its glyph shares a vertical line with the row remove
+              glyphs below (which carry the same margin). */}
           <Block grid cols="1fr auto auto" alignItems="center" gap="xs" px="md" pt="sm" pb="xs">
             <Text fontSize="md" fontWeight="550" color="text-muted">
               Search

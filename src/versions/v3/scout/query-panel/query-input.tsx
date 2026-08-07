@@ -126,12 +126,16 @@ export function QueryInput(props: {
         end={isSearching || line.sweeping ? <Spinner size={16} /> : undefined}
       />
       {props.canRemove ? (
+        // The button's inset is margined away so its glyph sits flush
+        // with the content edge, on one vertical line with the header
+        // glyphs above; the field takes the reclaimed width.
         <IconButton
           type="button"
           aria-label="Remove this line"
           onPress={() => props.dispatch({ name: "removed", id: line.id })}
+          mr="calc((18px - 1.5rlh) / 2)"
         >
-          <X size={16} />
+          <X size={18} />
         </IconButton>
       ) : null}
     </Block>
