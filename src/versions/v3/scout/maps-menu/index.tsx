@@ -89,7 +89,7 @@ export function MapsMenu(props: { open: boolean; onClose: () => void }) {
                 aria-label={`Delete ${map.name}`}
                 onPress={() => removeMap(mapId)}
               >
-                <X size={16} />
+                <X size={18} />
               </IconButton>
             </Block>
           );

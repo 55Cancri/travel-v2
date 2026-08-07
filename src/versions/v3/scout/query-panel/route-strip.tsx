@@ -29,8 +29,15 @@ export function RouteStrip(props: {
             Undo
           </Text>
         </IconButton>
-        <IconButton type="button" aria-label="Clear the route" onPress={props.onClear}>
-          <X size={16} />
+        <IconButton
+          type="button"
+          aria-label="Clear the route"
+          onPress={props.onClear}
+          // Glyph flush with the content edge, on the same vertical
+          // line as the other X glyphs in the stack.
+          mr="calc((18px - 1.5rlh) / 2)"
+        >
+          <X size={18} />
         </IconButton>
       </Block>
       {props.notice ? (

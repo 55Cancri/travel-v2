@@ -68,8 +68,9 @@ export function SuggestionRows(props: { typed: string; onPick: (query: string) =
                 type="button"
                 aria-label={`Forget the saved search ${entry.query}`}
                 onPress={() => forgetSearch(entry.id)}
+                mr="calc((18px - 1.5rlh) / 2)"
               >
-                <X size={14} />
+                <X size={18} />
               </IconButton>
             </Block>
           ))}
