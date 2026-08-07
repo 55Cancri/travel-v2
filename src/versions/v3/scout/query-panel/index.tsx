@@ -2,7 +2,7 @@ import * as React from "react";
 import { Block, DotsSixVertical, haptic, Plus, Text } from "atoms";
 import { IconButton } from "alloys";
 import type { Finding, SearchScope } from "../find-places";
-import type { ScoutAction, ScoutLine } from "../lines";
+import type { LineSet, ScoutAction } from "../lines";
 import { LineStack } from "./line-stack";
 
 // The floating frame the query lines live in: dragged by its grip row,
@@ -66,7 +66,7 @@ const fitted = (frame: Frame, viewport: Viewport): Frame => {
 };
 
 export function QueryPanel(props: {
-  lines: ScoutLine[];
+  view: LineSet;
   scopeOf: () => SearchScope | null;
   dispatch: (action: ScoutAction) => void;
   onFocusFinding: (finding: Finding) => void;
@@ -210,7 +210,7 @@ export function QueryPanel(props: {
           edge highlight bleeds exactly one md and must not overshoot. */}
       <Block overflowY="auto" px="md" pb="sm">
         <LineStack
-          lines={props.lines}
+          view={props.view}
           scopeOf={props.scopeOf}
           dispatch={props.dispatch}
           onFocusFinding={props.onFocusFinding}

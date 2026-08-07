@@ -1,105 +1,34 @@
 import * as React from "react";
-import { Block, Button, CaretRight, Input, MagnifyingGlass, Spinner, Text, X } from "atoms";
+import { Block, Button, CaretRight, MagnifyingGlass, Text } from "atoms";
 import { Checkbox, ErrorNote, Eyebrow, IconButton } from "alloys";
 import { fetchPlaceSpot } from "entities/place-search";
 import { noteSearch } from "entities/scout-maps";
-import { findPlaces, MIN_QUERY_CHARS, type Finding, type SearchScope } from "../find-places";
+import type { Finding } from "../find-places";
 import type { ScoutAction, ScoutLine } from "../lines";
-import { AddPlaceRow } from "./add-place-row";
 import { ResultRow } from "./result-row";
 
-// One line of the panel: what was typed, what it found, and which of those
-// findings are on the map. The line owns its own search lifecycle (one
-// debounce, one abort signal) and reports every result upward, so the panel
-// above it holds the whole picture and no answer lives in two places.
+// The results region: what the ACTIVE line found, below the whole input
+// group. Exactly one of these is mounted per surface, which is also why
+// the surface-wide keyboard lives here: arrows and Enter walk these rows
+// from anywhere (a query input included, since focusing one makes its
+// line the active one), j/k only from outside editable fields.
 //
 // Results render as two sections. "Places" is the search engine's few,
-// already ranked hits, always visible. "In this view" is the map sweep's
-// branch list, dozens deep, with the show-all tick and the disclosure that
-// folds it away. Engine hits are born without coordinates: the first
-// interaction with one (tick, or press to fly) resolves them through the
-// details route, then acts.
-//
-// Short, because what this delay gates is the FAST source: the engine
-// answers in about a hundred milliseconds and caches, so this pause was the
-// largest cost we control over the whole search. The expensive map sweep
-// holds itself back separately, inside findPlaces.
-const DEBOUNCE_MS = 150;
+// already ranked hits. "In this view" is the map sweep's branch list,
+// which exists only after its ghost row is pressed: the sweep is slow,
+// view-bound, and uninvited it read as noise beside the engine's
+// answers. Engine hits are born without coordinates: the first
+// interaction with one (tick, or press to fly) resolves them through
+// the details route, then acts.
 
-export function QueryLine(props: {
+export function QueryResults(props: {
   line: ScoutLine;
-  canRemove: boolean;
-  // The first line of its surface: the one whose results the surface-wide
-  // keyboard (arrows, j/k, Enter with focus anywhere non-editable) drives.
-  primary: boolean;
-  scopeOf: () => SearchScope | null;
   dispatch: (action: ScoutAction) => void;
   onFocusFinding: (finding: Finding) => void;
-  // Appends a fresh query line below (the "+ Add place" move), reachable
-  // from the keyboard as Cmd+Enter without leaving this input.
-  onAddLine?: () => void;
-  // The stack's LAST line carries the visible Add place affordance in
-  // its sticky strip; the shortcut works from every line regardless.
-  growingEdge?: boolean;
   now: Temporal.Instant;
-  mapReady: boolean;
 }) {
   const line = props.line;
   const isSearching = line.status === "searching";
-
-  // What this line has already launched a search for. A REF, not a field on
-  // the line: the effect must not be keyed on anything its own results
-  // change. It was, and reporting the fast half of a search tore down the
-  // slow half that was still running, so the map sweep was aborted before it
-  // ever issued a request.
-  const launchedRef = React.useRef("");
-
-  React.useEffect(() => {
-    const text = line.typed.trim();
-    if (text.length < MIN_QUERY_CHARS) {
-      launchedRef.current = "";
-      if (line.status !== "idle") props.dispatch({ name: "emptied", id: line.id });
-      return;
-    }
-    // The run id makes a refresh press count as a different search for the
-    // same words.
-    const attempt = `${line.runId}:${text}`;
-    if (launchedRef.current === attempt) return;
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      const scope = props.scopeOf();
-      // No map yet means no view to search inside. mapReady is a dependency
-      // below, so this run repeats itself the moment the map has one,
-      // instead of leaving typed words silently unsearched forever.
-      if (!scope) return;
-      launchedRef.current = attempt;
-      props.dispatch({ name: "searching", id: line.id, query: text });
-      try {
-        // Reports once per source, so the engine's answer paints while the
-        // map sweep is still out.
-        await findPlaces(text, scope, controller.signal, (results) => {
-          if (controller.signal.aborted) return;
-          props.dispatch({ name: "answered", id: line.id, query: text, results });
-        });
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        console.warn("[scout] line search failed:", error);
-        props.dispatch({
-          name: "failed",
-          id: line.id,
-          query: text,
-          failure: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }, DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-    // The dispatch and scope reader are stable handles; every other value
-    // the run needs is read when the timer fires.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [line.typed, line.runId, props.mapReady]);
 
   // An engine hit with coordinates already, or resolved on the spot. Null
   // means the resolve failed, which the line's notice already says.
@@ -195,22 +124,20 @@ export function QueryLine(props: {
     nearbyIds.length > 0 && nearbyIds.every((id) => line.shownIds.includes(id));
 
   // The keyboard highlight walks the VISIBLE rows (a folded sweep list is
-  // not walkable) while focus stays in the input; -1 is "in the field,
-  // nothing highlighted". A fresh answer resets it, because index N of
-  // the old results and index N of the new ones are strangers.
+  // not walkable); -1 is "nothing highlighted". A fresh answer resets it,
+  // keyed on the row IDS rather than the arrays, because resolving a
+  // hit's coordinates replaces the array without changing what the rows
+  // ARE, and resetting then would wipe the highlight in the middle of
+  // check-then-uncheck.
   const [activeIdx, storeActiveIdx] = React.useState(-1);
   const walkable = line.expanded ? line.places.concat(line.nearby) : line.places;
-  // Keyed on the row IDS, not the arrays: resolving a hit's coordinates
-  // replaces the array without changing what the rows ARE, and resetting
-  // then would wipe the highlight in the middle of check-then-uncheck.
-  const walkableSig = walkable.map((finding) => finding.id).join("|");
+  const walkableSig = `${line.id}|${walkable.map((finding) => finding.id).join("|")}`;
   React.useEffect(() => {
     storeActiveIdx(-1);
   }, [walkableSig]);
 
-  // Up clamps at the first row rather than walking off it back into
-  // "nothing highlighted"; from nothing, either direction lands on row
-  // one.
+  // Up clamps at the first row rather than walking off it; from nothing,
+  // either direction lands on row one.
   const stepHighlight = (delta: 1 | -1) => {
     if (walkable.length === 0) return;
     storeActiveIdx((idx) =>
@@ -233,46 +160,23 @@ export function QueryLine(props: {
     return true;
   };
 
-  const onSearchKeys = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      stepHighlight(event.key === "ArrowDown" ? 1 : -1);
-      return;
-    }
-    if (event.key !== "Enter") return;
-    // Before the plain-Enter branch: Cmd+Enter grows the list and must
-    // never fall through to toggling the highlighted row.
-    if (event.metaKey || event.ctrlKey) {
-      if (props.onAddLine) {
-        event.preventDefault();
-        props.onAddLine();
-      }
-      return;
-    }
-    if (actOnActive()) event.preventDefault();
-  };
-
-  // The surface-wide keyboard: the same walk without the input focused,
-  // plus j/k, which can only exist OUTSIDE the field (typed letters must
-  // stay letters). Editable targets are skipped entirely, which also
-  // leaves the input-focused case to the handler above.
+  // The surface-wide walk. Arrows and Enter also work from inside a QUERY
+  // input (focusing one already made its line the active one here); j/k
+  // only outside editable fields, where letters are letters.
   const surfaceKeysRef = React.useRef<(event: KeyboardEvent) => void>(() => {});
   surfaceKeysRef.current = (event: KeyboardEvent) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const target = event.target as HTMLElement;
-    if (
-      target.tagName === "INPUT" ||
-      target.tagName === "TEXTAREA" ||
-      target.isContentEditable
-    ) {
-      return;
-    }
-    if (event.key === "ArrowDown" || event.key === "j") {
+    const inQueryInput = target.getAttribute?.("aria-label") === "What to find on the map";
+    const editable =
+      target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+    if (editable && !inQueryInput) return;
+    if (event.key === "ArrowDown" || (!editable && event.key === "j")) {
       event.preventDefault();
       stepHighlight(1);
       return;
     }
-    if (event.key === "ArrowUp" || event.key === "k") {
+    if (event.key === "ArrowUp" || (!editable && event.key === "k")) {
       event.preventDefault();
       stepHighlight(-1);
       return;
@@ -280,78 +184,19 @@ export function QueryLine(props: {
     if (event.key === "Enter" && actOnActive()) event.preventDefault();
   };
   React.useEffect(() => {
-    if (!props.primary) return;
     const controller = new AbortController();
     document.addEventListener("keydown", (event) => surfaceKeysRef.current(event), {
       signal: controller.signal,
     });
     return () => controller.abort();
-  }, [props.primary]);
+  }, []);
 
   return (
-    <Block py="xs">
-      {/* Sticky within the surface's scroll body: however deep the
-          results run, the field (and the growing edge's Add place
-          affordance) stays reachable at the top, results sliding under
-          the shell-colored strip. */}
-      <Block
-        position="sticky"
-        insetBlockStart="0"
-        zIndex={2}
-        bg="surface-shell"
-        py="xs"
-        // The strip bleeds the same gutter the row highlights do: a
-        // content-width strip carved a notch out of the first row's
-        // highlight and would let scrolled rows peek out at the edges.
-        px="1lh"
-        mx="-1lh"
-      >
-        <Block grid cols="1fr auto" alignItems="center" gap="xs">
-            <Input
-            value={line.typed}
-            placeholder="Search places"
-            aria-label="What to find on the map"
-            py="0.35lh"
-            // The dot's gaps are symmetric: edge to dot equals dot to text
-            // (both the input's own 0.5lh pad). A darker well than the
-            // shell it sits on, so the field reads as the surface's one
-            // place to type.
-            columnGap="sm"
-            bg="surface-page"
-            onChange={(event) =>
-              props.dispatch({ name: "typed", id: line.id, text: event.target.value })
-            }
-            onKeyDown={onSearchKeys}
-            start={
-              <Block
-                w="0.6rem"
-                h="0.6rem"
-                borderRadius="9999px"
-                flexShrink={0}
-                style={{ background: line.color }}
-              />
-            }
-            end={isSearching || line.sweeping ? <Spinner size={16} /> : undefined}
-          />
-          {props.canRemove ? (
-            <IconButton
-              type="button"
-              aria-label="Remove this line"
-              onPress={() => props.dispatch({ name: "removed", id: line.id })}
-            >
-              <X size={16} />
-            </IconButton>
-          ) : null}
-        </Block>
-        {/* The growing edge's affordance lives with the input, above the
-            results, never among them (arrow keys walk results only). */}
-        {props.growingEdge && props.onAddLine ? <AddPlaceRow onAdd={props.onAddLine} /> : null}
-      </Block>
-
-      {/* The status line owns a RESERVED row under the input: searching,
+    <Block>
+      {/* The status line owns a RESERVED row under the inputs: searching,
           sweeping, failures, and the empty verdict all speak here, and
           when nothing does the space stays, so results never jump. */}
-      <Block minH="1lh" pt="xs">
+      <Block minH="1lh">
         {line.failure ? (
           // A failed line keeps the words that failed, so retyping them
           // is not a change and would never search again. The retry
@@ -376,7 +221,7 @@ export function QueryLine(props: {
                     !line.sweeping &&
                     line.places.length === 0 &&
                     line.nearby.length === 0
-                  ? // Not while the sweep is still out: "nothing anywhere"
+                  ? // Not while a sweep is still out: "nothing anywhere"
                     // beside a spinner would contradict itself.
                     "Nothing anywhere by that name."
                   : "")}
@@ -399,6 +244,29 @@ export function QueryLine(props: {
             />
           ))}
         </Block>
+      ) : null}
+
+      {/* The sweep is invited, never assumed: a slow every-match scan of
+          the visible map only runs for a query whose owner pressed this. */}
+      {line.status === "answered" && !line.sweepAsked && line.nearby.length === 0 ? (
+        <Button
+          type="button"
+          onPress={() => props.dispatch({ name: "sweepAsked", id: line.id })}
+          w="100%"
+          minW={0}
+          justifyContent="start"
+          columnGap="xs"
+          px={0}
+          py="xs"
+          borderRadius="xs"
+          color="text-muted"
+          _hover={{ "@media (hover: hover)": { color: "text-primary" } }}
+        >
+          <MagnifyingGlass size={14} />
+          <Text as="span" fontSize="xs" fontWeight="550">
+            Find every match in this view
+          </Text>
+        </Button>
       ) : null}
 
       {line.nearby.length > 0 ? (
@@ -478,9 +346,8 @@ export function QueryLine(props: {
             }}
           >
             {/* A chain search returns dozens of branches. Capping the list
-                and scrolling inside it keeps every OTHER line of the panel
-                reachable, instead of burying the next question under this
-                one's answers. */}
+                and scrolling inside it keeps the inputs above reachable,
+                instead of burying them under this one's answers. */}
             <Block maxH="15rem" overflowY="auto">
               {line.nearby.map((finding, i) => (
                 <ResultRow
