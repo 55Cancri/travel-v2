@@ -38,6 +38,10 @@ export type ScoutMapApi = {
   center: () => { lng: number; lat: number } | null;
   zoom: () => number;
   flyTo: (target: { lng: number; lat: number }, zoom?: number) => void;
+  // One flight that frames every given point: the overview half of the
+  // camera peek. A single point (degenerate bounds) lands at street
+  // level instead of the renderer's maximum zoom.
+  fitTo: (points: { lng: number; lat: number }[]) => void;
   // A cut, not a flight: how a map switch lands on the other map's camera.
   jumpTo: (camera: MapCamera) => void;
   // Instant pixel pan. A canvas resize keeps the geography centered on
@@ -333,6 +337,15 @@ export function MapCanvas(props: {
         zoom: () => map.getZoom(),
         flyTo: (target, zoom) =>
           map.easeTo({ center: [target.lng, target.lat], zoom: zoom ?? map.getZoom() }),
+        fitTo: (points) => {
+          if (points.length === 0) return;
+          const bounds = new maplibregl.LngLatBounds();
+          for (const point of points) bounds.extend([point.lng, point.lat]);
+          // Padding clears the corner chrome; maxZoom is the same street
+          // level a result row flies to, which is where a one-point fit
+          // would otherwise dive past.
+          map.fitBounds(bounds, { padding: 80, maxZoom: 16 });
+        },
         jumpTo: (camera) =>
           map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom }),
         shiftBy: (xPx) => map.panBy([xPx, 0], { duration: 0 }),

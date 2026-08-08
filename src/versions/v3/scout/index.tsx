@@ -152,39 +152,57 @@ export function Scout() {
     | null
   >(null);
 
-  // A bare "s" toggles the docked sidebar (never while typing: a key
-  // press whose target is editable belongs to the text field), and
-  // Escape closes it, unless a sheet is open, because the sheet's own
-  // Escape listener already answers that press.
+  const mapApiRef = React.useRef<ScoutMapApi | null>(null);
+  // The overview peek's way home: holding a camera means the next Cmd+/
+  // returns there; empty means the next one stores the camera and fits
+  // every pin. A ref, not a mode: nothing else reads or renders it.
+  const overviewReturnRef = React.useRef<MapCamera | null>(null);
+  const fitPointsRef = React.useRef<{ lng: number; lat: number }[]>([]);
+
+  // Two chords, side-by-side keys, both alive while typing in an input
+  // (a bare letter would insert itself, and these exist to be reachable
+  // mid-search): Cmd+. toggles the docked sidebar, Cmd+/ peeks at every
+  // pin and returns. Escape closes the sidebar, unless a sheet is open,
+  // because the sheet's own Escape listener already answers that press.
+  // Shift stays unchecked: on layouts where "/" needs Shift, Cmd+/
+  // arrives with shiftKey held.
   const openSheetRef = React.useRef(openSheet);
   openSheetRef.current = openSheet;
   React.useEffect(() => {
-    if (!wide) return;
     const controller = new AbortController();
     document.addEventListener(
       "keydown",
       (event) => {
-        if (event.key === "Escape" && openSheetRef.current === null) {
+        if (event.key === "Escape" && wide && openSheetRef.current === null) {
           storeDocked(false);
           return;
         }
-        if (event.key !== "s" || event.metaKey || event.ctrlKey || event.altKey) return;
-        const target = event.target as HTMLElement;
-        if (
-          target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable
-        ) {
+        if (!event.metaKey || event.ctrlKey || event.altKey) return;
+        if (event.key === "." && wide) {
+          event.preventDefault();
+          storeDocked((was) => !was);
           return;
         }
+        if (event.key !== "/") return;
         event.preventDefault();
-        storeDocked((was) => !was);
+        const api = mapApiRef.current;
+        if (!api) return;
+        const back = overviewReturnRef.current;
+        if (back) {
+          overviewReturnRef.current = null;
+          api.flyTo(back, back.zoom);
+          return;
+        }
+        const points = fitPointsRef.current;
+        const center = api.center();
+        if (points.length === 0 || !center) return;
+        overviewReturnRef.current = { ...center, zoom: api.zoom() };
+        api.fitTo(points);
       },
       { signal: controller.signal },
     );
     return () => controller.abort();
   }, [wide]);
-  const mapApiRef = React.useRef<ScoutMapApi | null>(null);
   // The tail of the chain being connected: the next connected node draws
   // an edge from here. Dropped when connect mode ends or the map switches.
   const lastNodeRef = React.useRef<string | null>(null);
@@ -250,6 +268,8 @@ export function Scout() {
     mapIdRef.current = map.id;
     lastNodeRef.current = null;
     storeChainLength(0);
+    // A pending peek return described the other document's world.
+    overviewReturnRef.current = null;
     const camera = map.camera ?? { ...home, zoom: OPENING_ZOOM };
     mapApiRef.current?.jumpTo(camera);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -435,6 +455,8 @@ export function Scout() {
       },
     ];
   });
+
+  fitPointsRef.current = pins.concat(saved);
 
   // The persistent mini tooltips: every saved place gets one, and shown
   // search pins join while the total stays readable. The hours line is
