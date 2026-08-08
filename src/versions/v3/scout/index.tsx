@@ -173,6 +173,10 @@ export function Scout() {
     document.addEventListener(
       "keydown",
       (event) => {
+        // A held chord autorepeats, which would flip-flop the peek's
+        // press-press semantics; keys inside an IME composition belong
+        // to the composition.
+        if (event.repeat || event.isComposing) return;
         if (event.key === "Escape" && wide && openSheetRef.current === null) {
           storeDocked(false);
           return;

@@ -157,7 +157,11 @@ export function MapCanvas(props: {
   // Repaint counter: a style swap wipes every image, source, and layer, so
   // the pin effect has to run again once the new style settles.
   const [styleTick, storeStyleTick] = React.useState(0);
+  // Refreshed every render so a map that finishes constructing after a
+  // document switch opens on the CURRENT document's camera, not the one
+  // mounted first.
   const openingRef = React.useRef(props.opening);
+  openingRef.current = props.opening;
   const onReadyRef = React.useRef(props.onReady);
   onReadyRef.current = props.onReady;
   const onSearchPinPressRef = React.useRef(props.onSearchPinPress);
