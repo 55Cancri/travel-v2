@@ -38,6 +38,71 @@ alongside it. Maintain it like this:
   mechanics) live below the rounds and get edited in place, never
   duplicated into rounds.
 
+## Round: keyboard chords: Cmd+. sidebar, Cmd+/ overview peek (planned 2026-08-08)
+
+Owner ruling on last round's shortcut suggestions: NOT Cmd+B / Cmd+0.
+He picked **Cmd+. to toggle the sidebar** and **Cmd+/ for the view
+toggle**, because the two keys sit side by side. View-toggle semantics,
+his pick from the offered options: press once = fit every pin on
+screen, press again = fly back to exactly the camera from before the
+peek (no notion of a focused pin). He also wants the claimable-Cmd-
+chord catalog written down for reuse in other apps: it lives in the
+standing section "Cmd chord catalog" below.
+
+Design decided before implementation:
+
+- Both chords work while focus is in an input (the whole point of
+  moving off the bare "s", which is removed). Cmd required, Ctrl/Alt
+  presses ignored. Shift is NOT excluded: Cmd+/ arrives as
+  Cmd+Shift+7 on some layouts, where "/" needs Shift.
+- The sidebar chord stays wide-window-only (no sidebar on phones); the
+  overview chord works at any width.
+- The overview peek is a ref'd return camera, not a mode: first press
+  stores {center, zoom} and fits every pin (search + saved), second
+  press flies back and clears the ref. Nothing pinned = the chord does
+  nothing. Switching maps drops a pending return camera (it described
+  the other document's world). Panning between the two presses does
+  not cancel the return: the owner chose "fly back to exactly where
+  you were".
+- ScoutMapApi gains fitTo(points): fitBounds over the points, uniform
+  padding (the floating panel is user-draggable, so dodging it is not
+  worth the math), maxZoom 16 so a single pin lands at street level
+  instead of the renderer's max on degenerate bounds.
+
+Checklist:
+
+- [x] HANDOFF: this plan + the Cmd chord catalog standing section
+- [x] map-canvas: fitTo on ScoutMapApi
+- [x] index.tsx: chord effect (Cmd+. sidebar, Cmd+/ peek) replaces the
+      bare "s"; return-camera ref; map switch clears it. The pin
+      coordinates reach the listener through a render-refreshed ref
+      (fitPointsRef), same pattern as openSheetRef.
+- [x] typecheck, 72 tests, check:names, em-dash grep all clean;
+      committed 225d6b5 on slice/38-scout-overhaul (pushed), merged
+      to bleeding-edge
+- [x] Sol review (74k tokens) dispositioned. FIXED (1039bcf): held
+      chords autorepeat and flip-flopped the peek (event.repeat now
+      ignored, IME composition keys too), and a PRE-EXISTING catch:
+      the map's opening camera was captured once at mount, so a
+      document switch during MapLibre construction opened on the
+      first document's camera (openingRef now refreshes per render
+      like its sibling refs). PUSHED BACK (accepted risks, named):
+      sidebar shiftBy canceling a mid-flight peek animation needs
+      Cmd+. and Cmd+/ inside one 300ms slide, recoverable by pressing
+      again; bearing/pitch not restored (the app's camera model is
+      deliberately north-up {lng,lat,zoom} everywhere, documents
+      included); map-switch-vs-chord ref timing (no human presses in
+      a post-commit microsecond window); render-time ref write (the
+      file's established pattern, no concurrent renders feed it);
+      antimeridian bounds (a Europe trip app; a date-line straddle
+      degrades to a wide fit, not corruption); peek's moveend
+      persisting as the document camera (the map remembering where
+      you left it is the intended behavior); capture-phase listener
+      (all inputs are ours and none stop propagation); no unit tests
+      (a DOM keyboard harness around a mocked MapLibre buys less than
+      the manual matrix in the commit message, same call as bare "s").
+- [x] deployed to prod twice (feature 225d6b5, fixes 1039bcf)
+
 ## Round: chevron as one bubble outline + aligned X column (planned 2026-08-07)
 
 Owner feedback (screenshots): (1) the pin-card arrow STILL reads as its
@@ -95,9 +160,8 @@ Checklist:
       scrollbar would shift row X's left of the header X. Owner is on
       macOS overlay scrollbars; revisit only if a Windows/Linux user
       appears. v1's X size={11} left alone (older surface, deliberate).
-- [ ] report with shortcut suggestions (Cmd+B or Cmd+\ for sidebar,
-      Cmd+0 for fit-all; Shift+letter cannot work inside inputs since
-      it types capitals; no single unmodified key works inside inputs)
+- [x] report with shortcut suggestions delivered; owner ruled 2026-08-08:
+      Cmd+. sidebar, Cmd+/ view toggle (see the round above)
 
 Resume notes for a fresh agent: the working tree lives on bleeding-edge
 (HANDOFF edits stay here; code went to the slice via the stash dance:
@@ -1679,6 +1743,37 @@ QUEUED BY THIS ROUND:
   at the end, clearly attributed. Never lead with them.
 - Design docs before code for anything substantial. The owner reviews
   everything.
+
+## Cmd chord catalog (portable: what a Mac web app can claim)
+
+Owner asked for this list (2026-08-08) so other apps can reuse it.
+Context: Mac, Chromium-family browsers (Dia included). A page steals a
+chord by calling preventDefault on keydown; the buckets below say
+which chords that actually works for, and which it never reaches.
+
+- **Unreachable, ever** (browser/OS consumes them before the page):
+  Cmd+W, Cmd+T, Cmd+N (and their Shift variants), Cmd+M (minimize),
+  Cmd+H (hide), Cmd+Q (quit), Cmd+Tab, Cmd+` (window cycle).
+- **Reachable but leave them alone** (deep muscle memory, or they must
+  keep working inside inputs): Cmd+A/C/X/V/Z (editing), Cmd+F (find),
+  Cmd+R (reload), Cmd+P (print), Cmd+S (save; Dia binds it to Focus
+  Mode), Cmd+D (bookmark), Cmd+G (find next), Cmd+L (address bar),
+  Cmd+0/+/- (page zoom), Cmd+[ and Cmd+] (history), Cmd+1..9 (tab
+  switching), Cmd+Y (history), Cmd+B/I/U only where rich-text editing
+  exists (they are bold/italic/underline there, free otherwise).
+- **Free to claim**: Cmd+E, Cmd+J (downloads panel, painless to
+  shadow), Cmd+K, Cmd+O (open-file dialog, painless), Cmd+. , Cmd+/ ,
+  Cmd+\ , Cmd+' , Cmd+; , Cmd+, is the browser settings page on Mac
+  Chromium so treat it as taken.
+- Layout gotcha: match `event.key`, not `event.code`, and do not
+  require Shift to be up: "/" is Shift+7 on German-style layouts, so
+  excluding shiftKey breaks Cmd+/ abroad.
+- Dia specifics: Dia lets users REMAP its own shortcuts in Settings,
+  so a soft collision with a Dia feature is recoverable on the user
+  side. Dia owns Cmd+S (Focus Mode).
+- This app's claims so far (scout, v3): Cmd+. toggles the docked
+  sidebar, Cmd+/ toggles the fit-all-pins peek, Cmd+Enter adds a
+  query line, Cmd+click drops a route spot.
 
 ## Locked future decisions (researched and verified, do not re-litigate)
 
