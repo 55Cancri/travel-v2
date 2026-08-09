@@ -113,6 +113,12 @@ Checklist:
       removed. The peek's earlier "nothing happens" was the empty-map
       no-op plus a stale tab; with a pin shown it fit and returned
       cleanly in his hands. Cmd+/ CONFIRMED WORKING BY OWNER.
+- [x] Sol pass on the rebind (35k tokens): cleanup verified complete
+      (no debug residue, route tree clean), no handler regressions.
+      One P2 pushed back as accepted risk: layouts typing ";" via
+      Option/AltGraph cannot fire the chord because Alt is rejected
+      first; two English-keyboard users, and admitting Alt would let
+      Option-modified characters trigger chords on other layouts.
 
 ## Round: chevron as one bubble outline + aligned X column (planned 2026-08-07)
 
