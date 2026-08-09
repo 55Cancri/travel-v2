@@ -102,6 +102,17 @@ Checklist:
       (a DOM keyboard harness around a mocked MapLibre buys less than
       the manual matrix in the commit message, same call as bare "s").
 - [x] deployed to prod twice (feature 225d6b5, fixes 1039bcf)
+- [x] OWNER TEST FAILED on Cmd+., and the diagnosis is final: Dia
+      never delivers the period keydown when Cmd is held (macOS's old
+      cancel chord, consumed at the browser layer). Proven with a live
+      trace: a temp debug chip + /api/chord-log echo route showed his
+      Cmd+. presses arriving as bare key="Meta" with no "." keydown
+      ever following, while key="/" and key=";" both arrived and the
+      peek actions fired. THE SIDEBAR CHORD IS NOW Cmd+; (observed
+      delivered in Dia, home row, one key from Cmd+/). Debug scaffold
+      removed. The peek's earlier "nothing happens" was the empty-map
+      no-op plus a stale tab; with a pin shown it fit and returned
+      cleanly in his hands. Cmd+/ CONFIRMED WORKING BY OWNER.
 
 ## Round: chevron as one bubble outline + aligned X column (planned 2026-08-07)
 
@@ -1762,16 +1773,21 @@ which chords that actually works for, and which it never reaches.
   switching), Cmd+Y (history), Cmd+B/I/U only where rich-text editing
   exists (they are bold/italic/underline there, free otherwise).
 - **Free to claim**: Cmd+E, Cmd+J (downloads panel, painless to
-  shadow), Cmd+K, Cmd+O (open-file dialog, painless), Cmd+. , Cmd+/ ,
-  Cmd+\ , Cmd+' , Cmd+; , Cmd+, is the browser settings page on Mac
-  Chromium so treat it as taken.
+  shadow), Cmd+K, Cmd+O (open-file dialog, painless), Cmd+/ , Cmd+\ ,
+  Cmd+' , Cmd+; (both verified delivered in Dia 2026-08-09). Cmd+, is
+  the browser settings page on Mac Chromium so treat it as taken.
+- **Cmd+. is DEAD for web apps in Dia** (verified 2026-08-09 with a
+  keydown trace: the period keydown never reaches the page while Cmd
+  is held; only the bare Meta keydown arrives). It is macOS's old
+  cancel chord. Assume other Mac browsers may eat it too; never bind
+  it without tracing delivery first.
 - Layout gotcha: match `event.key`, not `event.code`, and do not
   require Shift to be up: "/" is Shift+7 on German-style layouts, so
   excluding shiftKey breaks Cmd+/ abroad.
 - Dia specifics: Dia lets users REMAP its own shortcuts in Settings,
   so a soft collision with a Dia feature is recoverable on the user
   side. Dia owns Cmd+S (Focus Mode).
-- This app's claims so far (scout, v3): Cmd+. toggles the docked
+- This app's claims so far (scout, v3): Cmd+; toggles the docked
   sidebar, Cmd+/ toggles the fit-all-pins peek, Cmd+Enter adds a
   query line, Cmd+click drops a route spot.
 
