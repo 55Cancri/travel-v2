@@ -2,9 +2,8 @@ import * as React from "react";
 import { Block, DotsSixVertical, haptic, Plus, Text } from "atoms";
 import { IconButton } from "alloys";
 import type { Finding, SearchScope } from "../find-places";
-import type { ScoutAction, ScoutLine } from "../lines";
-import { QueryLine } from "./query-line";
-import { RouteStrip } from "./route-strip";
+import type { LineSet, ScoutAction } from "../lines";
+import { LineStack } from "./line-stack";
 
 // The floating frame the query lines live in: dragged by its grip row,
 // resized from its bottom corner, and remembered across reloads so a scout
@@ -67,16 +66,16 @@ const fitted = (frame: Frame, viewport: Viewport): Frame => {
 };
 
 export function QueryPanel(props: {
-  lines: ScoutLine[];
+  view: LineSet;
   scopeOf: () => SearchScope | null;
   dispatch: (action: ScoutAction) => void;
   onFocusFinding: (finding: Finding) => void;
   now: Temporal.Instant;
   mapReady: boolean;
-  routeCount: number;
+  edgeCount: number;
   routeNotice: string | null;
   onClearRoute: () => void;
-  onUndoRoutePoint: () => void;
+  onUndoEdge: () => void;
 }) {
   // Mount with the opening frame and adopt the stored one on the client:
   // localStorage and window are both out of reach while this renders on the
@@ -173,7 +172,7 @@ export function QueryPanel(props: {
       borderWidth="1px"
       borderStyle="solid"
       borderColor="border-muted"
-      bg="surface-panel"
+      bg="surface-shell"
       boxShadow="0 10px 30px rgba(0, 0, 0, 0.22)"
       overflow="hidden"
       style={{ left: shown.x, top: shown.y, width: shown.width, height: shown.height }}
@@ -207,27 +206,21 @@ export function QueryPanel(props: {
           <Plus size={16} />
         </IconButton>
       </Block>
-      <Block overflowY="auto" px="sm" pb="sm">
-        {props.routeCount > 0 ? (
-          <RouteStrip
-            count={props.routeCount}
-            notice={props.routeNotice}
-            onClear={props.onClearRoute}
-            onUndo={props.onUndoRoutePoint}
-          />
-        ) : null}
-        {props.lines.map((line) => (
-          <QueryLine
-            key={line.id}
-            line={line}
-            canRemove={props.lines.length > 1}
-            scopeOf={props.scopeOf}
-            dispatch={props.dispatch}
-            onFocusFinding={props.onFocusFinding}
-            now={props.now}
-            mapReady={props.mapReady}
-          />
-        ))}
+      {/* md gutters like the sheet and sidebar: the result rows' edge to
+          edge highlight bleeds exactly one md and must not overshoot. */}
+      <Block overflowY="auto" px="md" pb="sm">
+        <LineStack
+          view={props.view}
+          scopeOf={props.scopeOf}
+          dispatch={props.dispatch}
+          onFocusFinding={props.onFocusFinding}
+          now={props.now}
+          mapReady={props.mapReady}
+          edgeCount={props.edgeCount}
+          routeNotice={props.routeNotice}
+          onClearRoute={props.onClearRoute}
+          onUndoEdge={props.onUndoEdge}
+        />
       </Block>
       <Block
         position="absolute"

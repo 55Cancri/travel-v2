@@ -1,12 +1,13 @@
 import { motion } from "framer-motion";
-import { Button } from "atoms";
+import { Button, type ButtonProps } from "atoms";
 
 // A real checkbox: a rounded SQUARE (not a radio circle) that fills with the
 // accent and draws its check with framer's pathLength (normalized 0..1 via the
 // SVG pathLength attribute, so it needs no measurement and is SSR-safe). `muted`
 // grays it (e.g. an empty row not yet checkable) but it stays CLICKABLE: a
 // disabled <button> swallows the tap with no press, so the caller can route a
-// muted tap somewhere useful instead.
+// muted tap somewhere useful instead. Style props pass through like every
+// alloy's, and the caller's win (a highlighted row lifts the border).
 export function Checkbox(props: {
   checked: boolean;
   muted?: boolean;
@@ -14,39 +15,46 @@ export function Checkbox(props: {
   label?: string;
   /** Toggling never moves focus here, so an editor's caret and keyboard survive the tap. */
   preservesFocus?: boolean;
-}) {
+} & Omit<ButtonProps<"button">, "checked" | "onToggle" | "label">) {
+  // borderColor peels off separately: a caller passing undefined (the
+  // idle half of its own ternary) must fall back to the ladder below,
+  // not override it into the CSS default (currentColor, near black).
+  const { checked, muted, onToggle, label, preservesFocus, borderColor, ...rest } = props;
   return (
     <Button
       type="button"
       role="checkbox"
-      aria-checked={props.checked}
-      aria-label={props.label}
-      onPress={props.onToggle}
-      preservesFocus={props.preservesFocus}
+      aria-checked={checked}
+      aria-label={label}
+      onPress={onToggle}
+      preservesFocus={preservesFocus}
       grid
       placeItems="center"
       w="1.3rem"
       h="1.3rem"
       p={0}
       borderRadius="xs"
-      borderWidth="2px"
+      borderWidth="1.5px"
       borderStyle="solid"
       borderColor={
-        props.checked
-          ? "accent"
-          : props.muted
-            ? "border-muted"
-            : "border-strong"
+        borderColor !== undefined
+          ? borderColor
+          : checked
+            ? "accent"
+            : muted
+              ? "border-muted"
+              : "border-strong"
       }
-      bg={props.checked ? "accent" : "transparent"}
+      bg={checked ? "accent" : "transparent"}
       color="text-on-accent"
       transition="background-color 200ms ease, border-color 200ms ease"
+      {...rest}
     >
       <svg
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={4}
+        strokeWidth={3}
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden="true"
@@ -56,7 +64,7 @@ export function Checkbox(props: {
         <motion.path
           d="M5 13l4 4L19 7"
           initial={false}
-          animate={{ pathLength: props.checked ? 1 : 0 }}
+          animate={{ pathLength: checked ? 1 : 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
         />
       </svg>

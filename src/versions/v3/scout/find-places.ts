@@ -1,17 +1,24 @@
-// What one typed line resolves to. Two sources answer, and they answer at
-// very different speeds: the geocoder returns in about a tenth of a second,
-// while a name sweep of the visible map through Overpass routinely takes ten
-// seconds. So results STREAM. Whatever has arrived is shown, and the line
-// says when more is still coming. Waiting for both before showing anything
-// is what made a fast search feel broken.
+// What one typed line resolves to. Two sources answer two different
+// questions and get two separate result sections, never blended:
 //
-// The two sources answer different questions. Photon is a search index and
-// handles "one specific place, wherever it is". Overpass is an analytics API,
-// not an index, but it is the only way to ask "every branch of this chain
-// inside what I am looking at", which is the thing the panel exists for. It
-// is also the only source carrying opening hours.
+// - Google autocomplete is the search engine. It is typo tolerant, ranks
+//   by prominence, and understands location words, so "hotel hoy paris"
+//   lands on the Paris hotel from anywhere on Earth. Its hits carry NO
+//   coordinates until a details call resolves them, which happens on the
+//   first interaction with a hit (tick, or press to fly), never
+//   speculatively, because details calls are the budgeted resource.
+// - Overpass answers "every branch of this chain inside what I am looking
+//   at", which no search engine does. It is slow (routinely ten seconds),
+//   view-scoped by nature, and the only source carrying OSM opening
+//   hours, so its answers stream in under their own clearly labeled
+//   section instead of polluting the engine's ranking.
+//
+// Each source's fresh answer REPLACES its section wholesale. The blending
+// and cross-source ranking this file used to do existed to prop up two
+// weak sources; with a real engine on top it only reintroduced the noise
+// (an Amsterdam hotel outranking the Paris hotel someone typed).
 
-import { fetchAddressHits } from "entities/geocode";
+import { fetchSearchHits, type GoogleHours } from "entities/place-search";
 import { overpassQuery } from "entities/osm";
 
 export type ViewBounds = { south: number; west: number; north: number; east: number };
@@ -19,21 +26,31 @@ export type ViewBounds = { south: number; west: number; north: number; east: num
 export type Finding = {
   id: string;
   name: string;
-  lng: number;
-  lat: number;
+  // Engine hits are born without coordinates; a details call fills them
+  // in on first interaction. Sweep hits always carry them.
+  lng?: number;
+  lat?: number;
+  // For engine hits this opens as the engine's area line ("Paris,
+  // France") and becomes the full street address once resolved.
   address?: string;
   // The raw OSM opening_hours value, still in 24-hour local wall time.
+  // Only sweep hits carry hours; a pinned engine hit fetches its own.
   hours?: string;
+  // The engine's structured schedule, fetched the first time the hit is
+  // ticked onto the map; hoursKnown marks that the ask has ANSWERED
+  // (with or without a schedule), which is what ends a "Loading
+  // times..." line.
+  spotHours?: GoogleHours;
+  hoursKnown?: boolean;
   website?: string;
   phone?: string;
   // What OSM calls this kind of place ("Electronics", "Supermarket").
   category?: string;
-  // Geocoder hits carry a location and nothing else, so a row can explain
-  // why one result knows its hours and its neighbour does not.
-  source: "osm" | "geocoder";
+  source: "google" | "osm";
+  // The engine's place id, the key for resolving coordinates and hours.
+  placeId?: string;
   // Carries a wikidata or wikipedia tag. The nearest thing OSM has to a
-  // prominence signal, and the same one the trip planner uses to tell a
-  // landmark from a lawn fixture.
+  // prominence signal.
   notable?: boolean;
 };
 
@@ -43,10 +60,7 @@ export type Finding = {
 export const MIN_QUERY_CHARS = 3;
 export const MIN_SEARCH_ZOOM = 11;
 
-const RESULT_CAP = 120;
-// A geocoder hit this close to an OSM hit of the same name is that same
-// shop, described twice.
-const SAME_PLACE_METERS = 80;
+const SWEEP_RESULT_CAP = 120;
 // How long the expensive half waits before it starts. The whole call is
 // aborted by the next keystroke, so this doubles as the sweep's own
 // debounce: nobody sweeps for a phrase still being typed.
@@ -105,13 +119,6 @@ const addressOf = (tags: Record<string, string>) => {
   return [street, tags["addr:city"]].filter(Boolean).join(", ") || undefined;
 };
 
-const metersBetween = (aLat: number, aLng: number, bLat: number, bLng: number) => {
-  const toRad = Math.PI / 180;
-  const x = (bLng - aLng) * toRad * Math.cos(((aLat + bLat) / 2) * toRad);
-  const y = (bLat - aLat) * toRad;
-  return Math.sqrt(x * x + y * y) * 6371000;
-};
-
 const rest = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     if (signal.aborted) {
@@ -166,14 +173,14 @@ const relevanceOf = (finding: Finding, words: string[], phrase: string) => {
   );
 };
 
-const rankFindings = (findings: Finding[], words: string[], phrase: string) =>
+const rankSweep = (findings: Finding[], words: string[], phrase: string) =>
   findings
     .map((finding) => ({ finding, score: relevanceOf(finding, words, phrase) }))
     .sort((a, b) => b.score - a.score)
     .map((entry) => entry.finding)
-    .slice(0, RESULT_CAP);
+    .slice(0, SWEEP_RESULT_CAP);
 
-const osmFindings = async (words: string[], view: ViewBounds, signal: AbortSignal) => {
+const sweepFindings = async (words: string[], view: ViewBounds, signal: AbortSignal) => {
   const needle = namePattern(words);
   const bbox = `(${view.south},${view.west},${view.north},${view.east})`;
   const blocks = ["name", "brand", "operator"]
@@ -217,34 +224,19 @@ const osmFindings = async (words: string[], view: ViewBounds, signal: AbortSigna
   return findings;
 };
 
-const geocoderFindings = async (
-  query: string,
-  bias: { lng: number; lat: number },
-  signal: AbortSignal,
-) => {
-  const hits = await fetchAddressHits(query, bias, signal);
-  return hits.map(
-    (hit): Finding => ({
-      id: `geocoder:${hit.lng.toFixed(5)},${hit.lat.toFixed(5)}`,
-      name: hit.label,
-      lng: hit.lng,
-      lat: hit.lat,
-      address: hit.address,
-      source: "geocoder",
-    }),
-  );
-};
-
 export type SearchScope = {
   view: ViewBounds;
   bias: { lng: number; lat: number };
   // False when the map is pulled back too far for a name sweep. The
-  // geocoder still answers, so an address stays findable from any altitude.
+  // engine still answers, so anything stays findable from any altitude.
   scanMap: boolean;
 };
 
 export type LineResults = {
-  findings: Finding[];
+  // The engine's hits, in the engine's own order.
+  places: Finding[];
+  // The view sweep's hits, ranked locally.
+  nearby: Finding[];
   // A source that failed while the other answered, or a reason the sweep
   // did not run. The line stays useful and says what it is missing.
   notice?: string;
@@ -252,20 +244,6 @@ export type LineResults = {
   // first few results look like the whole answer.
   sweeping: boolean;
 };
-
-// A geocoder hit standing on top of an OSM hit of the same name is that same
-// shop; the OSM one wins because it knows the opening hours.
-const merge = (mapHits: Finding[], addressHits: Finding[]) =>
-  mapHits.concat(
-    addressHits.filter(
-      (hit) =>
-        !mapHits.some(
-          (known) =>
-            known.name.toLowerCase() === hit.name.toLowerCase() &&
-            metersBetween(known.lat, known.lng, hit.lat, hit.lng) < SAME_PLACE_METERS,
-        ),
-    ),
-  );
 
 // Reports through `onResults` every time a source lands. Resolves once both
 // are done. Throws only when BOTH failed, because then the line found
@@ -275,43 +253,59 @@ export const findPlaces = async (
   scope: SearchScope,
   signal: AbortSignal,
   onResults: (results: LineResults) => void,
+  // The sweep runs only when the owner asked this query for it: it is
+  // slow, view-bound, and uninvited it read as noise beside the
+  // engine's answers.
+  wantSweep: boolean,
 ) => {
   const phrase = query.trim().toLowerCase();
   const words = wordsOf(query);
-  let mapHits: Finding[] = [];
-  let addressHits: Finding[] = [];
-  let sweeping = scope.scanMap;
+  const sweepDue = wantSweep && scope.scanMap;
+  let places: Finding[] = [];
+  let nearby: Finding[] = [];
+  let engineReason: string | undefined;
+  let sweeping = sweepDue;
   const failures: string[] = [];
 
   const emit = () => {
     if (signal.aborted) return;
     onResults({
-      findings: rankFindings(merge(mapHits, addressHits), words, phrase),
-      notice: noticeFor(scope, failures, sweeping),
+      places,
+      nearby,
+      notice: noticeFor(scope, failures, sweeping, engineReason, wantSweep),
       sweeping,
     });
   };
 
-  const address = geocoderFindings(query, scope.bias, signal)
-    .then((hits) => {
-      addressHits = hits;
+  const engine = fetchSearchHits(query, scope.bias, signal)
+    .then((answer) => {
+      engineReason = answer.reason;
+      places = answer.hits.map(
+        (hit): Finding => ({
+          id: `google:${hit.placeId}`,
+          name: hit.name,
+          address: hit.area,
+          source: "google",
+          placeId: hit.placeId,
+        }),
+      );
     })
     .catch((error: unknown) => {
-      if (!signal.aborted) console.warn("[scout] geocoder search failed:", error);
-      failures.push("geocoder");
+      if (!signal.aborted) console.warn("[scout] engine search failed:", error);
+      failures.push("engine");
     })
     .then(emit);
 
   const sweep = (async () => {
-    if (!scope.scanMap) return;
+    if (!sweepDue) return;
     // Aborted by the next keystroke, which is exactly the point.
     await rest(SWEEP_DELAY_MS, signal);
     // The caller's abort OR the deadline, whichever comes first.
     const bounded = AbortSignal.any([signal, AbortSignal.timeout(SWEEP_DEADLINE_MS)]);
-    return osmFindings(words, scope.view, bounded);
+    return sweepFindings(words, scope.view, bounded);
   })()
     .then((hits) => {
-      if (hits) mapHits = hits;
+      if (hits) nearby = rankSweep(hits, words, phrase);
     })
     .catch((error: unknown) => {
       if (!signal.aborted) {
@@ -324,16 +318,39 @@ export const findPlaces = async (
       emit();
     });
 
-  await Promise.all([address, sweep]);
-  if (failures.length >= 2) throw new Error("Neither the map nor the address lookup answered.");
+  await Promise.all([engine, sweep]);
+  // Thrown only when every source that RAN failed: an unasked or
+  // out-of-zoom sweep never runs, and an engine failure there is a
+  // total failure, not a quiet empty answer.
+  const attempted = sweepDue ? 2 : 1;
+  if (failures.length >= attempted) {
+    throw new Error("Neither the search engine nor the map sweep answered.");
+  }
 };
 
-const noticeFor = (scope: SearchScope, failures: string[], sweeping: boolean) => {
-  if (failures.includes("overpass")) {
-    return "The map sweep did not answer, so this is address matches only. Press the glass to retry.";
+const noticeFor = (
+  scope: SearchScope,
+  failures: string[],
+  sweeping: boolean,
+  engineReason: string | undefined,
+  wantSweep: boolean,
+) => {
+  if (engineReason === "budget exhausted") {
+    // Both halves can be gone at once, and the notice must not promise
+    // sweep results that never came.
+    return failures.includes("overpass")
+      ? "This month's search budget is spent and the map sweep did not answer."
+      : "This month's search budget is spent, so this is the map sweep only.";
   }
-  if (failures.includes("geocoder")) return "Address lookup failed, showing map matches only.";
-  if (!scope.scanMap) return "Zoom in to also sweep the map for every branch here.";
+  if (engineReason === "no key") return "Place search is not configured on this server.";
+  if (failures.includes("engine")) return "The search engine did not answer, map sweep only.";
+  if (failures.includes("overpass")) {
+    return "The map sweep did not answer, so this is search hits only. Press the glass to retry.";
+  }
+  // Sweep talk only reaches someone who asked for a sweep.
+  if (wantSweep && !scope.scanMap) {
+    return "Zoom in closer to sweep the map for every match here.";
+  }
   if (sweeping) return "Still sweeping the map for more matches...";
   return undefined;
 };

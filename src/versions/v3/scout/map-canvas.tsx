@@ -1,21 +1,28 @@
 import * as React from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { mapStyle } from "entities/map-style";
+import type { MapCamera } from "entities/scout-maps";
 import type { ViewBounds } from "./find-places";
+import { PinCards, type PinCardFacts } from "./pin-cards";
 import { pinImage, pinImageId, type PinPhase } from "./pin-icons";
-import type { RouteLeg, Waypoint } from "./route";
+import type { RouteLeg } from "./route";
 
 // The whole screen, with the query panel floating over it. The camera is the
 // user's: nothing here moves it on its own, and the panel asks for a move
-// only in answer to a press. Where the map is looking survives a reload,
-// because a scout who panned to their neighbourhood should not have to pan
-// back after every visit.
+// only in answer to a press. Where the map is looking is the map document's
+// memory (each saved map keeps its own camera), reported upward on every
+// rest and restored on switch.
+//
+// Two pin populations share one look but not one meaning: search pins are a
+// query line's ticked findings (ephemeral), saved pins are the document's
+// own places. Both report presses upward; the screen decides whether a
+// press edits, connects, or does nothing.
 
 export type ScoutPin = {
   id: string;
   lng: number;
   lat: number;
-  // The color of the query line that found it.
+  // The color of the query line (or saved place) that owns it.
   color: string;
   phase: PinPhase;
   name: string;
@@ -31,45 +38,23 @@ export type ScoutMapApi = {
   center: () => { lng: number; lat: number } | null;
   zoom: () => number;
   flyTo: (target: { lng: number; lat: number }, zoom?: number) => void;
+  // One flight that frames every given point: the overview half of the
+  // camera peek. A single point (degenerate bounds) lands at street
+  // level instead of the renderer's maximum zoom.
+  fitTo: (points: { lng: number; lat: number }[]) => void;
+  // A cut, not a flight: how a map switch lands on the other map's camera.
+  jumpTo: (camera: MapCamera) => void;
+  // Instant pixel pan. A canvas resize keeps the geography centered on
+  // the NEW canvas center, so the sidebar push compensates by half the
+  // pushed width to hold the world still on screen.
+  shiftBy: (xPx: number) => void;
 };
 
-const CAMERA_KEY = "travel2:scout-camera";
 const PIN_LAYER = "scout-pins";
+const SAVED_LAYER = "scout-saved";
 const ROUTE_LAYER = "scout-route";
-const WAYPOINT_LAYER = "scout-waypoints";
-
-type Camera = { lng: number; lat: number; zoom: number };
-
-const storedCamera = (): Camera | null => {
-  try {
-    const raw = localStorage.getItem(CAMERA_KEY);
-    if (!raw) return null;
-    const camera = JSON.parse(raw) as Partial<Camera>;
-    const { lng, lat, zoom } = camera;
-    if (typeof lng !== "number" || typeof lat !== "number" || typeof zoom !== "number") {
-      return null;
-    }
-    return { lng, lat, zoom };
-  } catch (error) {
-    // Sealed storage (Safari lockdown throws even on reads) or a value some
-    // other build wrote. Either way the map opens at home instead.
-    console.warn("[scout] stored camera unreadable:", error);
-    return null;
-  }
-};
-
-const rememberCamera = (map: import("maplibre-gl").Map) => {
-  const center = map.getCenter();
-  try {
-    localStorage.setItem(
-      CAMERA_KEY,
-      JSON.stringify({ lng: center.lng, lat: center.lat, zoom: map.getZoom() }),
-    );
-  } catch {
-    // Sealed storage: the camera still holds for this session, only the
-    // across-reload memory is lost.
-  }
-};
+// Invisible, wide twin of the route lines: the thing a finger can hit.
+const ROUTE_HIT_LAYER = "scout-route-hit";
 
 const routeCollection = (legs: RouteLeg[]) => ({
   type: "FeatureCollection" as const,
@@ -78,19 +63,8 @@ const routeCollection = (legs: RouteLeg[]) => ({
     .map((leg) => ({
       type: "Feature" as const,
       geometry: { type: "LineString" as const, coordinates: leg.line },
-      properties: { mode: leg.mode, name: leg.name ?? "" },
+      properties: { mode: leg.mode, name: leg.name ?? "", edgeId: leg.edgeId },
     })),
-});
-
-const waypointCollection = (points: Waypoint[]) => ({
-  type: "FeatureCollection" as const,
-  features: points.map((point, idx) => ({
-    type: "Feature" as const,
-    geometry: { type: "Point" as const, coordinates: [point.lng, point.lat] },
-    // The order clicked is the whole meaning of a route, so each point
-    // wears its position rather than being one anonymous dot among many.
-    properties: { id: point.id, order: String(idx + 1) },
-  })),
 });
 
 const pinCollection = (pins: ScoutPin[], dark: boolean) => ({
@@ -144,15 +118,30 @@ const pinCard = (properties: Record<string, unknown>) => {
 
 export function MapCanvas(props: {
   pins: ScoutPin[];
+  saved: ScoutPin[];
   route: RouteLeg[];
-  waypoints: Waypoint[];
-  // Cmd (or Ctrl) held while clicking: the gesture that grows a route,
-  // deliberately a modifier so a plain click never drops a point by
-  // accident while reading the map.
-  onRoutePoint: (at: { lng: number; lat: number }) => void;
-  home: { lng: number; lat: number };
-  // Announced upward so a line typed before the map existed can search the
-  // moment it does, instead of waiting for the next keystroke.
+  // The persistent mini tooltips. When they cover the search pins too,
+  // the symbol labels and hover popups stand down (the cards carry the
+  // words); a big sweep keeps labels instead and the cards stick to
+  // saved places.
+  cards: PinCardFacts[];
+  cardsCoverSearch: boolean;
+  onCardPress: (id: string) => void;
+  // A press on a pin, either population. The screen routes it: connect
+  // mode chains it into an edge, otherwise it opens the place's editor.
+  onSearchPinPress: (pinId: string) => void;
+  onSavedPinPress: (placeId: string) => void;
+  // A press on a drawn route line, to edit that edge's transport modes.
+  onEdgePress: (edgeId: string) => void;
+  // Cmd (or Ctrl) held while clicking bare map: drops a spot node and
+  // chains it, deliberately a modifier so a plain click never adds to the
+  // document by accident while reading the map.
+  onSpotDrop: (at: { lng: number; lat: number }) => void;
+  // Where the camera opens: the document's saved camera, or home when the
+  // map has never been looked at.
+  opening: MapCamera;
+  // Reported at every camera rest, so the document remembers.
+  onCameraRest: (camera: MapCamera) => void;
   onReady: (ready: boolean) => void;
   apiRef: React.RefObject<ScoutMapApi | null>;
 }) {
@@ -160,15 +149,31 @@ export function MapCanvas(props: {
   const mapRef = React.useRef<import("maplibre-gl").Map | null>(null);
   const popupRef = React.useRef<import("maplibre-gl").Popup | null>(null);
   const [ready, storeReady] = React.useState(false);
+  // The map as STATE (not just the ref), so the card overlay mounts its
+  // listeners once the instance exists.
+  const [liveMap, storeLiveMap] = React.useState<import("maplibre-gl").Map | null>(null);
+  const cardsCoverRef = React.useRef(props.cardsCoverSearch);
+  cardsCoverRef.current = props.cardsCoverSearch;
   // Repaint counter: a style swap wipes every image, source, and layer, so
   // the pin effect has to run again once the new style settles.
   const [styleTick, storeStyleTick] = React.useState(0);
-  const homeRef = React.useRef(props.home);
-  homeRef.current = props.home;
+  // Refreshed every render so a map that finishes constructing after a
+  // document switch opens on the CURRENT document's camera, not the one
+  // mounted first.
+  const openingRef = React.useRef(props.opening);
+  openingRef.current = props.opening;
   const onReadyRef = React.useRef(props.onReady);
   onReadyRef.current = props.onReady;
-  const onRoutePointRef = React.useRef(props.onRoutePoint);
-  onRoutePointRef.current = props.onRoutePoint;
+  const onSearchPinPressRef = React.useRef(props.onSearchPinPress);
+  onSearchPinPressRef.current = props.onSearchPinPress;
+  const onSavedPinPressRef = React.useRef(props.onSavedPinPress);
+  onSavedPinPressRef.current = props.onSavedPinPress;
+  const onEdgePressRef = React.useRef(props.onEdgePress);
+  onEdgePressRef.current = props.onEdgePress;
+  const onSpotDropRef = React.useRef(props.onSpotDrop);
+  onSpotDropRef.current = props.onSpotDrop;
+  const onCameraRestRef = React.useRef(props.onCameraRest);
+  onCameraRestRef.current = props.onCameraRest;
 
   React.useEffect(() => {
     let disposed = false;
@@ -180,7 +185,7 @@ export function MapCanvas(props: {
       const isDark = document.documentElement.dataset.theme === "dark";
       const style = await mapStyle(isDark);
       if (disposed || !containerRef.current) return;
-      const opening = storedCamera() ?? { ...homeRef.current, zoom: 13 };
+      const opening = openingRef.current;
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: style as never,
@@ -195,6 +200,7 @@ export function MapCanvas(props: {
         trackResize: false,
       });
       mapRef.current = map;
+      storeLiveMap(map);
       sizeWatcher = new ResizeObserver(() => map.resize());
       sizeWatcher.observe(containerRef.current);
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
@@ -214,27 +220,72 @@ export function MapCanvas(props: {
       // register once here and survive every style swap that takes the
       // layer with it. Registering them beside the layer instead would
       // stack a fresh copy on each swap.
+      // The popup is the info surface only while the persistent cards do
+      // not already carry the words; saved pins always have a card, so
+      // only the search layer ever gets one, and only in label mode.
       const openCard = (event: import("maplibre-gl").MapLayerMouseEvent) => {
+        if (cardsCoverRef.current) return;
         const feature = event.features?.[0];
         if (feature?.geometry.type !== "Point") return;
         const [lng, lat] = feature.geometry.coordinates;
         popup.setLngLat([lng, lat]).setDOMContent(pinCard(feature.properties ?? {})).addTo(map);
       };
-      map.on("mouseenter", PIN_LAYER, (event) => {
-        map.getCanvas().style.cursor = "pointer";
+      const hoverable = (layer: string) => {
+        map.on("mouseenter", layer, (event) => {
+          map.getCanvas().style.cursor = "pointer";
+          if (layer === PIN_LAYER) openCard(event);
+        });
+        map.on("mouseleave", layer, () => {
+          map.getCanvas().style.cursor = "";
+          popup.remove();
+        });
+      };
+      hoverable(PIN_LAYER);
+      hoverable(SAVED_LAYER);
+      // Touch has no hover: a tap is how a phone reads a pin. The press
+      // also goes upward, where the screen may turn it into a connection
+      // or an editor.
+      map.on("click", PIN_LAYER, (event) => {
         openCard(event);
+        const id = event.features?.[0]?.properties?.id;
+        if (typeof id === "string") onSearchPinPressRef.current(id);
       });
-      map.on("mouseleave", PIN_LAYER, () => {
+      map.on("click", SAVED_LAYER, (event) => {
+        const id = event.features?.[0]?.properties?.id;
+        if (typeof id === "string") onSavedPinPressRef.current(id);
+      });
+      map.on("mouseenter", ROUTE_HIT_LAYER, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", ROUTE_HIT_LAYER, () => {
         map.getCanvas().style.cursor = "";
-        popup.remove();
       });
-      // Touch has no hover: a tap is how a phone reads a pin.
-      map.on("click", PIN_LAYER, openCard);
+      map.on("click", ROUTE_HIT_LAYER, (event) => {
+        // A press meant for a pin is the pin's: pins sit above the route
+        // and already answered it.
+        const pinsHit = map.queryRenderedFeatures(event.point, {
+          layers: [PIN_LAYER, SAVED_LAYER].filter((layer) => map.getLayer(layer)),
+        });
+        if (pinsHit.length > 0) return;
+        const edgeId = event.features?.[0]?.properties?.edgeId;
+        if (typeof edgeId === "string" && edgeId) onEdgePressRef.current(edgeId);
+      });
       map.on("click", (event) => {
         const held = event.originalEvent.metaKey || event.originalEvent.ctrlKey;
-        if (held) onRoutePointRef.current({ lng: event.lngLat.lng, lat: event.lngLat.lat });
+        if (!held) return;
+        // A Cmd-click that lands on a pin is a connection gesture, not a
+        // request for a new spot on top of it; the pin's own handler has
+        // it.
+        const hit = map.queryRenderedFeatures(event.point, {
+          layers: [PIN_LAYER, SAVED_LAYER].filter((layer) => map.getLayer(layer)),
+        });
+        if (hit.length > 0) return;
+        onSpotDropRef.current({ lng: event.lngLat.lng, lat: event.lngLat.lat });
       });
-      map.on("moveend", () => rememberCamera(map));
+      map.on("moveend", () => {
+        const center = map.getCenter();
+        onCameraRestRef.current({ lng: center.lng, lat: center.lat, zoom: map.getZoom() });
+      });
       // style.load, not load: "load" waits for the first rendered frame,
       // which never arrives while the container has no size (a background
       // tab, a collapsed pane), leaving the map permanently un-ready and
@@ -290,6 +341,18 @@ export function MapCanvas(props: {
         zoom: () => map.getZoom(),
         flyTo: (target, zoom) =>
           map.easeTo({ center: [target.lng, target.lat], zoom: zoom ?? map.getZoom() }),
+        fitTo: (points) => {
+          if (points.length === 0) return;
+          const bounds = new maplibregl.LngLatBounds();
+          for (const point of points) bounds.extend([point.lng, point.lat]);
+          // Padding clears the corner chrome; maxZoom is the same street
+          // level a result row flies to, which is where a one-point fit
+          // would otherwise dive past.
+          map.fitBounds(bounds, { padding: 80, maxZoom: 16 });
+        },
+        jumpTo: (camera) =>
+          map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom }),
+        shiftBy: (xPx) => map.panBy([xPx, 0], { duration: 0 }),
       };
     })();
     return () => {
@@ -300,6 +363,7 @@ export function MapCanvas(props: {
       popupRef.current?.remove();
       mapRef.current?.remove();
       mapRef.current = null;
+      storeLiveMap(null);
       storeReady(false);
       onReadyRef.current(false);
     };
@@ -308,32 +372,34 @@ export function MapCanvas(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pins = props.pins;
-  React.useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !ready) return;
-    // A style swap leaves the map styleless for a moment, and adding an
-    // image, source, or layer in that window throws. Ticking a checkbox or
-    // the minute clock mid-swap would land exactly there. Nothing is lost
-    // by waiting: style.load bumps styleTick and runs this again.
-    if (!map.isStyleLoaded()) return;
-    const dark = document.documentElement.dataset.theme === "dark";
+  // One effect per pin population, same dance: register any missing
+  // images, then set or create the source and its symbol layer.
+  const paintPins = (
+    map: import("maplibre-gl").Map,
+    layer: string,
+    pins: ScoutPin[],
+    dark: boolean,
+    labeled: boolean,
+  ) => {
     for (const pin of pins) {
       const id = pinImageId(pin.color, pin.phase, dark);
       if (map.hasImage(id)) continue;
       map.addImage(id, pinImage(pin.color, pin.phase, dark), { pixelRatio: 2 });
     }
     const collection = pinCollection(pins, dark);
-    const source = map.getSource(PIN_LAYER) as import("maplibre-gl").GeoJSONSource | undefined;
+    const source = map.getSource(layer) as import("maplibre-gl").GeoJSONSource | undefined;
     if (source) {
       source.setData(collection);
+      // The label mode can flip after the layer exists (cards taking
+      // over from a big sweep's labels and back).
+      map.setLayoutProperty(layer, "text-field", labeled ? ["get", "label"] : "");
       return;
     }
-    map.addSource(PIN_LAYER, { type: "geojson", data: collection });
+    map.addSource(layer, { type: "geojson", data: collection });
     map.addLayer({
-      id: PIN_LAYER,
+      id: layer,
       type: "symbol",
-      source: PIN_LAYER,
+      source: layer,
       layout: {
         "icon-image": ["get", "icon"],
         "icon-anchor": "bottom",
@@ -341,7 +407,7 @@ export function MapCanvas(props: {
         // block are exactly the comparison the search exists to make.
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
-        "text-field": ["get", "label"],
+        "text-field": labeled ? ["get", "label"] : "",
         "text-font": ["Noto Sans Regular"],
         "text-size": 11,
         "text-anchor": "top",
@@ -357,26 +423,45 @@ export function MapCanvas(props: {
         "text-halo-width": 1.4,
       },
     });
-  }, [pins, ready, styleTick]);
+  };
+
+  const pins = props.pins;
+  const saved = props.saved;
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    // A style swap leaves the map styleless for a moment, and adding an
+    // image, source, or layer in that window throws. Ticking a checkbox or
+    // the minute clock mid-swap would land exactly there. Nothing is lost
+    // by waiting: style.load bumps styleTick and runs this again.
+    if (!map.isStyleLoaded()) return;
+    const dark = document.documentElement.dataset.theme === "dark";
+    // Saved first, so the search pins' layer ends up above it: a fresh
+    // search should never hide under last week's saved pins. Saved pins
+    // never carry symbol text (their card always does); search pins keep
+    // labels only while the cards are not covering them.
+    paintPins(map, SAVED_LAYER, saved, dark, false);
+    paintPins(map, PIN_LAYER, pins, dark, !props.cardsCoverSearch);
+  }, [pins, saved, ready, styleTick, props.cardsCoverSearch]);
 
   const route = props.route;
-  const waypoints = props.waypoints;
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !map.isStyleLoaded()) return;
     const dark = document.documentElement.dataset.theme === "dark";
     const legs = routeCollection(route);
-    const points = waypointCollection(waypoints);
     const drawn = map.getSource(ROUTE_LAYER) as import("maplibre-gl").GeoJSONSource | undefined;
     if (drawn) {
       drawn.setData(legs);
-      (map.getSource(WAYPOINT_LAYER) as import("maplibre-gl").GeoJSONSource).setData(points);
       return;
     }
     map.addSource(ROUTE_LAYER, { type: "geojson", data: legs });
-    map.addSource(WAYPOINT_LAYER, { type: "geojson", data: points });
-    // Under the search pins: the route is context for them, not a rival.
-    const under = map.getLayer(PIN_LAYER) ? PIN_LAYER : undefined;
+    // Under the pins: the route is context for them, not a rival.
+    const under = map.getLayer(SAVED_LAYER)
+      ? SAVED_LAYER
+      : map.getLayer(PIN_LAYER)
+        ? PIN_LAYER
+        : undefined;
     // Two layers rather than one, because line-dasharray is the one paint
     // property maplibre will not drive from a feature: a walk has to be a
     // separate filtered layer to be dashed at all. The pair also means the
@@ -416,50 +501,34 @@ export function MapCanvas(props: {
       },
       under,
     );
+    // The finger-sized twin over both visible lines, still under the pins.
     map.addLayer(
       {
-        id: `${WAYPOINT_LAYER}-dot`,
-        type: "circle",
-        source: WAYPOINT_LAYER,
+        id: ROUTE_HIT_LAYER,
+        type: "line",
+        source: ROUTE_LAYER,
+        layout: { "line-cap": "round", "line-join": "round" },
         paint: {
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            11,
-            7,
-            17,
-            11,
-          ] as unknown as number,
-          "circle-color": dark ? "#D9D0C4" : "#2C2722",
-          "circle-stroke-color": dark ? "#171512" : "#FFFFFF",
-          "circle-stroke-width": 2,
+          "line-color": "#000000",
+          "line-width": 22,
+          // Not zero: a fully transparent line can be culled out of hit
+          // testing, and one that is one step above invisible cannot.
+          "line-opacity": 0.001,
         },
       },
       under,
     );
-    map.addLayer(
-      {
-        id: WAYPOINT_LAYER,
-        type: "symbol",
-        source: WAYPOINT_LAYER,
-        layout: {
-          // The order clicked is the whole meaning of a route, so each point
-          // wears its position rather than being an anonymous dot.
-          "text-field": ["get", "order"],
-          "text-font": ["Noto Sans Bold"],
-          "text-size": 11,
-          "text-allow-overlap": true,
-        },
-        paint: { "text-color": dark ? "#171512" : "#FFFFFF" },
-      },
-      under,
-    );
-  }, [route, waypoints, ready, styleTick]);
+  }, [route, ready, styleTick]);
 
-  // A raw element with inline sizing, not an atom: maplibre claims this node,
-  // stamping its own class and `position: relative` from its unlayered
-  // stylesheet, which outranks anything Panda emits for it. Inline styles are
-  // the only declarations that survive the takeover.
-  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
+  // Raw elements with inline sizing, not atoms: maplibre claims the inner
+  // node, stamping its own class and `position: relative` from its
+  // unlayered stylesheet, which outranks anything Panda emits for it.
+  // Inline styles are the only declarations that survive the takeover. The
+  // outer div is ours and anchors the card overlay.
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <PinCards map={liveMap} cards={props.cards} onPress={props.onCardPress} />
+    </div>
+  );
 }

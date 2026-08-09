@@ -1,20 +1,22 @@
-// Close/dismiss cross (Phosphor: x, BOLD weight to match the icon set's
-// stroke presence). Reads currentColor.
-const PATH =
-  "M208.49,191.51a12,12,0,0,1-17,17L128,145,64.49,208.49a12,12,0,0,1-17-17L111,128,47.51,64.49a12,12,0,0,1,17-17L128,111l63.51-63.52a12,12,0,0,1,17,17L145,128Z";
-
+// Close/dismiss cross, stroke-matched to the Plus (same 2px stroke, round
+// caps, one unit narrower in span because diagonals read larger than
+// orthogonals at equal bounds). The two share toolbars, so they must
+// weigh the same.
 export function X(props: { size?: number }) {
   const size = props.size ?? 16;
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 256 256"
-      fill="currentColor"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
       aria-hidden="true"
       focusable="false"
     >
-      <path d={PATH} />
+      <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   );
 }

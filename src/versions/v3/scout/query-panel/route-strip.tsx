@@ -1,13 +1,13 @@
 import { Block, Text, X } from "atoms";
 import { IconButton } from "alloys";
 
-// What the Cmd-clicked route amounts to, and the way out of it. It sits
+// What the map's connections amount to, and the way out of them. It sits
 // above the query lines because the route is about the map as a whole,
 // while a line is about one question asked of it.
 //
-// It also carries the routing notice. A leg the routers could not answer is
-// drawn as a straight line, and a straight line that says nothing would
-// read as a real path.
+// It also carries the routing notice. A connection the routers could not
+// answer is drawn as a straight line, and a straight line that says
+// nothing would read as a real path.
 export function RouteStrip(props: {
   count: number;
   notice: string | null;
@@ -18,22 +18,28 @@ export function RouteStrip(props: {
     <Block pt="xs" pb="sm">
       <Block grid cols="1fr auto auto" alignItems="center" gap="xs">
         <Text fontSize="xs" fontWeight="550" color="text-muted">
-          Route · {props.count} {props.count === 1 ? "point" : "points"}
+          Route · {props.count} {props.count === 1 ? "connection" : "connections"}
         </Text>
-        <IconButton type="button" aria-label="Remove the last route point" onPress={props.onUndo}>
+        <IconButton
+          type="button"
+          aria-label="Remove the last connection"
+          onPress={props.onUndo}
+        >
           <Text fontSize="xs" fontWeight="550">
             Undo
           </Text>
         </IconButton>
-        <IconButton type="button" aria-label="Clear the route" onPress={props.onClear}>
-          <X size={16} />
+        <IconButton
+          type="button"
+          aria-label="Clear the route"
+          onPress={props.onClear}
+          // Glyph flush with the content edge, on the same vertical
+          // line as the other X glyphs in the stack.
+          mr="calc((18px - 1.5rlh) / 2)"
+        >
+          <X size={18} />
         </IconButton>
       </Block>
-      {props.count === 1 ? (
-        <Text as="p" fontSize="xs" color="text-muted" pt="xs">
-          Cmd-click the map again to draw a route from here.
-        </Text>
-      ) : null}
       {props.notice ? (
         <Text as="p" fontSize="xs" color="danger" pt="xs">
           {props.notice}
