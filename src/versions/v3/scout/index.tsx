@@ -159,13 +159,15 @@ export function Scout() {
   const overviewReturnRef = React.useRef<MapCamera | null>(null);
   const fitPointsRef = React.useRef<{ lng: number; lat: number }[]>([]);
 
-  // Two chords, side-by-side keys, both alive while typing in an input
+  // Two chords, neighboring keys, both alive while typing in an input
   // (a bare letter would insert itself, and these exist to be reachable
-  // mid-search): Cmd+. toggles the docked sidebar, Cmd+/ peeks at every
-  // pin and returns. Escape closes the sidebar, unless a sheet is open,
-  // because the sheet's own Escape listener already answers that press.
-  // Shift stays unchecked: on layouts where "/" needs Shift, Cmd+/
-  // arrives with shiftKey held.
+  // mid-search): Cmd+; toggles the docked sidebar, Cmd+/ peeks at every
+  // pin and returns. Cmd+. was the first choice and can never work: the
+  // browser consumes macOS's old cancel chord before the page sees the
+  // period keydown (verified against a live keydown trace). Escape
+  // closes the sidebar, unless a sheet is open, because the sheet's own
+  // Escape listener already answers that press. Shift stays unchecked:
+  // on layouts where "/" needs Shift, Cmd+/ arrives with shiftKey held.
   const openSheetRef = React.useRef(openSheet);
   openSheetRef.current = openSheet;
   React.useEffect(() => {
@@ -182,7 +184,7 @@ export function Scout() {
           return;
         }
         if (!event.metaKey || event.ctrlKey || event.altKey) return;
-        if (event.key === "." && wide) {
+        if (event.key === ";" && wide) {
           event.preventDefault();
           storeDocked((was) => !was);
           return;
